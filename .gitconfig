@@ -1,0 +1,9 @@
+[credential]
+	helper = osxkeychain
+[user]
+	name = danielturek
+	email = danielturek@gmail.com
+[core]
+	editor = emacs
+[push]
+	default = simple

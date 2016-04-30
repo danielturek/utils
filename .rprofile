@@ -1,0 +1,4 @@
+options(device = 'quartz')
+options(repos  = 'http://cran.cnr.berkeley.edu')
+makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
+makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('qqq', 'rrr')))), envir = .GlobalEnv), .GlobalEnv)
