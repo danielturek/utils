@@ -1,0 +1,12 @@
+
+---
+title: TITLE
+author: Daniel Turek
+output: html_document
+---
+
+
+```{r, message = FALSE}
+library(nimble)
+```
+
