@@ -1,19 +1,458 @@
 
+## using a custom distribution to have flexible length data
+## for floriane plard population models
 
-
-## testing keyword processing, and adding numeric(), array(), etc
 library(nimble)
 
-nfDef <- nimbleFunction(
-    setup = function() {},
-    run = function() {
-        x <- dgamma(1, 1)
+
+dxxx <- nimbleFunction(
+    run = function(x = double(1), mu = double(1), sigma = double(1), length = integer(), log.p = double()) {
+        ll <- 0
+        for(i in 1:length) {
+            ll <- ll + dnorm(x[i], mu[i], sd=sigma[i], log=TRUE)
+        }
+        returnType(double())
+        if(log.p) return(ll) else return(exp(ll))
     }
 )
 
-Rnf <- nfDef()
+rxxx <- nimbleFunction(
+    run = function(n = integer(), mu = double(1), sigma = double(1), length = integer()) {
+        print('this should never run')
+        x <- numeric(length)
+        return(x)
+    }
+)
 
-Cnf <- compileNimble(Rnf)
+registerDistributions(list(
+    dxxx = list(
+        BUGSdist = 'dxxx(mu, sigma, length)',
+        types    = c('value = double(1)', 'mu = double(1)', 'sigma = double(1)', 'length = integer()')
+    )
+))
+
+code <- nimbleCode({
+    y[1:N] ~ dxxx(mu[1:N], sigma[1:N], length)
+})
+constants <- list(N = 10)
+data <- list()
+inits <- list(length = 10)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$length
+Rmodel$mu
+Rmodel$sigma
+Rmodel$y
+Rmodel$getNodeNames(dataOnly = TRUE)
+
+length <- 10
+length
+mu <- ((1:10)/2)[1:length]
+mu
+sigma <- (1+(1:10)/10)[1:length]
+sigma
+y <- c(1,0,1,3,2,5,4,6,7,5)[1:length]
+y
+yaug <- c(y, rep(as.numeric(NA), 10-length))
+yaug
+
+Rmodel$length <- length
+Rmodel$length
+Rmodel$mu[1:length] <- mu
+Rmodel$mu
+Rmodel$sigma[1:length] <- sigma
+Rmodel$sigma
+Rmodel$resetData()
+Rmodel$getNodeNames(dataOnly = TRUE)
+Rmodel$setData(list(y=yaug))
+Rmodel$getNodeNames(dataOnly = TRUE)
+Rmodel$y
+
+sum(dnorm(y, mu, sd=sigma, log=TRUE))
+calculate(Rmodel)
+
+
+debug(exprClasses_setSizes)
+
+
+
+## testing MCEM for pump model
+library(nimble)
+
+pumpCode <- nimbleCode({ 
+  for (i in 1:N){
+      theta[i] ~ dgamma(alpha,beta) 
+      lambda[i] <- theta[i]*t[i]
+      x[i] ~ dpois(lambda[i]) 
+  }
+  alpha ~ dexp(1.0) 
+  beta ~ dgamma(0.1,1.0) 
+}) 
+pumpConsts <- list(N = 10,
+                   t = c(94.3, 15.7, 62.9, 126, 5.24,
+                       31.4, 1.05, 1.05, 2.1, 10.5)) 
+pumpData <- list(x = c(5, 1, 5, 14, 3, 19, 1, 1, 4, 22)) 
+pumpInits <- list(alpha = 1, beta = 1,
+                  theta = rep(0.1, pumpConsts$N)) 
+newPump <- nimbleModel(code = pumpCode, name = 'pump', constants = pumpConsts,
+                    data = pumpData, inits = pumpInits) 
+
+pumpMCEM <- buildMCEM(model = newPump,
+                      latentNodes = 'theta',
+                      burnIn = 100,
+                      mcmcControl = list(adaptInterval = 20),
+                      boxConstraints = list( list( c('alpha', 'beta'), 
+                          limits = c(0, Inf) ) ), 
+                      buffer = 1e-6)
+
+pumpMCEM(maxit = 20, m1 = 250, m2 = 500)
+pumpMCEM(maxit = 50, m1 = 1000, m2 = 5000)
+
+
+## testing adding numeric(), integer(), array(), matrix()
+library(nimble)
+Rfun <- nimbleFunction(run = function() {
+    ##ans <- numeric(10, value = 2)
+    ##
+    #x <- 100 
+    #ans <- integer(x) 
+    #for(i in 1:x) {
+    #    ans[i] <- i 
+    #}
+    ##
+    ##ans <- matrix(1, nrow = 10, ncol = 1)
+    ##y <- 3
+    ##ans <- numeric(10, value = y) 
+    ##ans <- array(y, dim = 10) 
+    ##ans <- array(y, dim = c(10))
+    ##z <- numeric(10)
+    ##z[5] <- 3
+    ##x <- 20
+    ##y <- 30
+    ##ans <- integer(z[5], value = x + y) 
+    ##ans <- array(x+y, dim = z[5], type = 'integer')
+    ##ans <- array(x+y, dim = c(z[5]), type = 'integer')
+    ##
+    ##x <- array(0, c(4,5))
+    ##ans <- matrix(0, nrow = dim(x)[1], ncol = dim(x)[2]) 
+    ##ans <- array(0, dim = c(dim(x)[1], dim(x)[2]))
+    ##
+    x <- 1
+    y <- 2
+    z <- 3
+    ans <- array(0, dim = c(x, y, z))
+    ##returnType(double(1))
+    ##returnType(integer(1))
+    ##returnType(double(2))
+    returnType(double(3))
+    return(ans)
+})
+Cfun <- compileNimble(Rfun)
+
+Rfun()
+Cfun()
+class(Rfun()[1])
+class(Cfun()[1])
+class(Rfun()[1,1])
+class(Cfun()[1,1])
+class(Rfun()[1,1,1])
+class(Cfun()[1,1,1])
+
+## creates a length-100 integer vector, containing 1, 2, ..., 100 
+
+## creates a 10x1 ones-matrix 
+
+## the following three lines are equivalent 
+## each creates a length-10 vector, with all elements equal to y 
+
+## the following two lines are equivalent 
+## each creates an integer vector of length z[5], with all elements equal to x+y 
+
+## the following two lines are equivalent 
+## each one creates a matrix of 0's of the same size as matrix x 
+
+## the following creates a 3-dimensional array of 0's 
+
+
+
+## testing adding numeric(), integer(), array(), matrix()
+library(nimble)
+library(testthat)
+##source(system.file(file.path('tests', 'test_utils.R'), package = 'nimble'))
+
+expected <- numeric(10)
+Rfun <- nimbleFunction(run = function() {
+    ans <- numeric(10)
+    returnType(double(1))
+    return(ans)
+})
+Cfun <- compileNimble(Rfun)
+test_that('numeric', expect_equal(Rfun(), expected))
+test_that('numeric', expect_equal(Cfun(), expected))
+test_that('numeric', expect_identical(class(Rfun()[1]), 'numeric'))
+test_that('numeric', expect_identical(class(Cfun()[1]), 'numeric'))
+
+
+expected <- rep(3, length = 2)
+Rfun <- nimbleFunction(run = function() {
+    ans <- numeric(value = 3, length = 2)
+    returnType(double(1))
+    return(ans)
+})
+Cfun <- compileNimble(Rfun)
+test_that('numeric', expect_equal(Rfun(), expected))
+test_that('numeric', expect_equal(Cfun(), expected))
+test_that('numeric', expect_identical(class(Rfun()[1]), 'numeric'))
+test_that('numeric', expect_identical(class(Cfun()[1]), 'numeric'))
+
+expected <- rep(9, 3)
+Rfun <- nimbleFunction(run = function() {
+    x <- numeric(10, value = 3)
+    ans <- integer(x[2], x[2]+x[3]*2)
+    returnType(integer(1))
+    return(ans)
+})
+Cfun <- compileNimble(Rfun)
+test_that('integer', expect_equal(Rfun(), expected))
+test_that('integer', expect_equal(Cfun(), expected))
+test_that('integer', expect_identical(class(Rfun()[1]), 'integer'))
+test_that('integer', expect_identical(class(Cfun()[1]), 'integer'))
+
+expected <- array(4, c(10,11))
+Rfun <- nimbleFunction(run = function() {
+    ans <- array(4, c(10,11))
+    returnType(double(2))
+    return(ans)
+})
+Cfun <- compileNimble(Rfun)
+test_that('integer', expect_equal(Rfun(), expected))
+test_that('integer', expect_equal(Cfun(), expected))
+test_that('integer', expect_identical(class(Rfun()[1]), 'numeric'))
+test_that('integer', expect_identical(class(Cfun()[1]), 'numeric'))
+
+expected <- matrix(as.integer(0), nrow=4, ncol=5)
+Rfun <- nimbleFunction(run = function() {
+    x <- 4
+    y <- 5
+    ans <- matrix(init=FALSE, nrow=x, ncol=y, type='integer')
+    returnType(integer(2))
+    return(ans)
+})
+Cfun <- compileNimble(Rfun)
+test_that('integer', expect_equal(Rfun(), expected))
+test_that('integer', expect_equal(Cfun(), expected))
+test_that('integer', expect_identical(class(Rfun()[1,1]), 'integer'))
+test_that('integer', expect_identical(class(Cfun()[1,1]), 'integer'))
+
+
+
+
+expected
+Rfun()
+Cfun()
+
+
+## testing adding numeric(), integer(), array(), matrix()
+library(nimble)
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        x <- 2
+        bbb <- array(3, x+10, type='integer')
+        ##print(bbb)
+        bbb2 <- array(value=3, dim=c(3,4), type='double')
+        ##print(bbb2)
+        ccc <- array(value=3, dim=c(3,4), type='double', init=FALSE)
+        ##print(ccc)
+        x <- 5
+        y <- matrix(2, ncol = 3, nrow = x)
+        ##print(y)
+        zxc <- array(2, c(x, dim(y)[2], y[2,2]))
+        zxc[1,1,1] <- 98
+        ##returnType(double(3));  return(zxc)
+        zz <- numeric(4)
+        zz[1] <- 99
+        ##print(zz)
+        z <- numeric(value=.5, 4)
+        ##print(z)
+        zz[2:4] <- z[1:3] + numeric(3, 10)
+        ##print(zz)
+        mat <- matrix(0, 5, 5)
+        mat[1, 1] <- 97
+        ##print(mat)
+        arr <- array(4, type = 'integer', init = FALSE, dim=c(3,4))
+        ##print(arr)
+        ar2 <- array(dim = dim(z)[1])
+        ##print(ar2)
+        ar3 <- array(dim = c(dim(z)[1]))
+        ##print(ar3)
+        ar4 <- array(dim = c(dim(arr)[1], dim(arr)[2]), type = 'integer')
+        ##print(ar4)
+    }
+)
+Rnf <- nfDef()
+##Rnf$run
+Cnf <- compileNimble(Rnf, dirName)
+
+Rnf$run()
+
+Cnf$run()
+
+
+
+tempdir()
+
+##Cnf$run()
+
+
+
+## ???
+
+library(nimble)
+sampler_dt <- nimbleFunction(
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        browser()
+        1
+        2
+        3
+        ###  node list generation  ###
+        calcNodes  <- model$getDependencies(target)
+    },
+    run = function() {
+        simulate(model, target)
+        calculate(model, calcNodes)
+        nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+    },
+    methods = list(
+        reset = function() { }
+    ), where = getLoadingNamespace()
+)
+pumpCode <- nimbleCode({
+	for(i in 1:N){
+		theta[i] ~ dgamma(alpha,beta)
+		lambda[i] <- theta[i]*t[i]
+		x[i] ~ dpois(lambda[i])
+	}
+	alpha ~ dexp(1.0)
+        alpha2 ~ dnorm(alpha, 1)
+	beta ~ dpois(lambda=3)  # Make beta discrete valued
+})
+pumpConsts <- list(N=10,t=c(94.3,15.7,62.9,126,5.24,31.4,1.05,1.05,2.1,10.5))
+pumpData <- list(x=c(5,1,5,14,3,19,1,1,4,22))
+pumpInits <- list(alpha=1,beta=1,theta=rep(0.1,pumpConsts$N))
+Rmodel <- nimbleModel(code=pumpCode,name='pump',constants=pumpConsts,data=pumpData,inits=pumpInits)
+
+spec <- configureMCMC(Rmodel)
+spec$getMonitors()
+spec$addMonitors(c('theta', 'alpha2'))
+spec$getMonitors()
+spec$printSamplers()
+spec$addSampler(type = 'dt', target = 'alpha')
+spec$printSamplers()
+
+Rmcmc <- buildMCMC(spec)
+
+## testing new function in modelBaseClass: model$getNodeFunctions()
+library(nimble)
+pumpCode <- nimbleCode({
+	for(i in 1:N){
+		theta[i] ~ dgamma(alpha,beta)
+		lambda[i] <- theta[i]*t[i]
+		x[i] ~ dpois(lambda[i])
+	}
+	alpha ~ dexp(1.0)
+        alpha2 ~ dnorm(alpha, 1)
+	beta ~ dpois(lambda=3)  # Make beta discrete valued
+})
+pumpConsts <- list(N=10,t=c(94.3,15.7,62.9,126,5.24,31.4,1.05,1.05,2.1,10.5))
+pumpData <- list(x=c(5,1,5,14,3,19,1,1,4,22))
+pumpInits <- list(alpha=1,beta=1,theta=rep(0.1,pumpConsts$N))
+Rmodel <- nimbleModel(code=pumpCode,name='pump',constants=pumpConsts,data=pumpData,inits=pumpInits)
+Cmodel <- compileNimble(Rmodel)
+
+nodes <- c('theta[3]')
+nodes <- c('theta[3]', 'x[10]')
+nodes <- c('theta[3]', 'x[9:10]')
+Rmodel$getNodeFunctions(nodes)$calculate
+Cmodel$getNodeFunctions(nodes)[[1]]$calculate
+
+Rmodel$getNodeNames()
+modelDef <- Rmodel$getModelDef()
+gids <- mdef$nodeName2GraphIDs(nodes)
+gids
+mdef$graphIDs2indexedNodeInfo(gids)
+Rmodel$nodeFunctions[[2]]$calculate
+
+
+## making dmnorm conjugate sampler work with dependent
+## nodes of different size from target node
+library(nimble)
+source(system.file(file.path('tests', 'test_utils.R'), package = 'nimble'))
+
+code <- nimbleCode({
+    x[1:3] ~ dmnorm(mu0[1:3], prec = ident[1:3,1:3])
+    mu_y2[1:2] <- asCol(a[1:2]) + B[1:2,1:3] %*% asCol(x[1:3])
+    mu_y3[1:3] <- asCol(a[1:3]) + B[1:3,1:3] %*% asCol(x[1:3])
+    mu_y5[1:5] <- asCol(a[1:5]) + B[1:5,1:3] %*% asCol(x[1:3])
+    y2[1:2] ~ dmnorm(mu_y2[1:2], prec = prec_y[1:2,1:2])
+    y3[1:3] ~ dmnorm(mu_y3[1:3], prec = prec_y[1:3,1:3])
+    y5[1:5] ~ dmnorm(mu_y5[1:5], prec = prec_y[1:5,1:5])
+})
+
+mu0 <- rep(0,3)
+ident <- diag(3)
+a <- 11:15
+B <- matrix(1:15, nrow=5, ncol=3, byrow=TRUE)
+prec_y <- diag(1:5)
+
+constants <- list(mu0=mu0, ident=ident, a=a, B=B, prec_y=prec_y)
+data <- list(y2=1:2, y3=1:3, y5=1:5)
+inits <- list(x=rep(0,3))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+spec <- configureMCMC(Rmodel)
+##spec$getSamplers()
+Rmcmc <- buildMCMC(spec)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+Rmcmc$run(10)
+
+set.seed(0)
+Cmcmc$run(10)
+
+Rsamples <- as.matrix(Rmcmc$mvSamples)
+Csamples <- as.matrix(Cmcmc$mvSamples)
+
+Rsamples - Csamples
+
+Rsamples[c(1,10),]
+Csamples[c(1,10),]
+##         x[1]       x[2]      x[3]
+##[1,] 4.966869 -1.1252473 -3.922769
+##[2,] 4.972376 -0.5288582 -4.511282
+
+
+##node <- quote(mu0[1:3])
+##node <- quote(prec_y[1:2, 1:2])
+##node <- quote(prec_y[1:3, 1:3])
+##node <- quote(prec_y[1:5, 1:5])
+##nimble:::cc_expandDetermNodesInExpr(Rmodel, node)
+##debug(nimble:::cc_expandDetermNodesInExpr)
+##undebug(nimble:::cc_expandDetermNodesInExpr)
+##debug(Rmcmc$samplerFunctions$contentsList[[1]]$run)
+##a <- spec$getSamplerDefinition(1)
+##createNamedObjectsFromList(a, writeToFile = '~/temp/del.R')
+
+
+
+
+
 
 
 ## ???
