@@ -9,9 +9,9 @@ inits <- list(a = 0)
 
 Rmodel <- nimbleModel(code, constants, data, inits)
 
-spec <- configureMCMC(Rmodel)
-spec$printSamplers()
-Rmcmc <- buildMCMC(spec)
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
 
 Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)

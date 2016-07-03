@@ -1,4 +1,254 @@
 
+
+## tracking down error in conjugacy checking system,
+## this model was submitted by: Eduardo Martins <egmartins@gmail.com>
+## during the ISEC 2016 NIMBLE workshop
+library(nimble)
+load('~/Downloads/data_inits.RData')
+fec_code <- nimbleCode({
+    ## Likelihood
+    ## Fecundity
+    for (i in 1:ny.fec) {
+        y.fec[i] ~ dlnorm(log(z.fec[i]), tau.y.fec) # observation model
+        z.fec[i] ~ dnegbin(p.fec[i], size.fec) # sampling model
+        p.fec[i] <- size.fec / (size.fec + mu.fec[i])
+        log(mu.fec[i]) <- a.fec.raw + b.fec * z.sl[i] + nu.fec.k.raw[idx.k[i]] + nu.fec.l.raw[idx.l[i]]
+    }
+    a.fec <- a.fec.raw + mean(nu.fec.k.raw[1:nk]) + mean(nu.fec.l.raw[1:nl])
+    for (k in 1:nk){
+        nu.fec.k.raw[k] ~ dnorm(mu.nu.fec.k, tau.nu.fec.k)
+        nu.fec.k[k] <- nu.fec.k.raw[k] - mean(nu.fec.k.raw[1:nk])
+    }
+    for (l in 1:nl){
+        nu.fec.l.raw[l] ~ dnorm(mu.nu.fec.l, tau.nu.fec.l)
+        nu.fec.l[l] <- nu.fec.l.raw[l] - mean(nu.fec.l.raw[1:nl])
+    }
+    ## Length
+    for(i in 1:ny.fec) {
+        z.sl[i] ~ dnorm(mu.sl[i], tau.sl.i)
+        mu.sl[i] <- a.sl.raw + b.sl * z.ocr[i] + nu.sl.k.raw[idx.k[i]] + nu.sl.l.raw[idx.l[i]]
+    }
+    a.sl <- a.sl.raw + mean(nu.sl.k.raw[1:nk]) + mean(nu.sl.l.raw[1:nl])
+    for (k in 1:nk){
+        nu.sl.k.raw[k] ~ dnorm(mu.nu.sl.k, tau.nu.sl.k)
+        nu.sl.k[k] <- nu.sl.k.raw[k] - mean(nu.sl.k.raw[1:nk])
+    }
+    for (l in 1:nl){
+        nu.sl.l.raw[l] ~ dnorm(mu.nu.sl.l[l], tau.nu.sl.l)
+        mu.nu.sl.l[l] <- b.nu.sl.l[1] * sst6.std[l] + b.nu.sl.l[2] * pdo6.std[l] + b.nu.sl.l[3] * nsal.std[l]
+        nu.sl.l[l] <- nu.sl.l.raw[l] - mean(nu.sl.l.raw[1:nl])
+    }
+    ## Years of ocean residence
+    for(i in 1:ny.fec){
+        z.ocr[i] ~ dbern(p.z.ocr[i])
+        logit(p.z.ocr[i]) <- a.ocr.raw + nu.ocr.k.raw[idx.k[i]] + nu.ocr.l.raw[idx.l[i]]
+    }
+    a.ocr <- a.ocr.raw + mean(nu.ocr.k.raw[1:nk]) + mean(nu.ocr.l.raw[1:nl])
+    for (k in 1:nk){
+        nu.ocr.k.raw[k] ~ dnorm(mu.nu.ocr.k, tau.nu.ocr.k)
+        nu.ocr.k[k] <- nu.ocr.k.raw[k] - mean(nu.ocr.k.raw[1:nk])
+    }
+    for (l in 1:nl){
+        nu.ocr.l.raw[l] ~ dnorm(mu.nu.ocr.l, tau.nu.ocr.l)
+        nu.ocr.l[l] <- nu.ocr.l.raw[l] - mean(nu.ocr.l.raw[1:nl])
+    }
+    ## Priors
+    ## Fecundity
+    tau.y.fec <- pow(sig.y.fec, -2)
+    sig.y.fec ~ dunif(0, 100)
+    num.size.fec ~ dnorm(0, 0.0016)
+    den.size.fec ~ dnorm(0, 1)
+    size.fec <- abs(num.size.fec / den.size.fec)
+    mu.nu.fec.k ~ dnorm(0, 0.0001)
+    tau.nu.fec.k <- pow(sig.nu.fec.k, -2)
+    sig.nu.fec.k ~ dunif(0, 100)
+    mu.nu.fec.l ~ dnorm(0, 0.0001)
+    tau.nu.fec.l <- pow(sig.nu.fec.l, -2)
+    sig.nu.fec.l ~ dunif(0, 100)
+    a.fec.raw ~ dnorm(mean.z.fec, tau.z.fec)
+    b.fec ~ dnorm(0, 0.0001)
+    ## Length
+    tau.sl.i <- pow(sig.sl.i, -2)
+    sig.sl.i ~ dunif(0, 100)
+    mu.nu.sl.k ~ dnorm(0, 0.0001)
+    tau.nu.sl.k <- pow(sig.nu.sl.k, -2)
+    sig.nu.sl.k ~ dunif(0, 100)
+    tau.nu.sl.l <- pow(sig.nu.sl.l, -2)
+    sig.nu.sl.l ~ dunif(0, 100)
+    a.sl.raw ~ dnorm(0, 0.0001)
+    b.sl ~ dnorm(0, 0.0001)
+    for (b in 1:nb.nu.sl.l) {
+        b.nu.sl.l[b] ~ dnorm(0, 0.0001)
+    }
+    ## Years of ocean residence
+    mu.nu.ocr.k ~ dnorm(0, 0.0001)     
+    tau.nu.ocr.k <- pow(sig.nu.ocr.k, -2)
+    sig.nu.ocr.k ~ dunif(0, 100)
+    mu.nu.ocr.l ~ dnorm(0, 0.0001)
+    tau.nu.ocr.l <- pow(sig.nu.ocr.l, -2)
+    sig.nu.ocr.l ~ dunif(0, 100)
+    a.ocr.raw ~ dnorm(0, 0.0001)
+    ## Residuals and metrics for model assessment
+    ## Fecundity
+    for(i in 1:ny.fec){
+        res.y.fec[i] <- y.fec[i] - z.fec[i]
+        new.y.fec[i] ~ dlnorm(log(z.fec[i]), tau.y.fec)
+    }
+    for(i in 1:ny.fec){
+        pres.z.fec[i] <- (z.fec[i] - mu.fec[i])/sqrt(mu.fec[i] + pow(mu.fec[i], 2) / size.fec)
+        new.z.fec[i] ~ dnegbin(p.fec[i], size.fec)
+        pres.new.z.fec[i] <- (new.z.fec[i] - mu.fec[i])/sqrt(mu.fec[i] + pow(mu.fec[i], 2) / size.fec)
+        d.z.fec[i] <- pow(pres.z.fec[i], 2)
+        d.new.z.fec[i] <- pow(pres.new.z.fec[i], 2)
+    }
+    fit.z.fec <- sum(d.z.fec[1:ny.fec])
+    fit.new.z.fec <- sum(d.new.z.fec[1:ny.fec])
+    ## Length
+    for (i in 1:ny.fec) {
+        res.z.sl[i] <- z.sl[i] - mu.sl[i]
+        new.z.sl[i] ~ dnorm(mu.sl[i], tau.sl.i)
+    }
+    for (l in 1:nl){
+        res.nu.sl.l[l] <- nu.sl.l[l] - mu.nu.sl.l[l]
+        new.nu.sl.l[l] ~ dnorm(mu.nu.sl.l[l], tau.nu.sl.l)
+    }
+})
+fec_mod <- nimbleModel(fec_code, constants = dat, inits = inits())
+fec_cmod <- compileNimble(fec_mod)
+
+##options(error = recover)
+
+## next line errors out in conjugacy check:
+## Error in x[[1]] : subscript out of bounds
+mcmcConf <- configureMCMC(fec_mod)
+
+mcmcConf$printSamplers()
+mcmcConf$getMonitors()
+fecMCMC <- buildMCMC(mcmcConf)
+cfecMCMC <- compileNimble(fecMCMC, project = fec_mod)
+
+cfecMCMC$run(10)
+
+## testing of new setData() functionality:
+## taking a character vector of variable names
+
+library(nimble)
+Rmodel <- readBUGSmodel('birats2.bug', dir = getBUGSexampleDir('birats'), data = 'birats-data.R', inits = 'birats-inits.R')
+
+Rmodel$getNodeNames(includeData = FALSE)
+
+modelLs <- readBUGSmodel('birats2.bug', dir = getBUGSexampleDir('birats'), data = 'birats-data.R', inits = 'birats-inits.R', returnModelComponents = TRUE)
+modelLs$model
+
+Rmodel$beta
+Rmodel$tau.c
+Rmodel$r
+
+Rmodel$getNodeNames(dataOnly = TRUE)
+Rmodel$setData(c('beta', 'tau.c', 'r'))
+Rmodel$getNodeNames(dataOnly = TRUE)
+Rmodel$resetData()
+Rmodel$getNodeNames(dataOnly = TRUE)
+Rmodel$setData(c('beta', 'tau.c', 'r'))
+Rmodel$getNodeNames(dataOnly = TRUE)
+Rmodel$setData(c('Y'))
+
+
+
+
+
+## testing new MCMC runtime argument: time
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dnorm(a, 1)
+    c ~ dnorm(b + b^2, 1)
+})
+constants <- list()
+data <- list(b=0, c=0)
+inits <- list(a=0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+spec <- configureMCMC(Rmodel)
+spec$printSamplers()
+Rmcmc <- buildMCMC(spec)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+Cmcmc$run(100000, time = TRUE)
+Cmcmc$getTimes()
+Cmcmc$run(100000, time = TRUE, reset = FALSE)
+Cmcmc$getTimes()
+
+
+
+## error from Perry about not finding nimArray
+## but I can't reproduce this error
+
+library(nimble)
+
+Rmodel <- readBUGSmodel('birats2.bug', dir = getBUGSexampleDir('birats'), data = 'birats-data.R', inits = 'birats-inits.R')
+##spec <- configureMCMC(Rmodel)
+##spec$printSamplers()
+##spec$getSamplerDefinition(1)
+##spec$getSamplerDefinition(4)
+##mcmc <- buildMCMC(spec)
+mcmc <- buildMCMC(Rmodel)
+mcmc$run(1)
+##Error in samplerFunctions[[i]]$run() : could not find function "nimArray"
+
+source(system.file(file.path('tests', 'test_utils.R'), package = 'nimble'))
+test_mcmc('birats', model = 'birats2.bug', inits = 'birats-inits.R', data = 'birats-data.R', numItsC = 1000, resampleData = TRUE)
+
+
+
+
+## Soledad's compilation error
+
+library(nimble)
+x <- c(2, 2, 3)
+
+## works
+test1 <- nimbleFunction ( run = function (indx = double(1) ) {
+    if(  length(indx)==2 & indx[1]==indx[2] ) {
+        aa <- indx[1] 
+    } else {
+        newindx <- indx
+        aa         <- length(newindx)
+    }
+    output <- 1 + aa
+    returnType(double(0))
+    return(output)
+})
+
+## doesn't work
+test1 <- nimbleFunction(run = function(indx = double(1)) {
+    if(  length(indx)==2 & indx[1]==indx[2] ) {
+        newindx <- indx[1]
+        aa          <- newindx     ## THIS IS THE MAIN CHANGE IN THIS FUNCTION
+    } else {
+        newindx <- indx
+        aa          <- length(newindx)
+    }
+    output <- 1 + aa
+    returnType(double(0))
+    return(output)
+})
+
+Ctest1 <- compileNimble(test1)
+
+
+test1(x)
+Ctest1(x)
+
+
+
+
+
 ## using a custom distribution to have flexible length data
 ## for floriane plard population models
 
@@ -1707,7 +1957,9 @@ out$timing
 
 library(nimble)
 
-nimbleOptions(useMultiInterfaceForNestedNimbleFunctions = FALSE)
+nimbleOptions('buildInterfacesForCompiledNestedNimbleFunctions')
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+nimbleOptions('buildInterfacesForCompiledNestedNimbleFunctions')
 nimbleOptions()
 
 code = nimbleCode({
