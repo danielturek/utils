@@ -1,6 +1,7 @@
 
 # to permanently mute OSX startup chime, run this once from shell:
-# $ sudo nvram SystemAudioVolume=%80
+# $ cd ~/github/utils/nobootsound
+# $ sudo sh install.sh
 
 # stop creation of .DS_Store files by Finder everywhere
 # $ defaults write com.apple.desktopservices DSDontWriteNetworkStores true

@@ -1,5 +1,37 @@
 
 
+## getting MCMC samples for logProbs of variables
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$getMonitors()
+conf$addMonitors('logProb_a')
+conf$getMonitors()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+##paste0('logProb_', letters)
+
+set.seed(0)
+Cmcmc$run(10)
+samples <- as.matrix(Cmcmc$mvSamples)
+samples
+apply(samples, 2, mean)
+
+
 ## tracking down error in conjugacy checking system,
 ## this model was submitted by: Eduardo Martins <egmartins@gmail.com>
 ## during the ISEC 2016 NIMBLE workshop
