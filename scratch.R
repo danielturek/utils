@@ -1,4 +1,131 @@
 
+## making utility function for MCMC sample traceplots and density histograms
+
+samplesPlot <- function(samples, ind=1:ncol(samples), width=7, height=4) {
+    ## plotting customizations
+    yaxt <- 'n'
+    ## make device window
+    dev.new(height=height, width=width)
+    par(mfrow=c(1,2), cex=0.7, cex.main=1.5, lab=c(3,3,7), mgp=c(0,0.6,0), mar=c(2,1,2,1), oma=c(0,0,0,0), tcl=-0.3, yaxt='n', bty='l')
+
+    ## process samples and arguments
+    samples <- samples[, ind, drop=FALSE]
+    nparam <- ncol(samples)
+    nsamples <- nrow(samples)
+    ## traceplots
+    plot(1:nsamples, ylim=range(samples), type='n', main='Traceplots', xlab='', ylab='')
+    for(i in 1:nparam)
+        lines(samples[,i], col=rainbow(nparam, alpha=0.75)[i])
+    ## density histograms
+    alpha_hist <- 0.1
+    yMax <- 0
+    for(i in 1:nparam)
+        yMax <- max(yMax, hist(samples[,i], plot=FALSE)$density)
+    hist(samples[,1], breaks=min(samples):max(samples), prob=TRUE, ylim=c(0,yMax), col=rainbow(nparam, alpha=alpha_hist)[1], border=rainbow(nparam, alpha=alpha_hist)[1], main='Density Histograms', xlab='', ylab='')
+    if(nparam > 1)
+        for(i in 2:nparam)
+            hist(samples[,i], breaks=min(samples[,i]):max(samples[,i]), prob=TRUE, add=TRUE, col=rainbow(nparam, alpha=alpha_hist)[i], border=rainbow(nparam, alpha=alpha_hist)[i], yaxt=yaxt)
+}
+
+samplesPlot(samples)
+
+
+## better to just use the plotting functions in coda package!!!
+library(coda)
+mcmcSamples <- as.mcmc(samples)
+acfplot(mcmcSamples)
+plot(mcmcSamples)
+
+
+
+## testing making my own progress bar in NIMBLE DSL nimbleFunction
+
+library(nimble)
+
+rfun <- nimbleFunction(
+    run = function(pb = logical(default=TRUE)) {
+        ##print('|')
+        ##for(i in 1:20)   { a <- i %% 7; print(a) }
+        ##print('|')
+        ##cat('|')
+        ##for(i in 1:3)   cat('-', i)
+        ##cat('|')
+        a <- 1
+        pb <- pb & 0
+        print(pb)
+    }
+)
+
+##rfun()
+cfun <- compileNimble(rfun)
+##cfun()
+cfun()
+
+
+library(nimble)
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+library(nimble)
+Rmodel <- readBUGSmodel('birats2.bug', dir = getBUGSexampleDir('birats'), data = 'birats-data.R', inits = 'birats-inits.R')
+Rmcmc <- buildMCMC(Rmodel)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Cmcmc$run(20000)
+Cmcmc$run(30007, reset = FALSE)         ## continue previous run
+Cmcmc$run(10000, progressBar = FALSE)   ## turn off progress bar
+Cmcmc$run(100003, reset = FALSE)        ## sort of slow run
+Cmcmc$run(5000)     ## faster
+Cmcmc$run(2000)     ## faster still
+Cmcmc$run(1000)     ## ...
+Cmcmc$run(500)
+Cmcmc$run(100)
+Cmcmc$run(40)  ## no bar when too few iterations
+
+
+
+## playing with R progress bars: txtProgressBar
+
+f <- function(n = 1e6, frac = 0.01) {
+    pb <- txtProgressBar(style = 3, char = '-')
+    nupdate <- floor(frac * n) 
+    for(i in 1:n) {
+        a <- rnorm(1)
+        if(i %% nupdate == 0) {
+            setTxtProgressBar(pb, i/n)
+        }
+    }
+    setTxtProgressBar(pb, 1)
+    close(pb)
+}
+
+f(n=2e6, frac = .01)
+
+
+
+library(Bolstad)
+
+## datasets in library(Bolstad):
+## bears (exercise in chapter 3)
+## slug  (exercise in chapter 14)
+
+## functions that I might possibly use:
+## decomp: makes plots of prior, likelihood, posterior, but only for class=Bolstad.
+##         maybe steal a bunch of the code, make one that works for general samples?
+##         BUT WAIT -- this only works for sorted (x,y) pairs -- not for samples.
+
 
 ## getting MCMC samples for logProbs of variables
 

@@ -5,6 +5,7 @@ author: Daniel Turek
 output: html_document
 ---
 
+XXX danielturek.github.io/public/folder/fileName.Rmd
 
 ```{r, message = FALSE}
 library(nimble)
