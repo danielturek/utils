@@ -1,33 +1,81 @@
 
+
+
 ## making utility function for MCMC sample traceplots and density histograms
 
-samplesPlot <- function(samples, ind=1:ncol(samples), width=7, height=4) {
-    ## plotting customizations
-    yaxt <- 'n'
-    ## make device window
+library(nimble)   ## get samples from birats2 model
+Rmodel <- readBUGSmodel('birats2.bug', dir = getBUGSexampleDir('birats'), data = 'birats-data.R', inits = 'birats-inits.R')
+Rmcmc <- buildMCMC(Rmodel)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+Cmcmc$run(20000)
+samples <- as.matrix(Cmcmc$mvSamples)
+
+library(nimble)   ## get samples from Dave Pleydel's multinomial test model
+codeTest <- nimbleCode ({
+    X[1:nGroups] ~ dmultinom(size=N, prob=pVecX[1:nGroups])
+    Y[1:nGroups] ~ dmultinom(size=N, prob=pVecY[1:nGroups])
+    for (ii in 1:nGroups)
+        Z[ii] ~ dbeta(1 + X[ii], 1 + Y[ii]) })
+nGroups   <- 5
+N         <- 1E6
+pVecX     <- rdirch(1, rep(1, nGroups))
+pVecY     <- rdirch(1, rep(1, nGroups))
+X         <- rmultinom(1, N, pVecX)[,1]
+Y         <- rmultinom(1, N, pVecY)[,1]
+Z         <- rbeta(nGroups, 1+X, 1+Y)
+Xini      <- rmultinom(1, N, sample(pVecX))[,1]
+Yini      <- rmultinom(1, N, sample(pVecY))[,1]
+Constants <- list(nGroups=nGroups)
+Inits     <- list(X=Xini, Y=Yini, pVecX=pVecX, pVecY=pVecY, N=N)
+Data      <- list(Z=Z)
+modelTest <- nimbleModel(codeTest, constants=Constants, inits=Inits, data=Data)
+mcmcTest  <- buildMCMC(modelTest) 
+cModelTest <- compileNimble(modelTest)
+cMcmcTest <- compileNimble(mcmcTest, project=modelTest)
+cModelTest$N     <- N <- 1E3
+cModelTest$pVecX <- sort(rdirch(1, rep(1, nGroups)))
+cModelTest$pVecY <- sort(rdirch(1, rep(1, nGroups)))
+simulate(cModelTest, c('X','Y','Z'), includeData=TRUE)
+niter  <- 1E4
+cMcmcTest$run(niter)
+samples <- as.matrix(cMcmcTest$mvSamples)
+
+samplesPlot <- function(samples, ind=1:ncol(samples), width=7, height=4, legend=TRUE, legend.location='topright') {
+    ## device window and plotting parameters
     dev.new(height=height, width=width)
     par(mfrow=c(1,2), cex=0.7, cex.main=1.5, lab=c(3,3,7), mgp=c(0,0.6,0), mar=c(2,1,2,1), oma=c(0,0,0,0), tcl=-0.3, yaxt='n', bty='l')
-
-    ## process samples and arguments
+    ## process samples
     samples <- samples[, ind, drop=FALSE]
     nparam <- ncol(samples)
-    nsamples <- nrow(samples)
+    rng <- range(samples)
     ## traceplots
-    plot(1:nsamples, ylim=range(samples), type='n', main='Traceplots', xlab='', ylab='')
+    plot(1:nrow(samples), ylim=rng, type='n', main='Traceplots', xlab='', ylab='')
     for(i in 1:nparam)
         lines(samples[,i], col=rainbow(nparam, alpha=0.75)[i])
-    ## density histograms
-    alpha_hist <- 0.1
-    yMax <- 0
+    ## posterior densities
+    alpha_density <- 0.2
+    xMin <- xMax <- yMax <- NULL
+    for(i in 1:nparam) {
+        d <- density(samples[,i])
+        xMin <- min(xMin,d$x); xMax <- max(xMax,d$x); yMax <- max(yMax, d$y)
+    }
+        plot(1, xlim=c(xMin,xMax), ylim=c(0,yMax), type='n', main='Posterior Densities', xlab='', ylab='')
+    ##hist(samples[,1], breaks=floor(rng[1]):ceiling(rng[2]), prob=TRUE, ylim=c(0,yMax), col=rainbow(nparam, alpha=alpha_density)[1], border=rainbow(nparam, alpha=alpha_density)[1], main='Density Histograms', xlab='', ylab='', xaxp=c(myRound(rng),diff(rng)/100))
+    ##if(nparam > 1)
+    ##for(i in 2:nparam)
+    ##hist(samples[,i], breaks=floor(min(samples[,i])):ceiling(max(samples[,i])), prob=TRUE, add=TRUE, col=rainbow(nparam, alpha=alpha_density)[i], border=rainbow(nparam, alpha=alpha_density)[i])
     for(i in 1:nparam)
-        yMax <- max(yMax, hist(samples[,i], plot=FALSE)$density)
-    hist(samples[,1], breaks=min(samples):max(samples), prob=TRUE, ylim=c(0,yMax), col=rainbow(nparam, alpha=alpha_hist)[1], border=rainbow(nparam, alpha=alpha_hist)[1], main='Density Histograms', xlab='', ylab='')
-    if(nparam > 1)
-        for(i in 2:nparam)
-            hist(samples[,i], breaks=min(samples[,i]):max(samples[,i]), prob=TRUE, add=TRUE, col=rainbow(nparam, alpha=alpha_hist)[i], border=rainbow(nparam, alpha=alpha_hist)[i], yaxt=yaxt)
+        polygon(density(samples[,i]), col=rainbow(nparam, alpha=alpha_density)[i])
+    if(legend & !is.null(dimnames(samples)) & is.character(dimnames(samples)[[2]]))
+        legend(legend=dimnames(samples)[[2]], fill=rainbow(nparam, alpha=0.5), bty='n', x=legend.location)
 }
 
+
+dim(samples)
+dimnames(samples)
 samplesPlot(samples)
+
 
 
 ## better to just use the plotting functions in coda package!!!
@@ -35,6 +83,57 @@ library(coda)
 mcmcSamples <- as.mcmc(samples)
 acfplot(mcmcSamples)
 plot(mcmcSamples)
+
+
+
+## playing with plot(density(x))
+x <- rnorm(10000)
+plot(density(x))
+d <- density(x)
+class(d)
+ls(d)
+length(d$x)
+length(d$y)
+plot(d$x, d$y, type='l')  ## this creates the standard plot(density(x)) plot
+
+      plot(prior ~ param.x, ylim = yLims, type = "l", xlim = range(param.x), 
+            xlab = "", ylab = "", main = "", axes = FALSE, ...)
+        polygon(param.x, prior, col = "red")
+        box()
+        r = legend("topleft", legend = "Prior", lty = 1, bty = "n", 
+            plot = FALSE)$text
+        text(r$x, r$y, "Prior", adj = 0)
+        plot(likelihood ~ param.x, type = "l", xlab = "", ylab = "", 
+            main = "", axes = FALSE, ...)
+        polygon(param.x, likelihood, col = "green")
+        box()
+        r = legend("topleft", legend = "Prior", lty = 1, bty = "n", 
+            plot = FALSE)$text
+        text(r$x, r$y, "Likelihood", adj = 0)
+        plot(posterior ~ param.x, ylim = yLims, type = "l", xlab = "", 
+            ylab = "", main = "", axes = F, ...)
+        polygon(param.x, posterior, col = "blue")
+
+
+
+
+## testing funny behavior of DSL round() and nimRound()
+library(nimble)
+
+Rnf <- nimbleFunction(
+    run = function() {
+        for(i in 0:50) {
+            x <- i/10
+            xRound <- round(x)
+            print('x: ', x, ',   round(x): ', xRound)
+        }
+    }
+)
+
+Cnf <- compileNimble(Rnf)
+
+Rnf()
+Cnf()
 
 
 

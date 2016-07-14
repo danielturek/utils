@@ -1,4 +1,5 @@
 options(device = 'quartz')
 options(repos  = 'http://cran.cnr.berkeley.edu')
 makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
-makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('qqq', 'rrr')))), envir = .GlobalEnv), .GlobalEnv)
+makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('qqq', 'roundSig', 'rrr')))), envir = .GlobalEnv), .GlobalEnv)
+roundSig <- function(x) round(x, -floor(log10(abs(x))))
