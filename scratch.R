@@ -60,7 +60,7 @@ samplesPlot <- function(samples, ind=1:ncol(samples), width=7, height=4, legend=
         d <- density(samples[,i])
         xMin <- min(xMin,d$x); xMax <- max(xMax,d$x); yMax <- max(yMax, d$y)
     }
-        plot(1, xlim=c(xMin,xMax), ylim=c(0,yMax), type='n', main='Posterior Densities', xlab='', ylab='')
+    plot(1, xlim=c(xMin,xMax), ylim=c(0,yMax), type='n', main='Posterior Densities', xlab='', ylab='')
     ##hist(samples[,1], breaks=floor(rng[1]):ceiling(rng[2]), prob=TRUE, ylim=c(0,yMax), col=rainbow(nparam, alpha=alpha_density)[1], border=rainbow(nparam, alpha=alpha_density)[1], main='Density Histograms', xlab='', ylab='', xaxp=c(myRound(rng),diff(rng)/100))
     ##if(nparam > 1)
     ##for(i in 2:nparam)
