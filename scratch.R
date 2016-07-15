@@ -41,12 +41,14 @@ niter  <- 1E4
 cMcmcTest$run(niter)
 samples <- as.matrix(cMcmcTest$mvSamples)
 
-samplesPlot <- function(samples, ind=1:ncol(samples), width=7, height=4, legend=TRUE, legend.location='topright') {
+samplesPlot <- function(samples, ind=1:ncol(samples), burnin=NULL, width=7, height=4, legend=TRUE, legend.location='topright') {
     ## device window and plotting parameters
     dev.new(height=height, width=width)
     par(mfrow=c(1,2), cex=0.7, cex.main=1.5, lab=c(3,3,7), mgp=c(0,0.6,0), mar=c(2,1,2,1), oma=c(0,0,0,0), tcl=-0.3, yaxt='n', bty='l')
     ## process samples
     samples <- samples[, ind, drop=FALSE]
+    if(!is.null(burnin))
+        samples <- samples[(burnin+1):dim(samples)[1], , drop=FALSE]
     nparam <- ncol(samples)
     rng <- range(samples)
     ## traceplots
@@ -54,19 +56,14 @@ samplesPlot <- function(samples, ind=1:ncol(samples), width=7, height=4, legend=
     for(i in 1:nparam)
         lines(samples[,i], col=rainbow(nparam, alpha=0.75)[i])
     ## posterior densities
-    alpha_density <- 0.2
     xMin <- xMax <- yMax <- NULL
     for(i in 1:nparam) {
         d <- density(samples[,i])
-        xMin <- min(xMin,d$x); xMax <- max(xMax,d$x); yMax <- max(yMax, d$y)
-    }
+        xMin <- min(xMin,d$x); xMax <- max(xMax,d$x); yMax <- max(yMax, d$y) }
     plot(1, xlim=c(xMin,xMax), ylim=c(0,yMax), type='n', main='Posterior Densities', xlab='', ylab='')
-    ##hist(samples[,1], breaks=floor(rng[1]):ceiling(rng[2]), prob=TRUE, ylim=c(0,yMax), col=rainbow(nparam, alpha=alpha_density)[1], border=rainbow(nparam, alpha=alpha_density)[1], main='Density Histograms', xlab='', ylab='', xaxp=c(myRound(rng),diff(rng)/100))
-    ##if(nparam > 1)
-    ##for(i in 2:nparam)
-    ##hist(samples[,i], breaks=floor(min(samples[,i])):ceiling(max(samples[,i])), prob=TRUE, add=TRUE, col=rainbow(nparam, alpha=alpha_density)[i], border=rainbow(nparam, alpha=alpha_density)[i])
+    alpha_density <- 0.2
     for(i in 1:nparam)
-        polygon(density(samples[,i]), col=rainbow(nparam, alpha=alpha_density)[i])
+        polygon(density(samples[,i]), col=rainbow(nparam, alpha=alpha_density)[i], border=rainbow(nparam, alpha=alpha_density)[i])
     if(legend & !is.null(dimnames(samples)) & is.character(dimnames(samples)[[2]]))
         legend(legend=dimnames(samples)[[2]], fill=rainbow(nparam, alpha=0.5), bty='n', x=legend.location)
 }
@@ -76,7 +73,11 @@ dim(samples)
 dimnames(samples)
 samplesPlot(samples)
 
+apply(samples, 2, mean)
 
+samplesPlot(samples, ind=c(1,2,3,7), burnin=1000, legend.location='topleft')
+samplesPlot(samples, ind=c(4,6), burnin=1000)
+samplesPlot(samples, ind=c(5), burnin=1000)
 
 ## better to just use the plotting functions in coda package!!!
 library(coda)
