@@ -1,25 +1,24 @@
+
+## testing inconsistancy in dgamma() between R and C
+
 library(nimble)
 
-code <- nimbleCode({
-    a ~ dnorm(0, 1)
-})
-constants <- list()
-data <- list()
-inits <- list(a = 0)
+Rnf <- nimbleFunction(
+    run = function(x = double(), a = double(), b = double()) {
+        lp <- dgamma(x, a, b, log = 1)
+        returnType(double())
+        return(lp)
+    }
+)
 
-Rmodel <- nimbleModel(code, constants, data, inits)
+Cnf <- compileNimble(Rnf)
 
-conf <- configureMCMC(Rmodel)
-conf$printSamplers()
-Rmcmc <- buildMCMC(conf)
+x <- 6e-100
+a <- 0.001
+b <- 1.0
+Rnf(x, a, b)
+Cnf(x, a, b)
 
-Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
-
-set.seed(0)
-Cmcmc$run(10000)
-samples <- as.matrix(Cmcmc$mvSamples)
-apply(samples, 2, mean)
 
 
 
