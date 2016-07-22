@@ -11,3 +11,6 @@ rm -f nimble/src/*.so
 
 R CMD build nimble
 R CMD INSTALL nimble -l ~/Documents/
+
+## use in R scripts:
+## if(Sys.info()['nodename'] == 'gandalf') library(nimble, lib.loc = '~/Documents/') else library(nimble)
