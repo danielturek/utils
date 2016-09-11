@@ -34,3 +34,83 @@ makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
 
 makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('roundSig', 'samplesPlot', 'qqq', 'rrr')))), envir = .GlobalEnv), .GlobalEnv)
 
+
+## ## utility for plotting MCMC samples from multiple chains (one parameter only)
+## samplesPlot2 <- function(samplesList, ind=1, burnin=NULL, legend=TRUE, legend.location='topright') {
+## #  dev.new(height=height, width=width)
+##   nChains <- length(samplesList)
+##   par(mfrow=c(1,2), cex=0.7, cex.main=1.5, lab=c(3,3,7), mgp=c(0,0.6,0), mar=c(2,1,2,1), oma=c(0,0,0,0), tcl=-0.3, yaxt='n', bty='l')
+##   samples <- samplesList[[1]][, ind, drop=FALSE]
+##   if (nChains > 1)
+##     for (chain in 2:nChains)
+##       samples <- cbind(samples, samplesList[[chain]][, ind, drop=FALSE])
+##   if(!is.null(burnin))
+##     samples <- samples[(burnin+1):dim(samples)[1], , drop=FALSE]
+##   colnames(samples) <- paste("Chain", 1:nChains)
+##   nparam <- ncol(samples)
+##   rng <- range(samples)
+##   plot(1:nrow(samples), ylim=rng, type='n', main=paste('Traceplots', ind), xlab='', ylab='')
+##   for(i in 1:nparam)
+##     lines(samples[,i], col=rainbow(nparam, alpha=0.75)[i])
+##   xMin <- xMax <- yMax <- NULL
+##   for(i in 1:nparam) {
+##     d <- density(samples[,i])
+##     xMin <- min(xMin,d$x); xMax <- max(xMax,d$x); yMax <- max(yMax, d$y) }
+##   plot(1, xlim=c(xMin,xMax), ylim=c(0,yMax), type='n', main=paste('Posterior Densities', ind), xlab='', ylab='')
+##   alpha_density <- 0.2
+##   for(i in 1:nparam)
+##     polygon(density(samples[,i]), col=rainbow(nparam, alpha=alpha_density)[i], border=rainbow(nparam, alpha=alpha_density)[i])
+##   if(legend & !is.null(dimnames(samples)) & is.character(dimnames(samples)[[2]]))
+##     legend(legend=dimnames(samples)[[2]], fill=rainbow(nparam, alpha=0.5), bty='n', x=legend.location)
+## }
+
+## ## utility for plotting MCMC samples from multiple chains (also allows multiple parameters)
+## samplesPlot3 <- function(samplesList, ind=1, burnin=NULL, legend=TRUE, legend.location='topright', 
+##                          common.scale = TRUE, nCols = 2) {
+##   #  dev.new(height=height, width=width)
+##   nChains <- length(samplesList)
+##   nPar <- length(ind)
+##   if (common.scale && nPar > 1) {
+##     samplesAll <- samplesList[[1]][, ind, drop=FALSE]
+##     if (nChains > 1)
+##       for (chain in 2:nChains)
+##         samplesAll <- cbind(samplesAll, samplesList[[chain]][, ind, drop=FALSE])
+##     if(!is.null(burnin))
+##       samplesAll <- samplesAll[(burnin+1):dim(samplesAll)[1], , drop=FALSE]
+##     rng <- range(samplesAll)
+##     xMin <- xMax <- yMax <- NULL
+##     for(i in 1:ncol(samplesAll)) {
+##       d <- density(samplesAll[,i])
+##       xMin <- min(xMin,d$x); xMax <- max(xMax,d$x); yMax <- max(yMax, d$y) 
+##     }
+##   }
+##   nRows <- ceiling(nPar / nCols * 2)
+##   par(mfrow=c(nRows, nCols), cex=0.7, cex.main=1, lab=c(3,3,7), mgp=c(0,0.6,0), mar=c(2,1,2,1), oma=c(0,0,0,0), tcl=-0.3, yaxt='n', bty='l')
+##   for (par in ind) {
+##     samples <- samplesList[[1]][, par, drop=FALSE]
+##     if (nChains > 1)
+##       for (chain in 2:nChains)
+##         samples <- cbind(samples, samplesList[[chain]][, par, drop=FALSE])
+##     if(!is.null(burnin))
+##       samples <- samples[(burnin+1):dim(samples)[1], , drop=FALSE]
+##     colnames(samples) <- paste("Chain", 1:nChains)
+##     if (!common.scale || nPar == 1) {
+##       rng <- range(samples)
+##       xMin <- xMax <- yMax <- NULL
+##       for(i in 1:nChains) {
+##         d <- density(samples[,i])
+##         xMin <- min(xMin,d$x); xMax <- max(xMax,d$x); yMax <- max(yMax, d$y) }
+##     }
+##     plot(1:nrow(samples), ylim=rng, type='n', main=paste('Traceplots', par), xlab='', ylab='')
+##     for(i in 1:nChains)
+##       lines(samples[,i], col=rainbow(nChains, alpha=0.75)[i])
+##     plot(1, xlim=c(xMin,xMax), ylim=c(0,yMax), type='n', main=paste('Posterior Densities', par), xlab='', ylab='')
+##     alpha_density <- 0.2
+##     for(i in 1:nChains)
+##       polygon(density(samples[,i]), col=rainbow(nChains, alpha=alpha_density)[i], border=rainbow(nChains, alpha=alpha_density)[i])
+##     if(legend & !is.null(dimnames(samples)) & is.character(dimnames(samples)[[2]]))
+##       legend(legend=dimnames(samples)[[2]], fill=rainbow(nChains, alpha=0.5), bty='n', x=legend.location)
+##   }
+## }
+
+

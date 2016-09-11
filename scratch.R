@@ -1,4 +1,277 @@
 
+
+
+setwd('~/temp/lecTEMP')
+getwd()
+library(methods)
+library(knitr)
+library(rmarkdown)
+
+list.files()
+
+render('Lecture1Slides.rmd')
+
+## testing Nick Michaud's question about nimbleFunctionLists
+library(nimble)
+
+bigFunction <- nimbleFunction(
+    setup = function(N) {
+        functions <- nimbleFunctionList(littleFunction_virtual)  ## CHANGE
+        for(n in 1:N)
+            functions[[n]] <-littleFunction(n)
+    },
+    run = function() {
+        returnType(integer(0))
+        sum_N <- 0
+        for(n in 1:N) 
+            sum_N <- sum_N + functions[[n]]$run()
+        return(sum_N)
+    }
+)
+
+## NEW
+littleFunction_virtual <- nimbleFunctionVirtual(
+    run = function() {
+        returnType(integer(0))
+    }
+)
+
+littleFunction <- nimbleFunction(
+    contains = littleFunction_virtual,
+    setup = function(n){},
+    run = function(){
+        returnType(integer(0))
+        return(n)
+    }
+)
+
+testFunction <- bigFunction(5)
+testFunction$run()
+CtestFunction <- compileNimble(testFunction)
+CtestFunction$run()
+
+
+## make configureMCMC respect dconstraint()
+library(nimble)
+
+code <- nimbleCode({
+    for(j in 1:J) {
+        for(i in 1:n[j]) {
+            y[j,i] ~ dconstraint(w[j,i] > 0)
+            w[j,i] ~ dnorm(theta[j], 1)
+        }
+        theta[j] ~ dnorm(mu, itau2)
+    }
+    itau2 ~ dgamma(a, b)
+    mu ~ dnorm(0, .00001)
+})
+
+J <- 3
+n <- rep(2, J)
+
+y <- matrix( sample(c(0,1), sum(n), replace = TRUE), nrow = J)
+m <- nimbleModel(code, constants = list(n = n, J = J), data = list(y = y))
+
+conf <- configureMCMC(m)
+conf$printSamplers()
+
+
+## nested sampler function wrapper for Dao
+library(nimble)
+
+sampler_record_wrapperNEW <- nimbleFunction(
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control){
+      numSamples <- 0
+      before <- c(0, 0)
+      after <- c(0, 0)
+      samplerFunctionList <- nimbleFunctionList(sampler_BASE)
+    ###### make sure to provide *named* arguments to this function
+    ###### shouldn't require anything in control$control, if you don't want
+    controlListForNestedSampler <- mcmc_generateControlListArgument(samplerFunction = control$sampler_function, control = control$control)
+    samplerFunctionList[[1]] <- eval(call( control$sampler_function, model = model, mvSaved = mvSaved, target = target, control =  controlListForNestedSampler))}, 
+    run = function() {
+      ## these lines are new:
+      numSamples <<- numSamples + 1
+      setSize(before, numSamples)
+      setSize(after, numSamples)
+      before[numSamples] <<- model[[target]]
+      ## back to the original sampler function code:
+      samplerFunctionList[[1]]$run()
+      ## this line new:
+      after[numSamples] <<- model[[target]]
+    },
+    methods = list(
+        reset = function() {samplerFunctionList[[1]]$reset()}
+    ))
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10) {
+        x[i] ~ dnorm(mu*mu, sd = sigma)
+    }
+})
+Rmodel <- nimbleModel(code)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+conf$removeSamplers('sigma')
+conf$printSamplers()
+
+## SEE CHANGES HERE
+conf$addSampler(target = 'sigma', type = sampler_record_wrapperNEW, control = list(sampler_function = 'sampler_slice', control=list()))
+conf$printSamplers()
+
+## SEE CHANGES HERE
+conf$addSampler(target = 'sigma', type = 'sampler_record_wrapperNEW', control = list(sampler_function = 'sampler_RW', control = list()))
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+
+## trying out a recursive nimble function
+library(nimble)
+
+Rnf <- nimbleFunction(
+    run = function(x = double()) {
+        if(x == 0 || x == 1) {
+            return(1)
+        } else {
+            a <- 1
+        }
+    })
+
+
+
+## testing the new NIMBLE function: runMCMC()
+library(nimble)
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10) {
+        x[i] ~ dnorm(mu*mu, sd = sigma)
+    }
+})
+Rmodel <- nimbleModel(code)
+Rmodel$setData(list(x = c(2, 5, 3, 4, 1, 0, 1, 3, 5, 3)))
+conf <- configureMCMC(Rmodel)
+conf$getMonitors()
+conf$setThin(10)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+## testing new functions for addSampler(), 'name', 'libraryTag', etc...
+library(nimble)
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10) {
+        x[i] ~ dnorm(mu*mu, sd = sigma)
+    }
+})
+Rmodel <- nimbleModel(code)
+conf <- configureMCMC(Rmodel)
+
+debug(conf$addSampler)
+undebug(conf$addSampler)
+conf$printSamplers()
+conf$removeSamplers('sigma')
+conf$printSamplers()
+conf$addSampler(target = 'sigma', type = sampler_slice, name='slice1')
+conf$addSampler(target = 'sigma', type = 'slice', name='slice2')
+conf$addSampler(target = 'sigma', type = sampler_slice)
+conf$addSampler(target = 'sigma', type = 'slice')
+conf$addSampler(target = 'sigma', type = sampler_RW, name='slice1')
+conf$addSampler(target = 'sigma', type = 'RW', name='slice2')
+conf$addSampler(target = 'sigma', type = sampler_RW)
+conf$addSampler(target = 'sigma', type = 'RW')
+conf$printSamplers()
+conf$controlNamesLibrary
+
+
+
+##debug(buildMCMC)
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+Cmcmc$run(10000)
+samples <- as.matrix(Cmcmc$mvSamples)
+apply(samples, 2, mean)
+
+
+
+            
+
+mc <- Cmcmc
+mc <- Rmcmc
+
+pb <- TRUE
+pb <- FALSE
+
+si <- TRUE
+si <- FALSE
+
+ni <- 10
+ni <- 100
+
+nb <- 5
+nb <- 9
+
+
+
+inits <- function() list(mu = rnorm(1,0,1000), sigma = runif(1,0,10))
+##inits <- function() list(mu = 1:2, sigma = runif(1,0,10), x = 3)
+
+initsList <- list(inits(), inits(), inits())
+initsList <- list(inits(), inits())
+initsList <- list(inits())
+
+debug(runMCMC)
+undebug(runMCMC)
+
+debug(mcmc$run)
+
+runMCMC(Rmcmc, niter = 3, nchains = 3, inits = inits())
+runMCMC(Cmcmc, niter = 3, nchains = 3, inits = inits())
+
+runMCMC(Rmcmc, niter = 3, nchains = 3, inits = initsList)
+runMCMC(Cmcmc, niter = 3, nchains = 3, inits = initsList)
+
+runMCMC(Rmcmc, niter = 300, nchains = 3, inits = inits())
+runMCMC(Cmcmc, niter = 300, nchains = 3, inits = ii, nburnin=10)
+a <- runMCMC(Rmcmc, niter = 300, nburnin=10, nchains = 4)
+
+runMCMC(Rmcmc, niter = 300, nchains = 3, inits = inits(), nburnin=295)
+runMCMC(Cmcmc, niter = 30000, nchains = 3, inits = inits, nburnin=29995)
+
+runMCMC(Cmcmc, niter = 30000, nchains = 3, inits = inits, nburnin=29995, progressBar=TRUE, silent=TRUE, returnCodaMCMC = TRUE)
+
+runMCMC(Cmcmc, niter = 30000, inits = inits, nburnin=29995, progressBar=TRUE, silent=TRUE, returnCodaMCMC = TRUE)
+
+runMCMC(Cmcmc, niter = 30000, inits = inits, nburnin=29995, progressBar=TRUE, silent=TRUE)
+
+runMCMC(Cmcmc, niter = 30000, nchains = 3, inits = inits, nburnin=29999, progressBar=TRUE, silent=TRUE, setSeed=TRUE)
+
+runMCMC(Rmcmc, niter = 30, nchains = 3, inits = inits, nburnin=29, silent=TRUE, setSeed=TRUE)
+
+runMCMC(Cmcmc, niter = 30000, nchains = 3, nburnin=29999, progressBar=TRUE, silent=TRUE, setSeed=TRUE)
+
+runMCMC(Rmcmc, niter = 30, nchains = 3, nburnin=29, silent=TRUE, setSeed=TRUE)
+
+
+
 ## testing inconsistancy in dgamma() between R and C
 
 library(nimble)

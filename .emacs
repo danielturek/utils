@@ -31,8 +31,18 @@
     (insert "```\n")
     (previous-line)))
 
+(defun rmarkdown-new-comment ()
+  "Insert a new Rmarkdown comment."
+  (interactive)
+  (insert "\n<!---\n")
+  (save-excursion
+    (newline)
+    (insert "-->\n")
+    (previous-line)))
+
 (defun rmarkdown-weave-file ()
   "Run knitr on the current file and weave it as MD and HTML."
+  (save-buffer)
   (interactive)
   (shell-command
    (format "/Users/dturek/github/utils/knit.sh -c %s"
@@ -45,8 +55,14 @@
    (format "/Users/dturek/github/utils/knit.sh -t %s"
        (shell-quote-argument (buffer-file-name)))))
 
+(defun rmarkdown-commit ()
+  "Commit ~/github/courses repo"
+  (interactive)
+  (shell-command "cd ~/github/courses; ~/github/utils/commit.sh"))
+
 (defun rmarkdown-preview-file ()
   "Run knitr on the current file and display output in a browser."
+  (save-buffer)
   (interactive)
   (shell-command
    (format "/Users/dturek/github/utils/knit.sh -b %s"
@@ -56,9 +72,11 @@
 (global-set-key (kbd "C-c m") (quote rmd-mode))
 
 (global-set-key (kbd "C-c n") (quote rmarkdown-new-chunk))
+(global-set-key (kbd "C-c c") (quote rmarkdown-new-comment))
 (global-set-key (kbd "C-c w") (quote rmarkdown-weave-file))
 (global-set-key (kbd "C-c p") (quote rmarkdown-preview-file))
 (global-set-key (kbd "C-c t") (quote rmarkdown-tangle-file))
+(global-set-key (kbd "C-c i") (quote rmarkdown-commit))
 
 
 ;; all this next stuff is for doing LaTeX docs from Aquamacs
