@@ -52,7 +52,8 @@ if [ -r "$1" ]; then
 	##    ) > /dev/null 2>&1
         (
             Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE)"
-            ) > /dev/null 2>&1
+        )
+	##> /dev/null 2>&1
     fi
     if [[ $browser = 1 ]]; then
 	##(
@@ -60,8 +61,15 @@ if [ -r "$1" ]; then
         ##                markdownToHTML('${mdfile}.md', '${mdfile}.html'); browseURL('${mdfile}.html')"
 	##    ) > /dev/null 2>&1
         (
-            Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE); browseURL('${mdfile}.html')"
-            ) > /dev/null 2>&1
+            Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE)"
+        )
+	##> /dev/null 2>&1
+	if [ -f ${mdfile}.pdf ]; then
+	    open ${mdfile}.pdf
+	fi
+	if [ -f ${mdfile}.html ]; then
+	    open ${mdfile}.html
+	fi
     fi
     if [[ $tangle = 1 ]]; then
 	(
