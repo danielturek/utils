@@ -1,6 +1,38 @@
 
 
 
+
+
+## solving 5 statisticians problem
+
+one <- function() {
+    cur <- 1  ## 1, 2, 3, 4, 5
+    while(TRUE) {
+        n <- runif(1)  # stay, +1, -1
+        if(n < 1/3) {
+            return(cur)
+        } else if(n < 2/3) {
+            cur <- ((cur - 1) - 1) %% 5 + 1
+        } else cur <- ((cur + 1) - 1) %% 5 + 1
+    }
+}
+
+many <- function(n) {
+    ret <- numeric(n)
+    for(i in 1:n)
+        ret[i] <- one()
+    return(ret)
+}
+
+prop.table(table(many(1000000))) * 11
+
+##        1        2        3        4        5 
+## 5.002679 2.000020 0.996589 0.999779 2.000933 
+##     5/11,    2/11,    1/11,    1/11,    2/11
+
+
+## playihg with Rmd
+
 setwd('~/temp/lecTEMP')
 getwd()
 library(methods)
