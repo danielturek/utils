@@ -2,6 +2,161 @@
 
 
 
+## pulling together pieces of not having to recompile models and MCMCs, for Dao
+
+library(nimble)
+nimbleOptions(showCompilerOutput = TRUE) ### DELETE THIS later
+code <- nimbleCode({
+    a ~ dbern(0.5)
+    b ~ dnorm(0, 1)
+    c ~ dnorm(0, 1)
+})
+Rmodel <- nimbleModel(code, inits = list(a=0, b=0, c=0))
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+model_orig <- Cmodel
+
+## recover the R (uncompiled) model object
+if(inherits(model_orig, 'CmodelBaseClass'))
+    model_orig <- model_orig$Rmodel
+
+
+##md <<- Rmodel_orig$modelDef
+Rmodel <- model_orig$newModel(replicate = TRUE, check = FALSE)
+
+conf_initial <- configureMCMC(Rmodel)
+
+monitorsVector <- Rmodel$getNodeNames(stochOnly=TRUE, includeData=FALSE)
+conf_initial$addMonitors(monitorsVector, print=FALSE)
+
+scalarNodeVector <- Rmodel$getNodeNames(stochOnly=TRUE, includeData=FALSE, returnScalarComponents=TRUE)
+discreteInd <- sapply(scalarNodeVector, function(n) Rmodel$isDiscrete(n), USE.NAMES=FALSE)
+scalarNodeVectorContinuous <<- scalarNodeVector[!discreteInd]
+scalarNodeVectorContinuous
+
+firstScalarNode <- scalarNodeVectorContinuous[1]
+firstScalarNode
+
+conf_initial$printSamplers()
+
+samplersWeMightUse <- c('RW', 'slice', 'RW_block')
+for(sampler in samplersWeMightUse)
+    conf_initial$addSampler(target = firstScalarNode, type = sampler)
+
+conf_initial$printSamplers()
+
+Rmcmc_initial <- buildMCMC(conf_initial)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc_initial <- compileNimble(Rmcmc_initial, project = Rmodel)
+
+conf_new <- configureMCMC(oldConf = conf_initial)
+
+conf_new$setSamplers()  ## remove all samplers
+conf_new$printSamplers()
+
+nodes <- c('a', 'b', 'c')
+for(node in nodes)
+    conf_new$addSampler(target = node, type = 'slice')
+conf_new$printSamplers()
+
+Rmcmc_new <- buildMCMC(conf_new)
+Cmcmc_new <- compileNimble(Rmcmc_new, project = Rmodel)
+
+
+nimCopy(from = model_orig, to = Cmodel, logProb = TRUE)
+calculate(Cmodel)
+
+
+## doing the random drug abuse survey using NIMBLE MCMC
+
+library(nimble)
+
+N <- 29
+y <- 14
+
+code <- nimbleCode({
+    theta ~ dunif(0, 1)
+    y ~ dbinom(size = N, prob = 0.25 + 0.5*theta)
+})
+
+constants <- list(N = N)
+data <- list(y = y)
+inits <- list(theta = 0.5)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+Cmcmc$run(100000)
+samples <- as.matrix(Cmcmc$mvSamples)
+
+samplesPlot(samples, ind='theta')
+theta <- samples[,'theta']
+mean(theta)
+median(theta)
+quantile(theta, c(0.25, 0.5, 0.75))
+
+
+## testing random drug abuse survey strategy, the variance of the results
+
+f <- function(n, iter) {
+    res <- rbinom(n=iter, size=n, prob=0.25)
+    var(res)
+}
+
+## expect variance is 3*n/16
+iter <- 100000
+
+n <- 100
+f(n, iter) - 3*n/16
+
+
+g <- function(n, iter) {
+    res <- numeric(iter)
+    for(i in 1:iter) {
+        a <- rbinom(n=1, size=n, prob=1/2)
+        res[i] <- rbinom(n=1, size=a, prob=1/2)
+    }
+    var(res)
+}
+
+g(n, iter) - 3*n/16
+
+
+
+test <- function(iter, n, theta) {
+    res <- numeric()
+    c <- numeric()
+    d <- numeric()
+    for(i in 1:iter) {
+        a <- rbinom(1, size=n, prob=1/2)
+        b <- n - a
+        c[i] <- rbinom(1, size=a, prob=1/2)
+        d[i] <- rbinom(1, size=b, prob=theta)
+        res[i] <- c[i] + d[i]
+    }
+    var(d)
+}
+
+iter <- 10000
+n <- 100
+theta <- .2
+test(iter, n, theta)
+
+3*n/16
+
+theta*n*(2-theta)/4
+
+
 
 ## solving 5 statisticians problem
 

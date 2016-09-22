@@ -42,6 +42,7 @@ alias cleanup=~/github/utils/cleanup.sh
 alias build=~/github/utils/build.sh
 alias gand='ssh gandalf.berkeley.edu'
 alias status='git status'
+alias st='git status'
 alias dif='git diff'
 alias pull='git pull'
 alias push='git push'

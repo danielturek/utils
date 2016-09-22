@@ -1,11 +1,12 @@
-
 ---
 title: TITLE
 author: Daniel Turek
 output: html_document
 ---
 
-XXX danielturek.github.io/public/folder/fileName.Rmd
+<!---
+danielturek.github.io/public/folder/fileName
+-->
 
 ```{r, message = FALSE}
 library(nimble)
