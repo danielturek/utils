@@ -41,6 +41,7 @@ alias backup=~/github/utils/backup.sh
 alias cleanup=~/github/utils/cleanup.sh
 alias build=~/github/utils/build.sh
 alias gand='ssh gandalf.berkeley.edu'
+alias hpcc='ssh dbt1@hpcc.williams.edu'
 alias status='git status'
 alias st='git status'
 alias dif='git diff'

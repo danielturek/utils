@@ -3,13 +3,13 @@ options(repos  = 'http://cran.cnr.berkeley.edu')
 
 roundSig <- function(x) round(x, -floor(log10(abs(x))))
 
-samplesPlot <- function(samples, col=1:ncol(samples), ind=NULL, burnin=NULL, width=7, height=4, legend=TRUE, legend.location='topright', traceplot=TRUE, densityplot=TRUE) {
+samplesPlot <- function(samples, var=1:ncol(samples), ind=NULL, burnin=NULL, width=7, height=4, legend=TRUE, legend.location='topright', traceplot=TRUE, densityplot=TRUE) {
     ## device window and plotting parameters
     dev.new(height=height, width=width)
     par.save <- par(no.readonly = TRUE)
     par(mfrow=c(1,traceplot+densityplot), cex=0.7, cex.main=1.5, cex.axis=0.9, lab=c(3,3,7), mgp=c(0,0.4,0), mar=c(1.6,1.6,2,0.6), oma=c(0,0,0,0), tcl=-0.3, bty='l')
     ## process samples
-    samples <- samples[, col, drop=FALSE]
+    samples <- samples[, var, drop=FALSE]
     if(!is.null(ind) && !is.null(burnin)) stop('only specify either ind or burnin')
     if(!is.null(ind))     samples <- samples[ind, , drop=FALSE]
     if(!is.null(burnin))  samples <- samples[(burnin+1):dim(samples)[1], , drop=FALSE]

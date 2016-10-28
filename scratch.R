@@ -1,3 +1,131 @@
+## doing the midterm question about normal mean hypothesis test
+## "weights of sheep raised on a farm"
+## now also with predictive distribution
+
+library(nimble)
+
+y <- c(78, 81, 77, 76, 75, 74, 78, 75, 77, 75)
+n <- length(y)
+np <- 5
+
+code <- nimbleCode({
+    mu ~ dnorm(75, sd=10)
+    for(i in 1:n) {
+        y[i] ~ dnorm(mu, sd=3)
+    }
+    for(i in 1:np) {
+        p[i] ~ dnorm(mu, sd=3)
+    }
+    pmean <- mean(p[1:np])
+})
+constants <- list(n=n, np=np)
+data <- list(y=y)
+inits <- list(mu = 75, p = rep(0,np))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$addMonitors(c('mu', 'p', 'pmean'))
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+Cmcmc$run(1000000)
+samples <- as.matrix(Cmcmc$mvSamples)
+colnames(samples)
+dim(samples)
+samples[1:20,]
+apply(samples, 2, mean)
+apply(samples, 2, sd)
+apply(samples, 2, var)
+1/apply(samples, 2, var)
+
+tau0 <- 1/100
+mu0 <- 75
+ybar <- mean(y)
+tau <- 1/9
+tau_n <- tau0 + n*tau
+mu_n <- (mu0*tau0 + ybar*n*tau)/(tau0+n*tau)
+mu_n
+tau_n
+1/tau_n
+var(samples[,'mu'])
+
+v <- 1/tau
+v_n <- 1/tau_n
+v_p1 <- v_n + v
+v_p1
+apply(samples, 2, var)
+
+v_p1/5
+var(samples[,'pmean'])
+v_n/5 + v
+v_n + v/5
+
+var(apply(matrix(sample(as.numeric(samples[,2:6])), ncol=5), 1, mean))
+
+
+
+
+## working on used cars regression example for Bayes course 365
+df <- read.csv('~/Downloads/UsedCars.csv')
+str(df)
+dim(df)
+head(df)
+
+m <- lm(Price ~ Age + HP | Type, df=df)
+summary(m)
+
+summary(lm(Price ~ Age + HP, df=subset(df, Type==0)))
+summary(lm(Price ~ Age + HP, df=subset(df, Type==1)))
+summary(lm(Price ~ Age + HP + Type, df=df))
+
+
+sd(residuals(lm(Price ~ Age + HP, df=subset(df, Type==0))))
+sd(residuals(lm(Price ~ Age + HP, df=subset(df, Type==1))))
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    bage ~ dnorm(0, 0.001)
+    bhp ~ dnorm(0, 0.001)
+    btype ~ dnorm(0, 0.001)
+    sd ~ dunif(0, 10000)
+    for(i in 1:N) {
+        y[i] ~ dnorm(mu[i], sd = sd)
+        mu[i] <- bage*age[i] + bhp*hp[i] + btype*type[i]
+    }
+})
+constants <- list(N = dim(df)[1], age=df$Age, hp=df$HP, type=df$Type)
+data <- list(y = df$Price)
+inits <- list(bage=0, bhp=0, btype=0, sd=1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+Cmcmc$run(10000)
+samples <- as.matrix(Cmcmc$mvSamples)
+apply(samples, 2, mean)
+
+samplesPlot(samples)
+samplesPlot(samples, burnin=2000)
+
+samplesPlot(samples, var=c('bage', 'bhp', 'btype'))
+samplesPlot(samples, var=c('bage', 'bhp', 'btype'), burnin=1000)
+samplesPlot(samples, var=c('sd'))
+
+
 ## recreating and fixing Dao's issue with the correlated SSM,
 ## where 'a' and 'b' don't mix until after 150,000 iterations
 library(nimble)
@@ -22,13 +150,22 @@ inits <- list(a = 0.95, b=1, sigPN = 0.2, sigOE=0.05, x = c(20.26036,20.51331,20
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmodel$calculate()   ## [1] 183.3436
 ##
+
 conf <- configureMCMC(Rmodel, nodes = NULL)
+
 conf$addSampler(c('a', 'b'), 'RW_block')
+conf$addSampler(c('a', 'b'), 'RW_block', control=list(adaptInterval=100))
+conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(1,-.99,-0.99,1), c(2,2))))
+conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(1,-.99,-0.99,1), c(2,2)), scale=0.01))
+conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(0.001709168, -0.0341986, -0.0341986, 0.6844844), c(2,2))))
+
+
+conf$printSamplers(c('a','b'))
+
 conf$addSampler('sigOE', 'RW')
 conf$addSampler('sigPN', 'RW')
 for(node in Rmodel$expandNodeNames('x'))
     conf$addSampler(node, 'RW')
-##conf$printSamplers()
 conf$resetMonitors()
 conf$addMonitors(c('a', 'b', 'sigOE', 'sigPN'))
 ##conf$getMonitors()
@@ -46,36 +183,42 @@ dim(samples)
 dimnames(samples)
 ##
 
+## Plot1
+dev.new(width=8, height=5)
+par(mfrow=c(1,2))
+plot(samples[1:300000,'a'], type='l', ylab='a')
+plot(samples[1:300000,'b'], type='l', ylab='b')
+par(mfrow=c(1,1))
+getwd()
+dev.copy2pdf(file='~/Downloads/plot1.pdf')
 
 samplesPlot(samples, col=c('b','a'), ind=1:300000)
 
-samplesPlot(samples, col=c('b','a'))
-samplesPlot(samples, col=c('sigOE','sigPN'))
+##samplesPlot(samples, col=c('sigOE','sigPN'))
 
-xs <- Rmodel$expandNodeNames('x')
-samplesPlot(samples, col=xs[ 1:10])
-samplesPlot(samples, col=xs[11:20])
-samplesPlot(samples, col=xs[21:30])
-samplesPlot(samples, col=xs[31:40])
+##xs <- Rmodel$expandNodeNames('x')
+##samplesPlot(samples, col=xs[ 1:10])
+##samplesPlot(samples, col=xs[11:20])
+##samplesPlot(samples, col=xs[21:30])
+##samplesPlot(samples, col=xs[31:40])
 
-i <-  4:13   ## x[ 1]...x[10]
-i <- 14:23   ## x[11]...x[20]
-i <-  1:8    ## (a,b), sigOE, sigPN, x[1]...x[5]
-i <-  2:3    ## sigOE, sigPN
+##i <-  4:13   ## x[ 1]...x[10]
+##i <- 14:23   ## x[11]...x[20]
+##i <-  1:8    ## (a,b), sigOE, sigPN, x[1]...x[5]
+##i <-  2:3    ## sigOE, sigPN
 
 ## all the latent state scales follow sigOE scale
-i <-  c(2,4:8)    ## sigOE, x[1]...x[5]
-nms <- sapply(conf$samplerConfs[i], function(x) x$target)
-nms
-ar <- do.call(cbind, lapply(Cmcmc$samplerFunctions$contentsList[i], function(x) x$scaleHistory))
-colnames(ar) <- nms
-samplesPlot(ar)
-dim(ar)
-samplesPlot(ar, burnin=500)
+##i <-  c(2,4:8)    ## sigOE, x[1]...x[5]
+##nms <- sapply(conf$samplerConfs[i], function(x) x$target)
+##nms
+##ar <- do.call(cbind, lapply(Cmcmc$samplerFunctions$contentsList[i], function(x) x$scaleHistory))
+##colnames(ar) <- nms
+##samplesPlot(ar)
+##dim(ar)
+##samplesPlot(ar, burnin=500)
 
 block_scales <- Cmcmc$samplerFunctions$contentsList[[1]]$scaleHistory
 block_propCovHistory <- Cmcmc$samplerFunctions$contentsList[[1]]$propCovHistory
-##dim(block_propCovHistory)
 ## create block_propCovScale
 block_propCovScale <- block_propCovHistory
 for(i in 1:length(block_scales))   block_propCovScale[i,,] <- block_scales[i] * block_propCovHistory[i,,]
@@ -87,14 +230,13 @@ ar <- cbind(block_scales, block_scale_a, block_scale_b, block_cors)
 colnames(ar) <- c('scale', 'sig_a', 'sig_b', 'cor')
 samplesPlot(ar)
 
+## final constant that scale approaches:
+block_scales[length(block_scales)]
 ##propCov adapts very nicely to true covariance between 'a' and 'b'
 cov(samples[(dim(samples)[1]/2):(dim(samples)[1]), c('a','b')])
 block_propCovHistory[dim(ar)[1],,]
-## scale approaches a constant:
-block_scales[length(block_scales)]
-## final adapted (and scaled) proposal cov:
-block_scales[length(block_scales)] * block_propCovHistory[dim(ar)[1],,]
-## final adapted (and scaled) proposal cor:
+## final adapted (and scaled) proposal corrleation is very accurate:
+cor(samples[(dim(samples)[1]/2):(dim(samples)[1]), c('a','b')])
 cov2cor(block_scales[length(block_scales)] * block_propCovHistory[dim(ar)[1],,])
 ## final adapted (and scaled) proposal standard deviations for 'a' and 'b':
 sqrt((block_scales[length(block_scales)] * block_propCovHistory[dim(ar)[1],,])[1,1])
@@ -107,19 +249,28 @@ block_scale_a_ex <- rep(block_scale_a, each=aI)
 block_scale_b_ex <- rep(block_scale_b, each=aI)
 block_cors_ex    <- rep(block_cors,    each=aI)
 block_scales_ex  <- rep(block_scales,  each=aI)
-
 samples_block_info <- cbind(samples[,'a'], samples[,'b'], block_scale_a_ex, block_scale_b_ex, block_cors_ex, block_scales_ex)
 dimnames(samples_block_info)[[2]] <- c('a', 'b', 'sig_a', 'sig_b', 'cor', 'scale')
-samplesPlot(samples_block_info, ind=1:300000, col=c('b', 'a'))
-samplesPlot(samples_block_info, ind=1:300000, col=c('sig_a', 'sig_b', 'cor', 'scale'))
-## this one is best:
-samplesPlot(samples_block_info, ind=1:300000, col=c('b', 'a', 'sig_a', 'sig_b', 'cor', 'scale'))
 
+##samplesPlot(samples_block_info, ind=1:300000, col=c('b', 'a'))
+##samplesPlot(samples_block_info, ind=1:300000, col=c('sig_a', 'sig_b', 'cor', 'scale'))
+
+## this one is best:
 ## artificially trim 'b' samples:
 samples_block_info_trim <- samples_block_info
 samples_block_info_trim[,'b'] <- pmin(samples_block_info_trim[,'b'], 2)
 samplesPlot(samples_block_info_trim, ind=1:300000, col=c('b', 'a', 'sig_a', 'sig_b', 'cor', 'scale'))
-samplesPlot(samples_block_info_trim, ind=1:1000, col=c('b', 'a', 'sig_a', 'sig_b', 'cor', 'scale'))
+dev.copy2pdf(file='~/Downloads/plot2.pdf')
+
+## same thing, on the "early" time scale
+samplesPlot(samples_block_info_trim, ind=1:2000, col=c('b', 'a', 'sig_a', 'sig_b', 'cor', 'scale'), densityplot=FALSE)
+dev.copy2pdf(file='~/Downloads/plot3.pdf')
+
+samplesPlot(samples_block_info_trim, ind=1:20000, col=c('b', 'a', 'sig_a', 'sig_b', 'cor', 'scale'), densityplot=FALSE)
+dev.copy2pdf(file='~/Downloads/plot4.pdf')
+
+
+
 
 
 
