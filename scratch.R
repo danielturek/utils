@@ -1,3 +1,388 @@
+## spatial NIMBLE model example from Abhirup Datta
+library(nimble)
+library(mvtnorm)
+nimbleOptions(showCompilerOutput=TRUE)
+
+## model code ###
+gpCode <- nimbleCode({
+    for(i in 1:n){ y[i] ~ dnorm(w[i],sd=tau)}
+    Vw[,] <- sigma*chol(G[,])
+    w[] ~ dmnorm(muw[], cholesky=Vw[,], prec_param=0)
+    sigma ~ dunif(0, 100)
+    tau ~ dunif(0, 10)
+})
+
+## data ###
+set.seed(1)
+n=100
+sigs=4
+w=as.vector(rmvnorm(1,rep(0,n),sigs*0.5^as.matrix(dist(1:n))))
+Y=w+sqrt(0.5*sigs)*rnorm(n)
+
+### setting up nimble model ####
+gpModel <- nimbleModel(gpCode, constants = list(n = n, G=0.5^as.matrix(dist(1:n)), muw=rep(0,n)), 
+    dimensions=list(y=n, Vw=c(n, n), w=n, Vy=c(n, n), G = c(n, n)), check=FALSE)
+
+gpModel$setData(list(y = Y))
+
+gpModel$sigma <- 1
+gpModel$tau <- 0.1
+gpModel$w <- rep(0,n)
+
+CgpModel <- compileNimble(gpModel)
+
+### MCMC ####
+
+gpconf <- configureMCMC(CgpModel, print=TRUE)
+
+
+gpconf$printSamplers()
+gpconf$removeSamplers('w')
+gpconf$printSamplers()
+for(node in gpModel$expandNodeNames('w', returnScalarComponents=TRUE)) {
+    gpconf$addSampler(node, 'RW')
+}
+gpconf$printSamplers()
+
+
+
+gpconf$addMonitors(c('w'))	
+
+gpMCMC <- buildMCMC(gpconf)
+
+CgpMCMC <- compileNimble(gpMCMC, project = CgpModel)
+
+##Nmcmc=100000
+Nmcmc=1000
+set.seed(1)
+CgpMCMC$run(Nmcmc)
+
+gpMCMCsamples <- as.matrix(CgpMCMC$mvSamples)
+
+plot(gpMCMCsamples[,"w[1]"])
+
+dimnames(gpMCMCsamples)
+
+samplesPlot(gpMCMCsamples, var=3:10)
+
+
+## implementing RJMCMC for a simple 2 models, logistic regression
+## yi ~ bernoulli(logit(p) = a + bx)
+set.seed(0)
+n <- 50
+x <- runif(n, -10, 10)
+a <- .3
+b <- 0.1
+p <- 1/(1 + exp(-1*(a + b*x)))
+y <- rbinom(n, prob=p, size=1)
+##plot(x,y)
+m1 <- glm(y~1, family=binomial())
+m1
+m2 <- glm(y~x, family=binomial())
+m2
+aic1 <- AIC(m1)  ## for this AIC function, "lower values indicate better fit"
+aic2 <- AIC(m2)
+aics <- c(aic1, aic2)
+aic_min <- min(aics)
+daics <- aics - aic_min
+w1_aic <- exp(-daics[1]/2) / sum(exp(-daics/2))
+w2_aic <- exp(-daics[2]/2) / sum(exp(-daics/2))
+bic1 <- BIC(m1)  ## for this AIC function, "lower values indicate better fit"
+bic2 <- BIC(m2)
+bics <- c(bic1, bic2)
+bic_min <- min(bics)
+dbics <- bics - bic_min
+w1_bic <- exp(-dbics[1]/2) / sum(exp(-dbics/2))
+w2_bic <- exp(-dbics[2]/2) / sum(exp(-dbics/2))
+w1_aic
+w1_bic
+
+## NEED TO KEEP WORKING ON LOGISTIC EXAMPLE FROM HERE
+prior_sd <- 10
+rj_proposal_sd <- 10
+prior_m1 <- 0.5
+{
+    decide <- function(lMHR) {
+        if(is.nan(lMHR)) return(FALSE)
+        if(log(runif(1,0,1)) < lMHR) return(TRUE) else return(FALSE)
+    }
+    prior <- function(x) return(dnorm(x, 0, sd=prior_sd, log=TRUE))
+    ll <- function(m, a, b, y, x) {
+        if(m==1) return(sum(dnorm(y, a, 1, log=TRUE)))
+        if(m==2) return(sum(dnorm(y, a+b*x, 1, log=TRUE)))
+    }
+    updateM <- function(mab, y, x) {
+        ##browser()
+        if(mab[1] == 1) {
+            bprop <- rnorm(1, 0, rj_proposal_sd)   ## proposal for new slope 'b'
+            lMHR <- prior(bprop) + ll(2,mab[2],bprop,y,x)  -  (ll(1,mab[2],0,y,x) + dnorm(bprop,0,rj_proposal_sd,log=TRUE)) + log((1-prior_m1)/prior_m1)
+            if(decide(lMHR)) return(c(2,mab[2],bprop)) else return(mab)
+        }
+        if(mab[1] == 2) {
+            lMHR <- ll(1,mab[2],0,y,x) + dnorm(mab[3],0,rj_proposal_sd,log=TRUE)  -  (prior(mab[3]) + ll(2,mab[2],mab[3],y,x)) - log((1-prior_m1)/prior_m1)
+            if(decide(lMHR)) return(c(1,mab[2],0)) else return(mab)
+        }
+    }
+    updateAB <- function(mab, y, x) {
+        ## update a
+        sd.aprop <- 0.1
+        aprop <- rnorm(1,mab[2],sd.aprop)
+        lMHR <- prior(aprop) + ll(mab[1],aprop,mab[3],y,x) - prior(mab[2]) - ll(mab[1],mab[2],mab[3],y,x)
+        if(decide(lMHR)) mab <- c(mab[1],aprop,mab[3])
+        ## update b
+        if(mab[1] == 2) {
+            sd.bprop <- 0.1
+            bprop <- rnorm(1,mab[3],sd.bprop)
+            lMHR <- prior(bprop) + ll(mab[1],mab[2],bprop,y,x) - prior(mab[3]) - ll(mab[1],mab[2],mab[3],y,x)
+            if(decide(lMHR)) mab <- c(mab[1],mab[2],bprop) else mab
+        }
+        return(mab)
+    }
+}
+
+set.seed(0)
+iter <- 100000
+mab <- c(1, 0, 0)  ## c(1, 0, 0)
+##samp <- data.frame(a=rep(NA,iter), b=NA, c=NA)
+samp <- array(NA, c(iter,3))
+colnames(samp) <- c('m', 'a', 'b')
+for(i in 1:iter) {
+    mab <- updateM(mab, y, x)
+    mab <- updateAB(mab, y, x)
+    samp[i,] <- mab
+}
+df <- as.data.frame(samp)
+
+mean(df$m==1)
+##head(df,10)
+
+c(mean(df$a[df$m==1]), m1$coef[1])
+c(mean(df$a[df$m==2]), m2$coef[1])
+c(mean(df$b[df$m==2]), m2$coef[2])
+
+##plot(df$a, type='l')
+##plot(1:iter, df$b)
+
+prod(dnorm(y, 0, sd=sqrt(prior_sd^2 + 1^2)/10))   ## wrong for p(y|m1), don't know why
+
+pym1 <- mean(replicate(500000, prod(dnorm(y, rnorm(1,0,prior_sd), 1))))
+pym2 <- mean(replicate(500000, prod(dnorm(y, rnorm(1,0,prior_sd) + rnorm(1,0,prior_sd)*x, 1))))
+pym1
+pym2
+ppm1 <- prior_m1*pym1 / (prior_m1*pym1 + (1-prior_m1)*pym2)
+ppm2 <- (1-prior_m1)*pym2 / (prior_m1*pym1 + (1-prior_m1)*pym2)
+ppm1
+ppm2
+
+w1_aic
+w1_bic
+mean(df$m==1)
+ppm1
+
+library(BMA)
+bma <- bic.glm(x=data.frame(x=x), y=y, glm.family='gaussian')
+##class(bma)
+##str(bma)
+bma$postprob[1]
+bma$deviance
+bma$label
+bma$size
+bma$which
+bma$probne0
+bma$postmean
+bma$condpostmean
+bma$mle
+
+
+
+
+
+## implementing RJMCMC for a simple 2 models
+## yi ~ N(a + bx, 1)
+set.seed(0)
+n <- 10
+x <- runif(n, -1, 1)
+a <- .3
+b <- 0.1
+y <- rnorm(n, a+b*x, 1)
+##plot(x,y)
+m1 <- lm(y~1)
+m1
+m2 <- lm(y~x)
+m2
+aic1 <- AIC(m1)  ## for this AIC function, "lower values indicate better fit"
+aic2 <- AIC(m2)
+aics <- c(aic1, aic2)
+aic_min <- min(aics)
+daics <- aics - aic_min
+w1_aic <- exp(-daics[1]/2) / sum(exp(-daics/2))
+w2_aic <- exp(-daics[2]/2) / sum(exp(-daics/2))
+bic1 <- BIC(m1)  ## for this AIC function, "lower values indicate better fit"
+bic2 <- BIC(m2)
+bics <- c(bic1, bic2)
+bic_min <- min(bics)
+dbics <- bics - bic_min
+w1_bic <- exp(-dbics[1]/2) / sum(exp(-dbics/2))
+w2_bic <- exp(-dbics[2]/2) / sum(exp(-dbics/2))
+w1_aic
+w1_bic
+
+prior_sd <- 10
+rj_proposal_sd <- 10
+prior_m1 <- 0.5
+{
+    decide <- function(lMHR) {
+        if(is.nan(lMHR)) return(FALSE)
+        if(log(runif(1,0,1)) < lMHR) return(TRUE) else return(FALSE)
+    }
+    prior <- function(x) return(dnorm(x, 0, sd=prior_sd, log=TRUE))
+    ll <- function(m, a, b, y, x) {
+        if(m==1) return(sum(dnorm(y, a, 1, log=TRUE)))
+        if(m==2) return(sum(dnorm(y, a+b*x, 1, log=TRUE)))
+    }
+    updateM <- function(mab, y, x) {
+        ##browser()
+        if(mab[1] == 1) {
+            bprop <- rnorm(1, 0, rj_proposal_sd)   ## proposal for new slope 'b'
+            lMHR <- prior(bprop) + ll(2,mab[2],bprop,y,x)  -  (ll(1,mab[2],0,y,x) + dnorm(bprop,0,rj_proposal_sd,log=TRUE)) + log((1-prior_m1)/prior_m1)
+            if(decide(lMHR)) return(c(2,mab[2],bprop)) else return(mab)
+        }
+        if(mab[1] == 2) {
+            lMHR <- ll(1,mab[2],0,y,x) + dnorm(mab[3],0,rj_proposal_sd,log=TRUE)  -  (prior(mab[3]) + ll(2,mab[2],mab[3],y,x)) - log((1-prior_m1)/prior_m1)
+            if(decide(lMHR)) return(c(1,mab[2],0)) else return(mab)
+        }
+    }
+    updateAB <- function(mab, y, x) {
+        ## update a
+        sd.aprop <- 0.1
+        aprop <- rnorm(1,mab[2],sd.aprop)
+        lMHR <- prior(aprop) + ll(mab[1],aprop,mab[3],y,x) - prior(mab[2]) - ll(mab[1],mab[2],mab[3],y,x)
+        if(decide(lMHR)) mab <- c(mab[1],aprop,mab[3])
+        ## update b
+        if(mab[1] == 2) {
+            sd.bprop <- 0.1
+            bprop <- rnorm(1,mab[3],sd.bprop)
+            lMHR <- prior(bprop) + ll(mab[1],mab[2],bprop,y,x) - prior(mab[3]) - ll(mab[1],mab[2],mab[3],y,x)
+            if(decide(lMHR)) mab <- c(mab[1],mab[2],bprop) else mab
+        }
+        return(mab)
+    }
+}
+
+set.seed(0)
+iter <- 100000
+mab <- c(1, 0, 0)  ## c(1, 0, 0)
+##samp <- data.frame(a=rep(NA,iter), b=NA, c=NA)
+samp <- array(NA, c(iter,3))
+colnames(samp) <- c('m', 'a', 'b')
+for(i in 1:iter) {
+    mab <- updateM(mab, y, x)
+    mab <- updateAB(mab, y, x)
+    samp[i,] <- mab
+}
+df <- as.data.frame(samp)
+
+mean(df$m==1)
+##head(df,10)
+
+c(mean(df$a[df$m==1]), m1$coef[1])
+c(mean(df$a[df$m==2]), m2$coef[1])
+c(mean(df$b[df$m==2]), m2$coef[2])
+
+##plot(df$a, type='l')
+##plot(1:iter, df$b)
+
+prod(dnorm(y, 0, sd=sqrt(prior_sd^2 + 1^2)/10))   ## wrong for p(y|m1), don't know why
+
+pym1 <- mean(replicate(500000, prod(dnorm(y, rnorm(1,0,prior_sd), 1))))
+pym2 <- mean(replicate(500000, prod(dnorm(y, rnorm(1,0,prior_sd) + rnorm(1,0,prior_sd)*x, 1))))
+pym1
+pym2
+ppm1 <- prior_m1*pym1 / (prior_m1*pym1 + (1-prior_m1)*pym2)
+ppm2 <- (1-prior_m1)*pym2 / (prior_m1*pym1 + (1-prior_m1)*pym2)
+ppm1
+ppm2
+
+w1_aic
+w1_bic
+mean(df$m==1)
+ppm1
+
+library(BMA)
+bma <- bic.glm(x=data.frame(x=x), y=y, glm.family='gaussian')
+##class(bma)
+##str(bma)
+bma$postprob[1]
+bma$deviance
+bma$label
+bma$size
+bma$which
+bma$probne0
+bma$postmean
+bma$condpostmean
+bma$mle
+
+
+
+
+
+## testing samplers used by JAGS for multivariate normal (dmnorm) nodes
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    aa <- a*a
+    b ~ dnorm(0, aa)
+    ab <- a*b
+    d ~ dnorm(ab, 1)
+    C[1,1] <- 1
+    C[1,2] <- 0
+    C[2,1] <- 0
+    C[2,2] <- 1
+    mu[1] <- 0
+    mu[2] <- 0
+    y[1:2] ~ dmnorm(mu[1:2], C[1:2, 1:2])
+    ymu[1] <- exp(y[1])
+    ymu[2] <- exp(y[2])
+    y2[1:2] ~ dmnorm(ymu[1:2], C[1:2, 1:2])
+})
+constants <- list()
+data <- list()
+inits <- list(y = c(0,0), y2=c(0,0), a=1, b=1, d=1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+
+niter <- 10000
+monitorVars <- c('y', 'y2')
+
+constsAndData <- c(constants, data)
+modelfile <- file.path(tempdir(), 'model.txt')
+writeLines(paste0('model\n', paste0(deparse(code, width.cutoff=500L), collapse='\n')), con=modelfile)
+
+library(rjags)
+jags_mod <- jags.model(file=modelfile, data=constsAndData, inits=inits, n.chains=1, quiet=FALSE)
+
+list.samplers(jags_mod)
+
+list.factories(jags_mod)
+list.samplers
+class(jags_mod)
+
+
+dimnames(jags_out[[1]])
+means <- apply(jags_out[[1]][,], 2, mean)
+means
+sds <- apply(jags_out[[1]][,], 2, sd)
+sds
+
+
+
+
+
 ## doing the midterm question about normal mean hypothesis test
 ## "weights of sheep raised on a farm"
 ## now also with predictive distribution
@@ -23,13 +408,12 @@ data <- list(y=y)
 inits <- list(mu = 75, p = rep(0,np))
 
 Rmodel <- nimbleModel(code, constants, data, inits)
-
 conf <- configureMCMC(Rmodel)
 conf$addMonitors(c('mu', 'p', 'pmean'))
 conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
 Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, resetFunctions=TRUE)
 
 set.seed(0)
 Cmcmc$run(1000000)
@@ -72,6 +456,8 @@ var(apply(matrix(sample(as.numeric(samples[,2:6])), ncol=5), 1, mean))
 ## working on used cars regression example for Bayes course 365
 df <- read.csv('~/Downloads/UsedCars.csv')
 str(df)
+hist(df$Age)
+hist(df$HP)
 dim(df)
 head(df)
 
@@ -94,36 +480,33 @@ code <- nimbleCode({
     bage ~ dnorm(0, 0.001)
     bhp ~ dnorm(0, 0.001)
     btype ~ dnorm(0, 0.001)
-    sd ~ dunif(0, 10000)
+    sigma ~ dunif(0, 10000)
     for(i in 1:N) {
-        y[i] ~ dnorm(mu[i], sd = sd)
+        y[i] ~ dnorm(mu[i], sd = sigma)
         mu[i] <- bage*age[i] + bhp*hp[i] + btype*type[i]
     }
 })
 constants <- list(N = dim(df)[1], age=df$Age, hp=df$HP, type=df$Type)
 data <- list(y = df$Price)
-inits <- list(bage=0, bhp=0, btype=0, sd=1)
+inits <- list(bage=0, bhp=0, btype=0, sigma=1)
 
 Rmodel <- nimbleModel(code, constants, data, inits)
 
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
-
 Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 set.seed(0)
-Cmcmc$run(10000)
-samples <- as.matrix(Cmcmc$mvSamples)
+samples <- runMCMC(Cmcmc, 10000, nburnin=1000)
 apply(samples, 2, mean)
 
-samplesPlot(samples)
-samplesPlot(samples, burnin=2000)
+colnames(samples)
+samplesPlot(samples, var=1:3)
+samplesPlot(samples, var=4)
 
-samplesPlot(samples, var=c('bage', 'bhp', 'btype'))
-samplesPlot(samples, var=c('bage', 'bhp', 'btype'), burnin=1000)
-samplesPlot(samples, var=c('sd'))
+
 
 
 ## recreating and fixing Dao's issue with the correlated SSM,
@@ -154,10 +537,10 @@ Rmodel$calculate()   ## [1] 183.3436
 conf <- configureMCMC(Rmodel, nodes = NULL)
 
 conf$addSampler(c('a', 'b'), 'RW_block')
-conf$addSampler(c('a', 'b'), 'RW_block', control=list(adaptInterval=100))
-conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(1,-.99,-0.99,1), c(2,2))))
-conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(1,-.99,-0.99,1), c(2,2)), scale=0.01))
-conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(0.001709168, -0.0341986, -0.0341986, 0.6844844), c(2,2))))
+##conf$addSampler(c('a', 'b'), 'RW_block', control=list(adaptInterval=100))
+##conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(1,-.99,-0.99,1), c(2,2))))
+##conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(1,-.99,-0.99,1), c(2,2)), scale=0.01))
+##conf$addSampler(c('a', 'b'), 'RW_block', control=list(propCov=array(c(0.001709168, -0.0341986, -0.0341986, 0.6844844), c(2,2))))
 
 
 conf$printSamplers(c('a','b'))
@@ -173,6 +556,7 @@ conf$addMonitors(c('a', 'b', 'sigOE', 'sigPN'))
 Rmcmc <- buildMCMC(conf)
 Cmodel <- compileNimble(Rmodel)
 Cmodel$calculate()   ## [1] 183.3436
+nimbleOptions(showCompilerOutput = TRUE)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 ##
 niter <- 500000

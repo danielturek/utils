@@ -17,6 +17,10 @@ Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 set.seed(0)
-Cmcmc$run(10000)
-samples <- as.matrix(Cmcmc$mvSamples)
+samples <- runMCMC(Cmcmc, 10000)
+##Cmcmc$run(10000)
+##samples <- as.matrix(Cmcmc$mvSamples)
+
+colnames(samples)
 apply(samples, 2, mean)
+samplesPlot(samples)
