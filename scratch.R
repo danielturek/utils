@@ -1,3 +1,371 @@
+
+
+samplesPlot <- function(samples, var=1:ncol(samples), ind=NULL, burnin=NULL, width=7, height=4, legend=TRUE, legend.location='topright', traceplot=TRUE, densityplot=TRUE) {
+    ## device window and plotting parameters
+    ##  dev.new(height=height, width=width)
+    par.save <- par(no.readonly = TRUE)
+    par(mfrow=c(1,traceplot+densityplot), cex=0.7, cex.main=1.5, cex.axis=0.9, lab=c(3,3,7), mgp=c(0,0.4,0), mar=c(1.6,1.6,2,0.6), oma=c(0,0,0,0), tcl=-0.3, bty='l', width=7, height=4)
+    ## process samples
+    samples <- samples[, var, drop=FALSE]
+    if(!is.null(ind) && !is.null(burnin)) stop('only specify either ind or burnin')
+    if(!is.null(ind))     samples <- samples[ind, , drop=FALSE]
+    if(!is.null(burnin))  samples <- samples[(burnin+1):dim(samples)[1], , drop=FALSE]
+    nparam <- ncol(samples)
+    rng <- range(samples)
+    if(!traceplot & !densityplot) stop('both traceplot and densityplot are false')
+    if(traceplot) {  ## traceplot
+        plot(1:nrow(samples), ylim=rng, type='n', main='Traceplots', xlab='', ylab='')
+        for(i in 1:nparam)
+            lines(samples[,i], col=rainbow(nparam, alpha=0.75)[i])
+        if(legend & !densityplot & !is.null(dimnames(samples)) & is.character(dimnames(samples)[[2]]))
+            legend(legend=dimnames(samples)[[2]], fill=rainbow(nparam, alpha=0.5), bty='n', x=legend.location)
+    }  ## finish traceplot
+    if(densityplot) {  ## denstyplot
+        xMin <- xMax <- yMax <- NULL
+        for(i in 1:nparam) {
+            d <- density(samples[,i])
+            xMin <- min(xMin,d$x); xMax <- max(xMax,d$x); yMax <- max(yMax, d$y) }
+        plot(1, xlim=c(xMin,xMax), ylim=c(0,yMax), type='n', main='Posterior Densities', xlab='', ylab='', yaxt='n')
+        for(i in 1:nparam)
+            polygon(density(samples[,i]), col=rainbow(nparam, alpha=0.2)[i], border=rainbow(nparam, alpha=0.2)[i])
+        if(legend & !is.null(dimnames(samples)) & is.character(dimnames(samples)[[2]]))
+            legend(legend=dimnames(samples)[[2]], fill=rainbow(nparam, alpha=0.5), bty='n', x=legend.location)
+    }  ## finish densityplot
+    par(par.save)
+}
+
+
+n <- 10000
+a <- rnorm(n, 0, 1)
+b <- rgamma(n, 3, 5)
+samples <- cbind(a, b)
+
+samplesPlot(samples)
+
+
+
+dbinom(50, 100, 0.48)
+choose(100, 50) * .48^50 * .52^50
+
+dbinom(51, 100, 0.48)
+
+pbinom(49, 100, 0.48)
+1 - pbinom(49, 100, 0.48)
+
+100 * 0.48
+100 *.48 * .52
+
+pnorm(50, 48, sqrt(24.96))
+1 - pnorm(50, 48, sqrt(24.96))
+
+
+
+
+
+
+
+
+## "pairs"
+## studying estimation of normal variance / covariance,
+## from paired observations from a common variance
+## (and possibly different mean)
+
+
+## this shows that for pairs x1,x2 ~ N(mean=[changing], var= constant v)
+## using the average of (x2-x1)^2 / 2
+## gives an unbiased estimate of the common variance v
+estimateV <- function(n, v) {
+    pairs <- t(replicate(n, rnorm(2, mean=runif(1,0,100), sd=sqrt(v))))
+    vest <- apply(pairs, 1, function(x) ((x[2]-x[1])^2)/2)
+    mean(vest)
+}
+n <- 1000
+v <- 2
+n.average.over=1000
+estimates <- replicate(n.average.over, estimateV(n=n, v=v))
+mean(estimates)
+
+## this shows that the above (vest = (x2-x1)^2 / 2)
+## is *not* the same as a traditional sd(x), if the x are used to
+## generate a vector of n consecutive "pairs"
+n <- 10
+v <- 2
+xs <- rnorm(n, sd=sqrt(v))
+sd(xs)^2
+pairs <- array(NA, c(n,2))
+for(i in 1:(n-1)) pairs[i,] <- xs[i:(i+1)]
+pairs[n,] <- xs[c(n,1)]
+xs
+pairs
+vest <- apply(pairs, 1, function(x) ((x[2]-x[1])^2)/2)
+sum(vest) / (n-1)
+sd(xs)^2
+
+
+## this shows that for multivariate-normal pairs
+## x1,x2 ~ MVN(mean=[changing], Sigma = constant V)
+## using the average of dif=x2-x1, dif %*% t(dif) / 2
+## gives an unbiased estimate of the common covariance matrix V
+estimateV <- function(n, V) {
+    pairs <- lapply(1:n, function(x) {
+        mus <- runif(2,0,100)
+        list(rmvnorm(1, mus, sigma=V)[1,],
+             rmvnorm(1, mus, sigma=V)[1,])
+    })
+    vest <- lapply(pairs, function(x) {
+        dif <- x[[2]] - x[[1]]
+        (dif %*% t(dif)) / 2
+    })
+    apply(array(unlist(vest), dim=c(2,2,n)), c(1,2), sum) / n
+}
+library(mvtnorm)
+n <- 200
+v1 <- 2
+v2 <- 5
+rho <- 0.6
+V <- array(c(v1^2, rho*v1*v2, rho*v1*v2, v2^2), c(2,2))
+n.average.over <- 200
+estimates <- replicate(n.average.over, estimateV(n=n, V=V))
+V
+apply(estimates, c(1,2), mean)
+
+
+
+
+
+
+
+
+
+x <- rgamma(10000, 0.001, 0.001)
+curve(dgamma(x, 0.001, 0.001), col='blue')
+hist(x, prob=TRUE, breaks=50000, add=TRUE)
+curve(dgamma(x, 0.001, 0.001), col='blue', add=TRUE)
+
+
+## testing the new adaptive properties for covariance in RW_block sampler,
+## not adapting until acceptance rate >= 0.15 at least once
+## uses scaleHistory and propCovHistory
+
+library(nimble)
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+
+code <- nimbleCode({
+    a ~ dnorm(0, sd=100)
+    b ~ dnorm(0, sd=100)
+    c ~ dnorm(a/2, sd=.1)
+    for(i in 1:n1) {
+        y1[i] ~ dnorm(a, sd=0.1)
+    }
+    for(i in 1:n2) {
+        y2[i] ~ dnorm(b, sd=0.1)
+    }
+})
+n1 <- 10
+n2 <- n1
+y1 <- rnorm(n1, 3, 0.1)
+y2 <- rnorm(n2, y1+5, 0.01)
+constants <- list(n1=n1, n2=n2)
+data <- list(y1=y1, y2=y2)
+inits <- list(a = 0, b=0, c=0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel, nodes=NULL)
+##conf$addSampler('a', 'RW')
+conf$addSampler(c('a', 'b', 'c'), 'RW_block')
+conf$printSamplers()
+conf$addMonitors(c('a', 'b', 'c'))
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+Cmcmc$run(4000)
+samples <- as.matrix(Cmcmc$mvSamples)
+apply(samples, 2, mean)
+
+samplesPlot(samples)
+
+Cmcmc$samplerFunctions$contentsList[[1]]$scaleHistory
+a <- Cmcmc$samplerFunctions$contentsList[[1]]$propCovHistory
+dim(a)
+for(i in 1:dim(a)[1]) print(a[i,,])
+
+
+samplesPlot(samples)
+
+Cmcmc$samplerFunctions$contentsList[[1]]$scaleHistory
+a <- Cmcmc$samplerFunctions$contentsList[[1]]$propCovHistory
+dim(a)
+for(i in 1:dim(a)[1]) print(a[i,,])
+
+
+
+
+
+
+
+
+## getting model running for Colin Lewis-Beck at Iowa State
+
+## Create Constant W, G and F matrices to pass to NIMBLE
+library(nimble)
+y1 <- rep(0,2190)
+W<-diag(2)
+F1<-matrix(c(1,0), nrow = 1, ncol = 2)
+G<-matrix(c(cos(2*pi/365),-sin(2*pi/365),sin(2*pi/365),cos(2*pi/365)),nrow=2,ncol=2)
+smosCode <- nimbleCode({
+    ## Initial Values for States
+    c0[1]<-0
+    c0[2]<-0
+    m0[1:2,1:2]<-sigmaSquaredInvw*W[1:2,1:2]   ## CHANGE 1: add full indexing to m0[...]
+    x0[1:2]~dmnorm(c0[1:2],m0[1:2,1:2])        ## CHANGE 2: add full indexing to x0[...]
+    ## initial values
+    m[1:2,1]<-G[1:2,1:2] %*% x0[1:2]           ## CHANGE 3: add indexing to m[...], inprod() only returns a scalar (not a vector or matrix) so use %*%
+    var0[1:2,1:2]<-sigmaSquaredInvw*W[1:2,1:2] ## CHANGE 4: add full indexing to var0[...]
+    x[1:2,1]~dmnorm(m[1:2,1],var0[1:2,1:2])
+    y[1]~dnorm(inprod(F1[1,1:2],x[1:2,1]),sigmaSquaredInvv)
+    ## Model
+    for (t in 2:T){
+        mu[1:2, t] <- G[1:2,1:2] %*% x[1:2,t-1]     ## CHANGE 5: something was funny with your mu[] declaration.  In addition to not having
+                                                    ## the required indexing, it should should be indexed by t
+        sigs[1:2,1:2]<-sigmaSquaredInvw*W[1:2,1:2]  ## CHANGE 6: add full indexing to sigs[...]
+        x[1:2,t] ~ dmnorm(mu[1:2,t],sigs[1:2,1:2])  ## CHANGE 7: added appropriate 't' indexing to mu[...]
+        y[t] ~ dnorm(inprod(F1[1,1:2],x[1:2,t]),sigmaSquaredInvv)
+    }
+    ## Priors
+    sigmaSquaredInvv~dgamma(5,20)
+    sigmaSquaredInvw~dgamma(5,200)
+})
+smosModel<-nimbleModel(code=smosCode,name='2harm',constants=list(T=2190,pi=pi,W=W,G=G,F1=F1),data=list(y=y1), inits=list(sigmaSquaredInvv=1,sigmaSquaredInvw=1))
+Cmodel <- compileNimble(smosModel)
+
+
+
+
+## doing the Surgeries example for STAT 365 homework
+
+library(nimble)
+df <- read.csv('~/Downloads/Surgeries.csv')
+df
+
+code <- nimbleCode({
+    for(i in 1:N) {
+        p[i] ~ dbeta(1, 1)
+        y[i] ~ dbinom(size = n[i], prob = p[i])
+    }
+})
+constants <- list(N = dim(df)[1], n = df$Surgeries)
+data <- list(y = df$Mortalities)
+inits <- list(p = rep(0.5, dim(df)[1]))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+apply(samples, 2, mean)
+colnames(samples)
+samplesPlot(samples)
+samplesPlot(samples, var=1)
+
+mean(samples[,1])
+median(samples[,1])
+sd(samples[,1])
+quantile(samples[,1], probs=c(0.025, 0.975))
+
+
+
+code <- nimbleCode({
+    mu ~ dnorm(0, 0.0001)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:N) {
+        logit(p[i]) ~ dnorm(mu, sd=sigma)
+        y[i] ~ dbinom(size = n[i], prob = p[i])
+    }
+})
+constants <- list(N = dim(df)[1], n = df$Surgeries)
+data <- list(y = df$Mortalities)
+inits <- list(mu=0, sigma=1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+apply(samples, 2, mean)
+colnames(samples)
+samplesPlot(samples)
+samplesPlot(samples, var=1)
+
+mean(samples[,1])
+quantile(samples[,1], probs=c(0.025, 0.975))
+
+expit(mean(samples[,1]))
+expit(quantile(samples[,1], probs=c(0.025, 0.975)))
+
+sum(df$Mortalities)/sum(df$Surgeries)
+
+
+code <- nimbleCode({
+    b0 ~ dnorm(0, 0.0001)
+    b1 ~ dnorm(0, 0.0001)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:N) {
+        logit(p[i]) ~ dnorm(b0 + b1*x[i], sd=sigma)
+        y[i] ~ dbinom(size = n[i], prob = p[i])
+    }
+    old_procedure <- expit(b0)
+    new_procedure <- expit(b0 + b1)
+    mortality_difference <- new_procedure - old_procedure
+})
+constants <- list(N = dim(df)[1], n = df$Surgeries)
+data <- list(y = df$Mortalities)
+inits <- list(b0=0, b1=0, sigma=1, x=df$Procedure)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addMonitors(c('old_procedure', 'new_procedure', 'mortality_difference'))
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+apply(samples, 2, mean)
+colnames(samples)
+samplesPlot(samples)
+samplesPlot(samples, var=3:5, burnin=500)
+
+mean(samples[,3])
+quantile(samples[,3], probs=c(0.025, 0.975))
+
+expit(mean(samples[,1]))
+expit(quantile(samples[,1], probs=c(0.025, 0.975)))
+
+sum(df$Mortalities)/sum(df$Surgeries)
+
+
 ## spatial NIMBLE model example from Abhirup Datta
 library(nimble)
 library(mvtnorm)
@@ -485,6 +853,8 @@ code <- nimbleCode({
         y[i] ~ dnorm(mu[i], sd = sigma)
         mu[i] <- bage*age[i] + bhp*hp[i] + btype*type[i]
     }
+    mu.pred <- bage*10 + bhp*100
+    y.pred ~ dnorm(mu.pred, sd=sigma)
 })
 constants <- list(N = dim(df)[1], age=df$Age, hp=df$HP, type=df$Type)
 data <- list(y = df$Price)
@@ -493,6 +863,7 @@ inits <- list(bage=0, bhp=0, btype=0, sigma=1)
 Rmodel <- nimbleModel(code, constants, data, inits)
 
 conf <- configureMCMC(Rmodel)
+conf$addMonitors('y.pred')
 conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
 Cmodel <- compileNimble(Rmodel)
@@ -504,9 +875,13 @@ apply(samples, 2, mean)
 
 colnames(samples)
 samplesPlot(samples, var=1:3)
-samplesPlot(samples, var=4)
+samplesPlot(samples, var=4, burnin=2000)
+samplesPlot(samples, var=5)
 
-
+mean(samples[,'y.pred'])
+median(samples[,'y.pred'])
+sd(samples[,'y.pred'])
+quantile(samples[,'y.pred'], probs=c(0.025, 0.975))
 
 
 ## recreating and fixing Dao's issue with the correlated SSM,

@@ -4,8 +4,8 @@ options(repos  = 'http://cran.cnr.berkeley.edu')
 roundSig <- function(x) round(x, -floor(log10(abs(x))))
 
 samplesPlot <- function(samples, var=1:ncol(samples), ind=NULL, burnin=NULL, width=7, height=4, legend=TRUE, legend.location='topright', traceplot=TRUE, densityplot=TRUE) {
-    ## device window and plotting parameters
-    dev.new(height=height, width=width)
+    if(inherits(try(knitr::opts_chunk$get('dev'), silent=TRUE), 'try-error') || is.null(knitr::opts_chunk$get('dev')))   ## if called from Rmarkdown/knitr
+        dev.new(height=height, width=width)
     par.save <- par(no.readonly = TRUE)
     par(mfrow=c(1,traceplot+densityplot), cex=0.7, cex.main=1.5, cex.axis=0.9, lab=c(3,3,7), mgp=c(0,0.4,0), mar=c(1.6,1.6,2,0.6), oma=c(0,0,0,0), tcl=-0.3, bty='l')
     ## process samples
@@ -34,7 +34,7 @@ samplesPlot <- function(samples, var=1:ncol(samples), ind=NULL, burnin=NULL, wid
         if(legend & !is.null(dimnames(samples)) & is.character(dimnames(samples)[[2]]))
             legend(legend=dimnames(samples)[[2]], fill=rainbow(nparam, alpha=0.5), bty='n', x=legend.location)
     }  ## finish densityplot
-    par(par.save)
+    invisible(par(par.save))
 }
 
 
