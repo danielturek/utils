@@ -5,7 +5,7 @@ output: html_document
 ---
 
 <!---
-danielturek.github.io/public/folder/fileName
+danielturek.github.io/public/folder/fileName.html
 -->
 
 ```{r, message = FALSE}

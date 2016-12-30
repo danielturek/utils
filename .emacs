@@ -34,7 +34,7 @@
 (defun rmarkdown-new-comment ()
   "Insert a new Rmarkdown comment."
   (interactive)
-  (insert "\n<!---\n")
+  (insert "\n<!--\n")
   (save-excursion
     (newline)
     (insert "-->\n")
