@@ -1,4 +1,836 @@
 
+
+## tobit model for Chris, Ann Raiho <ann.raiho@gmail.com>, Mike Dietze <dietze@bu.edu>
+## experimenting with "turning off samplers" in the MCMC
+
+## Daniel, Perry, the idea is that in the following code, 'y.ind' is an indicator vector that says whether each element of a data vector is positive or zero.  Then in the BUGS code, y.censored is either the actual data value, or if the data value is 0, y.censored[i] is NA.  In that case, we want to do MCMC sampling on that element of y.censored using a univariate sampler (we recognize that y.censored has a dmnorm distribution -- in this case we only want to update the values for which the corresponding data values are 0).
+## When building the model, y.ind is flagged as 'data', y.censored is not flagged as 'data'. The sampler on y.censored is removed, and then a univariate sampler is assigned to each element of y.censored that contains an NA (which corresponds to elements of y.ind that are 0).
+## This same model is used multiple times during a data assimilation, with the input data vector (and therefore the y.ind and y.censored vectors) changing at each time. Goal is to using the same compiled MCMC at each time, but dynamically controlling which components of y.censored are sampled.
+
+library(nimble)
+
+sampler_toggle <- nimbleFunction(
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        type <- control$type
+        nested_sampler_name <- paste0('sampler_', type)
+        control_new <- nimbleOptions('MCMCcontrolDefaultList')
+        control_new[[names(control)]] <- control
+        nested_sampler_list <- nimbleFunctionList(sampler_BASE)
+        nested_sampler_list[[1]] <- do.call(nested_sampler_name, list(model, mvSaved, target, control_new))
+        toggle <- 1
+    },
+    run = function() {
+        if(toggle == 1)
+            nested_sampler_list[[1]]$run()
+    },
+    methods = list(
+        reset = function()
+            nested_sampler_list[[1]]$reset()
+    )
+)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dnorm(a*a + 1, 2)
+    c ~ dnorm(a + b*b, 5)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0, b=0, c=0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel, nodes=NULL)
+conf$addMonitors('a','b','c')
+conf$printMonitors()
+conf$printSamplers()
+
+conf$addSampler('a', 'RW')
+conf$addSampler('b', 'RW')
+conf$addSampler('c', 'RW')
+
+conf$addSampler('c', 'slice')
+
+conf$addSampler('a', 'toggle', control = list(type='RW'))
+conf$addSampler('b', 'toggle', control = list(type='RW'))
+conf$addSampler('c', 'toggle', control = list(type='RW'))
+
+conf$addSampler('c', 'toggle', control = list(type='slice'))
+
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Rmcmc$samplerFunctions$contentsList[[3]]$toggle
+valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[3]], 'toggle')
+Rmcmc$samplerFunctions$contentsList[[3]]$toggle <- 0
+valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[3]], 'toggle', 0)
+Rmcmc$samplerFunctions$contentsList[[3]]$toggle
+valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[3]], 'toggle')
+
+niter <- 50
+set.seed(0); Rsamples <- runMCMC(Rmcmc, niter)
+set.seed(0); Csamples <- runMCMC(Cmcmc, niter)
+Rsamples
+Csamples
+Rsamples - Csamples
+
+saveSamples <- Rsamples
+Rsamples - saveSamples
+
+##Cmcmc$run(10000)
+##samples <- as.matrix(Cmcmc$mvSamples)
+
+colnames(samples)
+apply(samples, 2, mean)
+samplesPlot(samples)
+
+
+code <- nimbleCode({ 
+    ##q[1:N,1:N]  ~ dwish(R = aq[1:N,1:N], df = bq) ## aq and bq are estimated over time
+    ##Q[1:N,1:N] <- inverse(q[1:N,1:N])
+    ##X.mod[1:N] ~ dmnorm(muf[1:N],prec = pf[1:N,1:N]) ## Model Forecast ##muf and pf are assigned from ensembles
+    #### add process error
+    X[1:N]  ~ dmnorm(X.mod[1:N],prec = q[1:N,1:N])
+    ## Analysis
+    y.censored[1:N] ~ dmnorm(X[1:N], prec = r[1:N,1:N]) 
+    for(i in 1:N){
+        y.ind[i] ~ dconstraint(y.censored[i] > 0)
+    }
+})
+N <- 5
+constants <- list(N=N, X.mod=rep(10,N), q=diag(N), r=diag(N))
+## value of y.ind and y.censored are just placeholders...
+## BUT, important, y.censored *must* be specified as data at this point.
+## it's a long story why, has to do with the initializeModel routine
+## at the beginning of MCMC execution
+data <- list(y.ind=rep(1,N), y.censored=rep(10,N))  
+inits <- list(X=rep(10,N))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel, print=TRUE)
+
+## important!
+## this is needed for correct indexing later
+samplerNumberOffset <- length(conf$getSamplers())
+
+for(i in 1:N) {
+    node <- paste0('y.censored[',i,']')
+    conf$addSampler(node, 'toggle', control=list(type='RW'))
+    ## could instead use slice samplers, or any combination thereof, e.g.:
+    ##conf$addSampler(node, 'toggle', control=list(type='slice'))
+}
+
+conf$printSamplers()
+
+conf$printMonitors()
+## could monitor y.censored, if you wish, to verify correct behaviour
+conf$addMonitors('y.censored')
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+## new dataset (1)
+y.ind <- c(1, 1, 1, 0, 0)
+## important!
+## change: rather than providing NA for the non-data values (those to be sampled),
+## you'll have to provide some values here.
+## that's because we effective disabled the model initialization routine earlier
+y.censored <- c(9, 9, 11, 20, 20)
+
+Cmodel$y.ind <- y.ind
+Cmodel$y.censored <- y.censored
+
+for(i in 1:N) {
+    ## ironically, here we have to "toggle" the value of y.ind[i]
+    ## this specifies that when y.ind[i] = 1,
+    ## indicator variable is set to 0, which specifies *not* to sample
+    valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[samplerNumberOffset+i]], 'toggle', 1-y.ind[i])
+}
+
+## check the values of indicator variables, if you wish:
+##for(i in 1:N) {
+##    print(valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[samplerNumberOffset+i]], 'toggle'))
+##}
+
+niter <- 1000
+set.seed(0)
+samples <- runMCMC(Cmcmc, niter)
+
+head(samples)
+tail(samples)
+
+
+## new dataset (2)
+y.ind <- c(1, 1, 1, 1, 1)   ## everything is data
+## important!
+## change: rather than providing NA for the non-data values (those to be sampled),
+## you'll have to provide some values here.
+## that's because we effective disabled the model initialization routine earlier
+y.censored <- c(9, 9, 11, 11, 12)
+
+Cmodel$y.ind <- y.ind
+Cmodel$y.censored <- y.censored
+
+for(i in 1:N) {
+    ## ironically, here we have to "toggle" the value of y.ind[i]
+    ## this specifies that when y.ind[i] = 1,
+    ## indicator variable is set to 0, which specifies *not* to sample
+    valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[samplerNumberOffset+i]], 'toggle', 1-y.ind[i])
+}
+
+## check the values of indicator variables, if you wish:
+##for(i in 1:N) {
+##    print(valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[samplerNumberOffset+i]], 'toggle'))
+##}
+
+niter <- 1000
+set.seed(0)
+samples <- runMCMC(Cmcmc, niter)
+
+head(samples)
+tail(samples)
+
+
+
+## new dataset (3)
+y.ind <- c(0, 0, 0, 0, 0)   ## nothing is data
+## important!
+## change: rather than providing NA for the non-data values (those to be sampled),
+## you'll have to provide some values here.
+## that's because we effective disabled the model initialization routine earlier
+y.censored <- c(20, 20, 20, 20, 20)
+
+Cmodel$y.ind <- y.ind
+Cmodel$y.censored <- y.censored
+
+for(i in 1:N) {
+    ## ironically, here we have to "toggle" the value of y.ind[i]
+    ## this specifies that when y.ind[i] = 1,
+    ## indicator variable is set to 0, which specifies *not* to sample
+    valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[samplerNumberOffset+i]], 'toggle', 1-y.ind[i])
+}
+
+## check the values of indicator variables, if you wish:
+##for(i in 1:N) {
+##    print(valueInCompiledNimbleFunction(Cmcmc$samplerFunctions[[samplerNumberOffset+i]], 'toggle'))
+##}
+
+niter <- 1000
+set.seed(0)
+samples <- runMCMC(Cmcmc, niter)
+
+head(samples)
+tail(samples)
+
+
+
+
+
+
+## prep for STAT 201 lecture
+
+df <- read.csv('~/Downloads/TVhours.csv')
+df <- read.delim('~/github/courses/stat201/data/Global.Temperature.txt')
+df
+str(df)
+barplot(df$animal)
+df$animal
+df
+
+hist(df$tvhours)
+hist(df$tvhours, breaks=30)
+mean(df$tvhours)
+sd(df$tvhours)
+
+
+## testing speed of new RW sampler, which checks prior logProb first,
+## to see if it's a valid proposal
+
+library(nimble)
+sampler_RW_new <- nimbleFunction(
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        logScale      <- control$log
+        reflective    <- control$reflective
+        adaptive      <- control$adaptive
+        adaptInterval <- control$adaptInterval
+        scale         <- control$scale
+        ## node list generation
+        targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        calcNodes      <- model$getDependencies(target)
+        depNodes       <- model$getDependencies(target, self = FALSE)
+        ## numeric value generation
+        scaleOriginal <- scale
+        timesRan      <- 0
+        timesAccepted <- 0
+        timesAdapted  <- 0
+        ##scaleHistory  <- c(0, 0)   ## scaleHistory
+        optimalAR     <- 0.44
+        gamma1        <- 0
+        ## checks
+        if(length(targetAsScalar) > 1)   stop('cannot use RW sampler on more than one target; try RW_block sampler')
+        if(model$isDiscrete(target))     stop('cannot use RW sampler on discrete-valued target; try slice sampler')
+        if(logScale & reflective)        stop('cannot use reflective RW sampler on a log scale (i.e. with options log=TRUE and reflective=TRUE')
+    },
+    run = function() {
+        currentValue <- model[[target]]
+        propLogScale <- 0
+        if(logScale) { propLogScale <- rnorm(1, mean = 0, sd = scale)
+                       propValue <- currentValue * exp(propLogScale)
+        } else         propValue <- rnorm(1, mean = currentValue,  sd = scale)
+        if(reflective) {
+            lower <- model$getBound(target, 'lower')
+            upper <- model$getBound(target, 'upper')
+            while(propValue < lower | propValue > upper) {
+                if(propValue < lower) propValue <- 2*lower - propValue
+                if(propValue > upper) propValue <- 2*upper - propValue
+            }
+        }
+        model[[target]] <<- propValue
+############### revisons starting here
+        ##logMHR <- calculateDiff(model, calcNodes) + propLogScale
+        ##jump <- decide(logMHR)
+        priorLP0 <- getLogProb(model, target)
+        priorLP1 <- calculate(model, target)
+        if(is.nan(priorLP1) | priorLP1 == -Inf ) { jump <- FALSE
+                               ##print('automatic rejection')
+                           } else { logMHR <- calculateDiff(model, depNodes) + priorLP1 - priorLP0 + propLogScale
+                                    ##print(logMHR)
+                                    jump <- decide(logMHR) }
+############### same after here
+        if(jump) nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+        else     nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE)
+        if(adaptive)     adaptiveProcedure(jump)
+    },
+    methods = list(
+        adaptiveProcedure = function(jump = logical()) {
+            timesRan <<- timesRan + 1
+            if(jump)     timesAccepted <<- timesAccepted + 1
+            if(timesRan %% adaptInterval == 0) {
+                acceptanceRate <- timesAccepted / timesRan
+                timesAdapted <<- timesAdapted + 1
+                ##setSize(scaleHistory, timesAdapted)         ## scaleHistory
+                ##scaleHistory[timesAdapted] <<- scale        ## scaleHistory
+                gamma1 <<- 1/((timesAdapted + 3)^0.8)
+                gamma2 <- 10 * gamma1
+                adaptFactor <- exp(gamma2 * (acceptanceRate - optimalAR))
+                scale <<- scale * adaptFactor
+                timesRan <<- 0
+                timesAccepted <<- 0
+            }
+        },
+        reset = function() {
+            scale <<- scaleOriginal
+            timesRan      <<- 0
+            timesAccepted <<- 0
+            timesAdapted  <<- 0
+            gamma1 <<- 0
+        }
+    )
+)
+##
+N <- 100
+code <- nimbleCode({
+    a ~ dnorm(1, 1)
+    ##a ~ T(dnorm(0, 1), -1, 1)
+    ##for(i in 1:N) {
+    ##    b[i] ~ dnorm(a, 0.001)
+    ##}
+    ##b ~ dgamma(a, 1)
+})
+constants <- list()
+data <- list()##b = rnorm(N))
+inits <- list(a = 0)
+##
+Rmodel1 <- nimbleModel(code, constants, data, inits)
+Cmodel1 <- compileNimble(Rmodel1)
+Rmodel2 <- nimbleModel(code, constants, data, inits)
+Cmodel2 <- compileNimble(Rmodel2)
+##
+conf1 <- configureMCMC(Rmodel1, nodes=NULL)
+conf1$addSampler('a', 'RW')
+conf1$printSamplers()
+Rmcmc1 <- buildMCMC(conf1)
+Cmcmc1 <- compileNimble(Rmcmc1, project = Rmodel1)
+##
+conf2 <- configureMCMC(Rmodel2, nodes=NULL)
+conf2$addSampler('a', 'RW_new')
+conf2$printSamplers()
+Rmcmc2 <- buildMCMC(conf2)
+Cmcmc2 <- compileNimble(Rmcmc2, project = Rmodel2)
+
+
+niter <- 100
+
+set.seed(0); Rmcmc1$run(niter); Rsamples1 <- as.matrix(Rmcmc1$mvSamples)
+set.seed(0); Cmcmc1$run(niter); Csamples1 <- as.matrix(Cmcmc1$mvSamples)
+set.seed(0); Rmcmc2$run(niter); Rsamples2 <- as.matrix(Rmcmc2$mvSamples)
+set.seed(0); Cmcmc2$run(niter); Csamples2 <- as.matrix(Cmcmc2$mvSamples)
+
+
+Rsamples1 - Csamples1
+Rsamples2 - Csamples2
+Rsamples1 - Rsamples2  ## *should be* different when there's truncation
+
+
+
+niter <- 1e7
+
+t1 <- system.time(Cmcmc1$run(niter))[1]
+t2 <- system.time(Cmcmc2$run(niter))[1]
+
+t1
+t2
+
+(t2-t1)/t1*100
+
+
+
+
+library(nimble)
+code <- nimbleCode({
+    a ~ dbeta(1,1)
+    b ~ dgamma(a, 3)
+})
+constants <- list()
+data <- list()
+inits <- list(a = -1, b=3)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Cmodel <- compileNimble(Rmodel)
+
+
+Rmodel$a
+Cmodel$a
+calculate(Rmodel, 'a')
+calculate(Cmodel, 'a')
+
+Rmodel$b
+Cmodel$b
+calculate(Rmodel, 'b')
+calculate(Cmodel, 'b')
+
+    
+
+
+
+## demo of how to use autoBlock on spatial model
+## for Dao
+
+library(nimble)
+load('~/github/automated-blocking-examples/data/model_spatial.RData')
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel, autoBlock=TRUE)
+conf$printSamplers()
+
+
+
+## sampler to record scale and acceptanceRate history, for Dao
+
+sampler_RW_record <- nimbleFunction(
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        logScale      <- control$log
+        reflective    <- control$reflective
+        adaptive      <- control$adaptive
+        adaptInterval <- control$adaptInterval
+        scale         <- control$scale
+        ## node list generation
+        targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        calcNodes  <- model$getDependencies(target)
+        ## numeric value generation
+        scaleOriginal <- scale
+        timesRan      <- 0
+        timesAccepted <- 0
+        timesAdapted  <- 0
+        scaleHistory  <- c(0, 0)   ## scaleHistory
+        acceptanceRateHistory <- c(0, 0)   ## scaleHistory
+        optimalAR     <- 0.44
+        gamma1        <- 0
+        ## checks
+        if(length(targetAsScalar) > 1)   stop('cannot use RW sampler on more than one target; try RW_block sampler')
+        if(model$isDiscrete(target))     stop('cannot use RW sampler on discrete-valued target; try slice sampler')
+        if(logScale & reflective)        stop('cannot use reflective RW sampler on a log scale (i.e. with options log=TRUE and reflective=TRUE')
+    },
+    run = function() {
+        currentValue <- model[[target]]
+        propLogScale <- 0
+        if(logScale) { propLogScale <- rnorm(1, mean = 0, sd = scale)
+                       propValue <- currentValue * exp(propLogScale)
+                   } else         propValue <- rnorm(1, mean = currentValue,  sd = scale)
+        if(reflective) {
+            lower <- model$getBound(target, 'lower')
+            upper <- model$getBound(target, 'upper')
+            while(propValue < lower | propValue > upper) {
+                if(propValue < lower) propValue <- 2*lower - propValue
+                if(propValue > upper) propValue <- 2*upper - propValue
+            }
+        }
+        model[[target]] <<- propValue
+        logMHR <- calculateDiff(model, calcNodes) + propLogScale
+        jump <- decide(logMHR)
+        if(jump) nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+        else     nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE)
+        if(adaptive)     adaptiveProcedure(jump)
+    },
+    methods = list(
+        adaptiveProcedure = function(jump = logical()) {
+            timesRan <<- timesRan + 1
+            if(jump)     timesAccepted <<- timesAccepted + 1
+            if(timesRan %% adaptInterval == 0) {
+                acceptanceRate <- timesAccepted / timesRan
+                timesAdapted <<- timesAdapted + 1
+                setSize(scaleHistory,          timesAdapted)         ## scaleHistory
+                setSize(acceptanceRateHistory, timesAdapted)         ## scaleHistory
+                scaleHistory[timesAdapted]          <<- scale        ## scaleHistory
+                acceptanceRateHistory[timesAdapted] <<- acceptanceRate        ## scaleHistory
+                gamma1 <<- 1/((timesAdapted + 3)^0.8)
+                gamma2 <- 10 * gamma1
+                adaptFactor <- exp(gamma2 * (acceptanceRate - optimalAR))
+                scale <<- scale * adaptFactor
+                timesRan <<- 0
+                timesAccepted <<- 0
+            }
+        },
+        getScaleHistory = function()          { returnType(double(1)); return(scaleHistory) },          ## scaleHistory
+        getAcceptanceRateHistory = function() { returnType(double(1)); return(acceptanceRateHistory) },          ## scaleHistory
+        ##getScaleHistoryExpanded = function() {                                                 ## scaleHistory
+        ##    scaleHistoryExpanded <- numeric(timesAdapted*adaptInterval, init=FALSE)            ## scaleHistory
+        ##    for(iTA in 1:timesAdapted)                                                         ## scaleHistory
+        ##        for(j in 1:adaptInterval)                                                      ## scaleHistory
+        ##            scaleHistoryExpanded[(iTA-1)*adaptInterval+j] <- scaleHistory[iTA]         ## scaleHistory
+        ##    returnType(double(1)); return(scaleHistoryExpanded) },                             ## scaleHistory
+        reset = function() {
+            scale <<- scaleOriginal
+            timesRan      <<- 0
+            timesAccepted <<- 0
+            timesAdapted  <<- 0
+            scaleHistory           <<- scaleHistory * 0    ## scaleHistory
+            acceptanceRateHistory  <<- acceptanceRateHistory * 0    ## scaleHistory
+            gamma1 <<- 0
+        }
+    ), where = getLoadingNamespace()
+)
+
+
+
+
+
+## Perry's demo of making R and C external calls in NIMBLE
+## This is a demo for beta (or gamma?) users of external call features in nimble
+## I have actually built TWO kinds of external calls:
+## 1. Call arbitrary (up to limited argument conventions) compiled code as long as you can provide a .h file and a .o file.  Chris suggests maybe we should also (instead) allow the user (that's you) to provide a DLL (.so in Linx / OS X, .dll in Windows).
+## 2. Call arbitrary R functions from within NIMBLE (including compiled NIMBLE), as long as argument and return types are guaranteed in advance.  Obviously if you have a need to call external code that cannot be handled by mechanism 1, you could use mechanism 2 and have your R function call your external code in whatever complicated way is needed.  For the case of deSolve, one could call a function that calls deSolve from R.  There is some overhead to using mechanism 2 since it requires copies of arguments and return value to be made, and of course the R steps of execution will be at the speed of R.
+
+## You will need to install from the "call_external_c_function" branch (now mis-named because it also includes calling R functions)
+library(devtools)
+install_github("nimble-dev/nimble", ref = "call_external_c_function", subdir = "packages/nimble")
+
+## Throughout this demo, ignore warning messages about functions that may not be defined.  I haven't updated the list of keywords used in that error-trapping.
+
+library(nimble)
+
+## Calling external C:
+
+## Say we want a C function that adds 1.5 to a vector of values:
+## We can only give non-scalars results by pointer argument.
+## Any NIMBLE non-scalar can become a double* of contiguously allocated memory.
+## Like in LAPACK or similar low-level libraries, you need a separate argument to say how long the allocated memory is.
+sink('add1p5.h')
+cat('
+extern "C" {
+  void my_internal_function(double *p, double*ans, int n);
+}
+')
+sink()
+
+sink('add1p5.cpp') 
+cat('
+#include "stdio.h"
+#include "add1p5.h"
+
+void my_internal_function(double *p, double *ans, int n) {
+  printf("In my_internal_function\\n"); /* cat reduces the double slash to single slash */ 
+  for(int i = 0; i < n; i++) 
+    ans[i] = p[i] + 1.5;
+}
+')
+sink()
+
+## A major limitation is that we cannot have compiled code return anything except a scalar.  So returned non-scalars will have to be via arguments.  That meansto use this in BUGS code we'll have to wrap it in another nimbleFunction.  It will make sense below.
+
+## compile that to .o
+## I am not an expert on all compilation twists, but on my system I need to do it with g++ instead of gcc (even though it is pure C) in order for the linker to be later happy linking it to compiled C++ from NIMBLE.  Using g++ on C code gives me a clang warning about deprecated behavior, but it's ok.
+system('g++ add1p5.cpp -c -o add1p5.o')
+
+## now to create a nimbleFunction that interfaces to add1p5:
+
+Radd1p5 <- nimbleExternalCall(function(x = double(1), ans = double(1), n = integer()){}, Cfun = 'my_internal_function', headerFile = 'add1p5.h', oFile = 'add1p5.o')
+## The first argument uses the format of a nimbleFunction with argument type declarations, but the body of the function can be empty ('{}')
+## You can choose any names for the arguments in R. They don't have to match the C code.
+## Ignore the warning here and later warnings
+Radd1p5 ## this is a nimbleFunction with some internal special sauce, but from here on out it should behave like a nimbleFunction
+## We'll wait to use it in BUGS code
+
+## Radd1p5 doesn't return anything and would only be able to return a scalar, so we can wrap it like this:
+wrappedRadd1p5 <- nimbleFunction(
+    run = function(x = double(1)) {
+        ans <- numeric(length(x))
+        Radd1p5(x, ans, length(x))
+        return(ans)
+        returnType(double(1))
+    })
+## Chris, if you are reading this, it looks like the DSLcode check is weird here.
+
+## calling an R function
+## Say we want an R function that adds 2.5 to every value in a vector
+add2p5 <- function(x) {
+    x + 2.5 ## This can be pure R
+}
+
+## now create a nimbleFunction that interfaces to add2p5, not necessary when running uncompiled but necessary when running compiled
+Radd2p5 <- nimbleRcall(function(x = double(1)){}, Rfun = 'add2p5', returnType = double(1), envir = .GlobalEnv)
+## Similar to above.  The function prototype and the returnType represent a promise that add2p5 will always take and return these types.  Also an environment is needed and it defaults to R's global environment but I'm showing it explicitly.
+## Again, ignore the more extensive warnings
+Radd2p5 ## this is also a nimbleFunction with more special sauce
+
+## Now let's use these in a model
+
+demoCode <- nimbleCode({
+    for(i in 1:4) {x[i] ~ dnorm(0,1)} ## just to get a vector
+    y[1:4] <- wrappedRadd1p5(x[1:4])
+    z[1:4] <- Radd2p5(x[1:4])
+    })
+
+demoModel <- nimbleModel(demoCode, inits = list(x = rnorm(4)))
+## Again ignore the error during checking.  We'll have to trap and handle that, but right now I'm focused on core functionality.
+## The model will not work uncompiled!
+
+nimbleOptions(showCompilerOutput = TRUE) ## so you can see what is happening
+CdemoModel <- compileNimble(demoModel, dirName = '.') ## last arg puts the C++ code in your working directory so you can look at it if you like
+
+CdemoModel$x
+CdemoModel$calculate()
+CdemoModel$y - CdemoModel$x
+CdemoModel$z - CdemoModel$x
+
+## The correct calculations happened.
+
+
+
+
+library(nimble)
+nimbleOptions(MCMCprogressBar = FALSE)
+
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+progressBarOption = TRUE
+progressBarOption = FALSE
+
+Cmcmc$run(30, progressBar = progressBarOption)
+Cmcmc$run(30000, progressBar = progressBarOption)
+
+
+
+
+
+## testing new sampler function: RW_dirichlet
+## for ddirch or ddirich Dirichlet nodes
+library(nimble)
+##nimbleOptions(showCompilerOutput=TRUE)
+n <- 100
+alpha <- c(10, 30, 15)#, 60, 1)
+K <- length(alpha)
+p <- c(.12, .24, .09)#, .54, .01)
+y <- rmulti(1, n, p)
+code <- quote({
+    p[1:K]  ~ ddirch(alpha[1:K])
+    ##p2[1:K] ~ ddirch(alpha[1:K])
+    y[1:K]  ~ dmulti(p[1:K], n)
+    ##y2[1:K] ~ dmulti(p2[1:K], n)
+    ##x ~ dnorm(p[1], 1)
+    ##x2 ~ dnorm(p2[1],1)
+    ##for(i in 1:K) {
+    ##    alpha[i] ~ dgamma(.001, .001);
+    ##}
+})
+inits <- list(p = rep(1/K, K), alpha = alpha)#, p2 = rep(1/K,K))##, x=0)
+constants <- list(n=n, K=K)
+data <- list(y = y)#, y2 = y)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Cmodel <- compileNimble(Rmodel)
+
+##Rmodel$alpha
+##Rmodel$alpha2
+##Rmodel$getParam('p2', 'alpha')
+##Rmodel$getParam('p[5:6]', 'alpha')
+
+conf <- configureMCMC(Rmodel, nodes=NULL)
+conf$addSampler('p[1:3]',  'RW_dirichlet', print=TRUE)
+conf$addSampler('p2[1:3]', 'conjugate',    print=TRUE)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Rmodel$alpha
+Rmodel$p
+Rmodel$y
+
+debug(Rmcmc$run)
+Rmcmc$run(1001)
+
+debug(samplerFunctions[[1]]$reset)
+debug(samplerFunctions[[1]]$run)
+
+
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 100000
+
+set.seed(0)
+Rsamples <- runMCMC(Rmcmc, niter)
+
+set.seed(0)
+Csamples <- runMCMC(Cmcmc, niter)
+
+colnames(Csamples)
+apply(Csamples, 2, mean)
+
+for(i in 1:5) {
+    samplesPlot(Csamples, paste0(c('p[', 'p2['), i, c(']')))
+}
+
+
+Rmodel$getLogProb()
+Cmodel$getLogProb()
+Rmodel$calculate()
+Cmodel$calculate()
+
+
+Rsamples <- as.matrix(Rmcmc$mvSamples)
+Csamples <- as.matrix(Cmcmc$mvSamples)
+
+dimnames(Rsamples)
+dimnames(Csamples)
+
+Rsamples - Csamples
+Csamples[1:200,]
+
+mean(diff(Csamples[,1])==0)
+(1-0.44)^3
+
+
+
+## reproducible example of problem with model$values(...) <- ...
+
+library(nimble)
+code <- nimbleCode({
+    for(i in 1:5) {
+        a[i] ~ dnorm(0, 1)
+    }
+})
+constants <- list()
+data <- list()
+inits <- list(a = rep(0,5))
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+nfDef <- nimbleFunction(
+    setup = function(model) {
+        newValues <- rep(1, 5)
+        nodes <- 'a'
+    },
+    run = function() {
+        ##values(model, nodes) <<- newValues    ## this one works fine
+        model$values(nodes) <<- newValues    ## this causes failure
+    }
+)
+
+##Error in makeAssgnFcn(e[[1]]) : 
+##  'model$values' is not a valid function in complex assignments
+
+Rnf <- nfDef(Rmodel)
+
+Cmodel <- compileNimble(Rmodel)
+Cnf <- compileNimble(Rnf, project = Rmodel)
+
+Rmodel$a
+Rnf$run()
+Rmodel$a
+
+Cmodel$a
+Cnf$run()
+Cmodel$a
+
+
+
+
+
+## trying to use nodes[i] functionality,
+## works for: model[[ multivariateNodeName ]][i] <- scalar
+## does not work for:
+## model[[ nodes[i] ]] <- x, or
+## values(model, nodes[i]) <- x
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:3) {
+        a[i] ~ dnorm(0, 1)
+    }
+})
+constants <- list()
+data <- list()
+inits <- list(a = rep(0,3))
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$a
+
+nfDef <- nimbleFunction(
+    setup = function(model) {
+        nodes <- 'a'
+        d <- length(model$expandNodeNames(nodes))
+    },
+    run = function() {
+        for(i in 1:d) {
+            model[[nodes]][i] <<- i*10
+        }
+    }
+)
+
+Rnf <- nfDef(Rmodel)
+
+Cmodel <- compileNimble(Rmodel)
+Cnf <- compileNimble(Rnf, project = Rmodel)  ## compilation fails
+
+Rmodel$a
+Rnf$run()
+Rmodel$a
+
+Cmodel$a
+Cnf$run()
+Cmodel$a
+
+
 ## looking into nimble gthub issue 250, possible infinite
 ## recursion in getDependencyPaths in checkConjugacy()
 ## raised by Chris P.
@@ -194,6 +1026,8 @@ head(df)
 ## trying different samplers for
 ## "seizures" example for STAT365
 
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+
 library(nimble)
 library(coda)
 load('~/Downloads/seizures.RData')
@@ -247,6 +1081,8 @@ effectiveSize(samples)
 ##     9.639895     10.662738     13.488713     59.645279    553.986654 
 ##sigma_patient 
 ##    24.535715 
+
+
 
 
 ## fitting classification model of oak tree heights
@@ -362,6 +1198,35 @@ constants <- list()
 data <- list(con1=1)
 inits <- list(a=1, b=2.5, c=0, d=0, e=1, f=1)
 Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$getDependencies('a')
+
+Rmodel$a
+Rmodel$con1
+exp(Rmodel$calculate('a'))
+exp(Rmodel$calculate('con1'))
+
+Rmodel$a <- -1
+Rmodel$a
+Rmodel$calculate()
+exp(Rmodel$calculate('a'))
+exp(Rmodel$calculate('con1'))
+
+Rmodel$a <- 1
+Rmodel$a
+Rmodel$con1 <- 0
+Rmodel$con1
+Rmodel$calculate()
+exp(Rmodel$calculate('a'))
+exp(Rmodel$calculate('con1'))
+
+Rmodel$a <- -10
+Rmodel$a
+Rmodel$con1 <- 0
+Rmodel$con1
+Rmodel$calculate()
+exp(Rmodel$calculate('a'))
+exp(Rmodel$calculate('con1'))
 
 conf <- configureMCMC(Rmodel)
 

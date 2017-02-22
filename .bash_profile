@@ -3,6 +3,8 @@
 # $ cd ~/github/utils/nobootsound
 # $ sudo sh install.sh
 
+# download and install f.lux program, for night shift softening of colours.
+
 # stop creation of .DS_Store files by Finder everywhere
 # $ defaults write com.apple.desktopservices DSDontWriteNetworkStores true
 
