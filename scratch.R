@@ -1,11 +1,344 @@
 
 
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    for(i in 1:5) {
+        b[i] ~ dnorm(0, 1)
+    }
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0, b=1:5)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$getVarNames()
+
+Rmodel$getVarNames(nodes = 'a', includeData=TRUE)
+
+Rmodel$getVarNames(nodes = 'a', includeData=FALSE)
+
+Rmodel$getVarNames(includeData=FALSE)
+
+
+
+
+## trying to figure out what's meant by github issue for setData()
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:3) {
+        a[i] ~ dnorm(0,1)
+    }
+})
+
+constants <- list()
+data <- list()
+inits <- list(a = 1:3)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$a
+Rmodel$getNodeNames(dataOnly=TRUE)
+
+Rmodel$setData('a')
+
+Rmodel$getNodeNames(dataOnly=TRUE)
+
+1
+
+
+
+## examining why the slope is *not* inverted
+## when you switch x & y
+
+set.seed(0)
+x <- 1:200
+y <- rnorm(x, 2*x, 100)#200)
+x <- x-mean(x)
+y <- y-mean(y)
+lim <- c(-400, 400)
+plot(x,y, pch=20, xlim=lim, ylim=lim)
+points(y,x, pch=20, col='red')
+abline(a=0,b=1,col='blue')
+m1 <- lm(y~x)
+m2 <- lm(x~y)
+b1 <- m1$coef[2]
+b2 <- m2$coef[2]
+abline(m1)
+abline(m2, col='red')
+b1
+1/b2
+b1*b2
+
+sd(x)
+sd(y)
+
+b1
+b2
+
+
+
+
+## STAT 201 class survey dataset
+
+survey <- read.csv("~/Downloads/STAT201ClassInfo.csv")
+
+names(survey)
+
+attach(survey)
+plot(Height, Minutes)
+plot(Height, Friends)
+cor(Height, Friends)
+lm(Height ~ Friends)
+
+str(survey)
+
+
+## warning messing in NIMBLE for forgetting type declaration
+
+library(nimble)
+
+## forgot type declaration.  This case is caught
+nfDef <- nimbleFunction(
+    setup = TRUE,
+    run = function(a) { }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)  # useful warning message:
+ ## compiling... this may take a minute. Use 'showCompilerOutput = TRUE' to see C++ compiler details.
+## Error: Type declaration missing for argument(s) a
+
+## forgot type declaration, but gave a default value.
+## this case gives a totally inconprehensible error
+nfDef <- nimbleFunction(
+    setup = TRUE,
+    run = function(a = 1) { }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)  # would love a good error message here:
+compiling... this may take a minute. Use 'showCompilerOutput = TRUE' to see C++ compiler details.
+Error in AT$default : $ operator is invalid for atomic vectors
+
+
+
+
+## playing with calculating r^2
+
+a <- 1
+b <- 0.5
+sigma <- 1
+n <- 10
+x <- 1:n
+y <- rnorm(n, a+b*x, sigma)
+plot(x,y)
+
+r <- cor(x,y)
+r^2
+
+m <- lm(y~x)
+summary(m)
+r^2
+
+
+yhat <- m$fitted.values
+ybar <- mean(y)
+
+1 - sum((y-yhat)^2)/sum((y-ybar)^2)
+r^2
+
+
+
+
+#### NIMBLE occupancy model for ZIB GLMM model of potato psyllid occupancy
+#### Originally developed by Daniel Turek
+## trouble-shooting his issues with NIMBLE v0.6-3
+library(nimble)
+
+dCustom <- nimbleFunction(
+    run = function(x = double(), a = double(), log = integer(0, default=0)) {
+        returnType(double())
+        if(log) return(0) else return(1)
+    }
+)
+rCustom <- nimbleFunction(
+    run = function(n = integer(), a = double()) {
+        returnType(double())
+        return(0)
+    }
+)
+registerDistributions(list(
+    dCustom = list(
+        BUGSdist = "dCustom(a)",
+        discrete = TRUE
+    )
+))
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    y ~ dCustom(0.5)
+})
+constants <- list()
+data <- list()
+inits <- list(y = 0, a=0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Cmodel <- compileNimble(Rmodel)
+
+spec <- configureMCMC(Rmodel)
+
+
+
+
+library(nimble)
+setwd("~/Downloads")
+
+inputData <- readRDS('output/data_nimble_zib.rds')
+source('R_functions/nimble_definitions.R')
+
+
+
+code <- nimbleCode({
+    mu_alpha ~ dnorm(0, 0.001)
+    sigma_alpha ~ dunif(0, 1000)
+    for(j in 1:nsite) { 
+        alpha[j] ~ dnorm(mu_alpha, sd = sigma_alpha)  ## site random effect
+    }
+    for(i in 1:9) {
+        beta[i] ~ dnorm(0, 0.001)
+    }
+    for(i in 1:N) {
+        logit(p_occ[i]) <- alpha[siteID[i]] + beta[4]*aet[i] + beta[5]*tmn[i] + beta[6]*tmx[i] + beta[7]*year[i] + beta[8]*month[i] + beta[9]*month2[i]
+        logit(p_obs[i]) <- beta[1] + beta[2]*list_length[i] + beta[3]*year_list_length[i]
+        y[i] ~ dOccupancy(p_occ[i], p_obs[i])
+    }
+})
+
+constants <- with(inputData,
+                  list(N=N, nsite=nsite, 
+                       aet=aet, tmn=tmn, tmx=tmx, 
+                       year=year, 
+                       month=month,
+                       month2=month2,
+                       list_length=list_length, 
+                       year_list_length=year_list_length, 
+                       siteID=siteID))
+
+data <- with(inputData, list(y=y))
+
+inits <- list(mu_alpha=0, sigma_alpha=1, alpha=rep(0,inputData$nsite), beta=rep(0,9))#, betaseason=rep(0,4))
+
+modelInfo_month <- list(code=code, constants=constants, data=data, inits=inits, name='month_model')
+
+Rmodel <- nimbleModel(modelInfo_month$code,
+                      modelInfo_month$constants,
+                      modelInfo_month$data,
+                      modelInfo_month$inits)
+
+Cmodel <- compileNimble(Rmodel)
+
+spec <- configureMCMC(Rmodel)
+
+#### Best configuration of samplers for random effect occupancy model
+spec$removeSamplers('beta[1:9]')
+spec$addSampler('beta[1:3]', 'RW_block') # detection sub-model sampler
+spec$addSampler('beta[4:9]', 'RW_block') # occupancy sub-model sampler
+spec$removeSamplers('sigma_alpha')
+spec$addSampler('sigma_alpha', 'RW_log_shift', list(shiftNodes='alpha')) # random effect sampler
+spec$getSamplers() # Check samplers
+spec$addMonitors(c('p_occ')) # add a monitor to get p_occ in output
+#spec$addMonitors(c('p_obs')) # add a monitor to get p_obs in output
+
+#### Compile MCMC in R and C++
+Rmcmc <- buildMCMC(spec)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+#### Run MCMC with 150,000 iterations and 50,000 burn-in
+niter <- 15000
+burnin <- 5000
+
+ti <- Sys.time()
+samplesList <- lapply(3, mcmcClusterFunction)
+tf <- Sys.time()
+
+# The time it took to run MCMC
+tf-ti
+
+
+
+
+## helping to debug Dao's autoAdapt algorithm.
+## NOTE: need to build and install package from his codess branch
+## main function is MCMC_autoAdapt.R / autoAdapt() .... (I think??)
+
+library(nimble)
+setwd('~/Downloads')
+load('./data/model_spatial.RData')
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+CandidateSamplerList <- list(
+#  sampler_conjugate= list(type = "sampler_conjugate", name = "conjugate"),
+  sampler_RW = list(type = "sampler_RW", control =  list(adaptive = TRUE,adaptInterval = 20), name = "adaptive"),
+  sampler_RWlog = list(type = "sampler_RW", control =  list(adaptive = TRUE,adaptInterval = 20,  log =TRUE), name = "adaptivelog"),
+  sampler_slice = list(type = "sampler_slice", control =  list(adaptive = TRUE,adaptInterval = 20), name = "Myslice"),
+  sampler_RW_block = list(type = "sampler_RW_block", control =  (list(adaptive = TRUE, adaptInterval = 20)), name = "block_RW"),
+  sampler_RW_block = list(type = "sampler_AF_slice", control =  (list(adaptive = TRUE, adaptInterval = 20)), name = "block_AFS"),
+  sampler_RW_block = list(type = "RW_rotated_block", control =  (list(adaptive = TRUE, adaptInterval = 20)), name = "block_Rotated")
+)
+##
+Candidates<-list(2,3,4,5,6,7)  
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$getSamplers()
+##
+monitor <- Rmodel$getNodeNames(stochOnly=TRUE, includeData=FALSE, returnScalarComponents=TRUE)
+monitor
+##
+n =length(monitor)
+print(n)            
+##
+DefaultSamplerList <- vector(mode="list", length=n)
+DefaultSamplerList
+##
+for(i in 1: n){
+  names(DefaultSamplerList)[i]<-'RW'
+  DefaultSamplerList[[i]]$name <-monitor[i]
+  DefaultSamplerList[[i]]$target <-monitor[i]
+  DefaultSamplerList[[i]]$control <-list()
+  DefaultSamplerList[[i]]$type <-'sampler_RW'
+  DefaultSamplerList[[i]]$oldtype <-DefaultSamplerList[[i]]$type
+}
+##
+DefaultSamplerList[1:5]
+##
+DefaultSamplerList
+Candidates
+monitor
+
+
+debug(autoAdapt)
+debug(autoAdaptClass)
+debug(ab$run)
+
+ab <- autoAdapt(Rmodel, niter=1000, DefaultSamplerList=DefaultSamplerList, Candidates = Candidates, monitor=monitor, iteration =5)
+
+
+
+
 ## tobit model for Chris, Ann Raiho <ann.raiho@gmail.com>, Mike Dietze <dietze@bu.edu>
 ## experimenting with "turning off samplers" in the MCMC
 
 ## Daniel, Perry, the idea is that in the following code, 'y.ind' is an indicator vector that says whether each element of a data vector is positive or zero.  Then in the BUGS code, y.censored is either the actual data value, or if the data value is 0, y.censored[i] is NA.  In that case, we want to do MCMC sampling on that element of y.censored using a univariate sampler (we recognize that y.censored has a dmnorm distribution -- in this case we only want to update the values for which the corresponding data values are 0).
 ## When building the model, y.ind is flagged as 'data', y.censored is not flagged as 'data'. The sampler on y.censored is removed, and then a univariate sampler is assigned to each element of y.censored that contains an NA (which corresponds to elements of y.ind that are 0).
 ## This same model is used multiple times during a data assimilation, with the input data vector (and therefore the y.ind and y.censored vectors) changing at each time. Goal is to using the same compiled MCMC at each time, but dynamically controlling which components of y.censored are sampled.
+
 
 library(nimble)
 
@@ -238,6 +571,7 @@ tail(samples)
 
 df <- read.csv('~/Downloads/TVhours.csv')
 df <- read.delim('~/github/courses/stat201/data/Global.Temperature.txt')
+df <- read.csv('~/Downloads/Global.Temperature.csv')
 df
 str(df)
 barplot(df$animal)

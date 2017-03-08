@@ -65,7 +65,7 @@ if [ -r "$1" ]; then
         )
 	##> /dev/null 2>&1
 	if [ -f ${mdfile}.pdf ]; then
-	    open ${mdfile}.pdf
+	    open -a "Google Chrome" ${mdfile}.pdf
 	fi
 	if [ -f ${mdfile}.html ]; then
 	    open ${mdfile}.html
