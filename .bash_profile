@@ -36,7 +36,7 @@ parse_git_branch() {
 
 alias e=emacs
 alias ex=exit
-alias o=open
+alias o='open -a "Google Chrome"'
 alias rmm=~/github/utils/move_to_trash.sh
 alias ls='ls -F'
 alias backup=~/github/utils/backup.sh
