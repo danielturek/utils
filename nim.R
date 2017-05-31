@@ -23,4 +23,9 @@ samples <- runMCMC(Cmcmc, 10000)
 
 colnames(samples)
 apply(samples, 2, mean)
+
 samplesPlot(samples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
