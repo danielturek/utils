@@ -1,29 +1,1345 @@
+## CAR scalar_RW sampler
+## no islands
+## also sampling tau
+library(nimble)
+##
+code <- nimbleCode({
+    alpha0 ~ dflat()
+    for(k in 1:L) {
+        weights[k] <- 1
+    }
+    ##sd ~ dunif(0, 1000)
+    ##tau <- 1/(sd*sd)
+    ##tau ~ dunif(0, 1000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 3)
+    for(i in 1:N) {
+        mu[i] <- S[i] + alpha0
+        Y[i] ~ dnorm(mu[i], 1)
+    }
+})
+##
+data <- list(
+    N = 3,
+    num = c(1,2,1),
+    adj = c(2,   1,3,    2),
+    L = 4,
+    Y = c(1,2,3)
+)
+##
+inits <- list(
+    alpha0 = 0,
+    S = c(0,0,0)
+)
+##
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','L')], data=data['Y'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addMonitors('S')
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+##
+niter <- 200000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[50000:200000,]
+##
+##samplesPlot(samples, 'alpha0')
+##samplesPlot(samples, 'tau')
+##
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+medians <- apply(samples, 2, median)
+res <- cbind(means, sds, medians)
+res
+
+
+## winBUGS output
+node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+
+
+
+
+
+
+## preproducible example of problem with weights[k] <- 1
+## for Perry
+library(nimble)
+##
+code <- nimbleCode({
+    ##for(i in 1:L) {   weights[i] <- 1   }
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 3)
+    for(i in 1:N) {
+	Y[i] ~ dnorm(S[i], 1)
+    }
+})
+##
+constants <- list(
+    N = 3,
+    num = c(1,2,1),
+    adj = c(2,   1,3,    2),
+    weights = rep(1,4),
+    L = 4
+)
+##
+data <- list(
+    Y = c(1,2,3)
+)
+##
+inits <- list(
+    S = c(0,0,0)
+)
+##
+Rmodel <- nimbleModel(code, constants, data, inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+
+## NOT AGREEING WITH SAMPLING FOR TAU
+## CAR scalar_RW sampler
+## no islands
+## also sampling tau
+library(nimble)
+##
+code <- nimbleCode({
+    alpha0 ~ dflat()
+    for(k in 1:L) {
+        weights[k] <- 1
+    }
+    sd ~ dunif(0, 1000)
+    tau <- 1/(sd*sd)
+    ##tau ~ dunif(0, 1000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    for(i in 1:N) {
+        log(mu[i]) <- alpha0 + S[i]
+        Y[i] ~ dpois(mu[i])
+    }
+})
+##
+data <- list(
+    N = 6,
+    num = c(3,4,4,3,2,2),
+    adj =     c(2,3,4,   1,3,5,6,   1,2,4,5,   1,3,6,  2,3,   2,4),
+    L = 18,
+    Y = c(10,12,12,10,14,10)
+)
+##
+inits <- list(
+    alpha0 = 0,
+    sd = 1,
+    S = c(0,0,0,0,0,0)
+)
+##
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','L')], data=data['Y'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addMonitors('S','sd','tau')
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##
+niter <- 200000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[50000:200000,]
+##
+##samplesPlot(samples, 'alpha0')
+##samplesPlot(samples, 'tau')
+##
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+medians <- apply(samples, 2, median)
+res <- cbind(means, sds, medians)
+res
+
+
+## winBUGS output
+node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+sd	0.3021	0.2928	0.004865	0.01032	0.2264	1.047	501	49500
+
+
+
+
+
+## CAR scalar_RW, scalar_conjugate, and scalar_postPred samplers
+## no islands
+## fixed tau = 3
+library(nimble)
+
+code <- nimbleCode({
+    alpha0 ~ dflat()
+    for(k in 1:L) {
+        weights[k] <- 1
+    }
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 3)
+    for(i in 1:N) {
+        mu[i] <- alpha0 + S[i]
+    }
+    for(i in 1:2) {
+        log(lambda[i]) <- mu[i]
+        Y[i] ~ dpois(lambda[i])
+    }
+    Y[3] ~ dnorm(mu[3], 3)
+    ymean4 <- 5*mu[4]
+    Y[4] ~ dnorm(ymean4, 7)
+    ymean5 <- 2*mu[5]
+    Y[5] ~ dnorm(ymean5, 1)
+})
+
+data <- list(
+    N = 6,
+    num = c(3,4,4,3,2,2),
+    adj =     c(2,3,4,   1,3,5,6,   1,2,4,5,   1,3,6,  2,3,   2,4),
+    L = 18,
+    Y = c(10,12,15,20,24)
+)
+
+inits <- list(
+    alpha0 = 0,
+    S = c(0,0,0,0,0,0)
+)
+
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','L')], data=data['Y'], inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 100000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)
+
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+res <- cbind(means, sds)
+res
+##            means       sds
+##S[1]   -1.6762604 0.1988165
+##S[2]   -1.3264934 0.1621055
+##S[3]    1.8720905 0.2261232
+##S[4]   -0.8194848 0.1493609
+##S[5]    3.0231445 0.2757768
+##S[6]   -1.0729963 0.3532078
+##alpha0  4.8462442 0.1313957
+
+## winBUGS output
+node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+S[1]	-1.675	0.1776	0.001971	-2.027	-1.674	-1.328	1	10000
+S[2]	-1.323	0.1479	0.0013	-1.616	-1.32	-1.036	1	10000
+S[3]	1.867	0.2275	0.001976	1.417	1.867	2.316	1	10000
+S[4]	-0.8196	0.1365	0.001492	-1.088	-0.819	-0.5559	1	10000
+S[5]	3.024	0.276	0.002745	2.479	3.025	3.564	1	10000
+S[6]	-1.073	0.3552	0.003718	-1.773	-1.072	-0.3791	1	10000
+alpha0	4.846	0.1308	0.001459	4.589	4.847	5.098	1	10000
+
+## agrees!!
+
+
+
+
+
+## CAR scalar_RW sampler
+## no islands
+## fixed tau = 3
+library(nimble)
+
+code <- nimbleCode({
+    alpha0 ~ dflat()
+    for(k in 1:L) {
+        weights[k] <- 1
+    }
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 3)
+    for(i in 1:N) {
+        log(mu[i]) <- alpha0 + S[i]
+        Y[i] ~ dpois(mu[i])
+    }
+})
+
+data <- list(
+    N = 6,
+    num = c(3,4,4,3,2,2),
+    adj =     c(2,3,4,   1,3,5,6,   1,2,4,5,   1,3,6,  2,3,   2,4),
+    L = 18,
+    Y = c(10,12,15,20,24,16)
+)
+
+inits <- list(
+    alpha0 = 0,
+    S = c(0,0,0,0,0,0)
+)
+
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','L')], data=data['Y'], inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 100000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)
+
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+res <- cbind(means, sds)
+res
+##              means       sds
+##S[1]   -0.265103019 0.1899968
+##S[2]   -0.144243381 0.1713349
+##S[3]   -0.028341197 0.1699618
+##S[4]    0.125589974 0.1722319
+##S[5]    0.310280206 0.1774359
+##S[6]    0.001817417 0.1920584
+##alpha0  2.744200920 0.1039359
+
+## winBUGS output
+ 
+##node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+##S[1]	-0.2619	0.1891	0.001877	-0.6427	-0.2585	0.1017	1	10000
+##S[2]	-0.1415	0.1718	0.001695	-0.4899	-0.1373	0.1827	1	10000
+##S[3]	-0.0275	0.1687	0.001798	-0.3593	-0.02419	0.2992	1	10000
+##S[4]	0.1236	0.1738	0.001715	-0.2203	0.1239	0.4595	1	10000
+##S[5]	0.3083	0.1755	0.001711	-0.04451	0.3102	0.6477	1	10000
+##S[6]  -0.001004	0.1907	0.001934	-0.3914	0.004113	0.3587	1	10000
+##alpha0	2.744	0.103	0.001042	2.535	2.746	2.939	1	10000
+
+## agrees!!
+
+
+
+
+
+## CAR scalar_RW sampler
+## no islands
+## fixed tau = 1
+library(nimble)
+
+code <- nimbleCode({
+    alpha0 ~ dflat()
+    for(k in 1:L) {
+        weights[k] <- 1
+    }
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 1)
+    for(i in 1:N) {
+        log(mu[i]) <- alpha0 + S[i]
+        Y[i] ~ dpois(mu[i])
+    }
+})
+
+data <- list(
+    N = 6,
+    num = c(3,4,4,3,2,2),
+    adj =     c(2,3,4,   1,3,5,6,   1,2,4,5,   1,3,6,  2,3,   2,4),
+    ##weights = c(1,1,1,   1,1,1,1,   1,1,1,1,   1,1,1,  1,1,   1,1),
+    L = 18,
+    Y = c(10,12,15,20,24,16)
+)
+
+inits <- list(
+    alpha0 = 0,
+    S = c(0,0,0,0,0,0)
+)
+
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','L')], data=data['Y'], inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 100000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+res <- cbind(means, sds)
+res
+##             means       sds
+##S[1]   -0.36240674 0.2350176
+##S[2]   -0.20235429 0.2146017
+##S[3]   -0.03327436 0.2060798
+##S[4]    0.19690032 0.1976192
+##S[5]    0.38665926 0.1936092
+##S[6]    0.01447581 0.2166168
+##alpha0  2.72605237 0.1060945
+
+## winBUGS output
+##node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+##alp0	2.726	0.1055	0.001117	2.514	2.728	2.929	1	10000
+##S[1]	-0.3636	0.2341	0.002337	-0.8376	-0.3549	0.08407	1	10000
+##S[2]	-0.2063	0.216	0.002338	-0.6496	-0.2007	0.1983	1	10000
+##S[3]	-0.0335	0.203	0.001985	-0.4438	-0.0292	0.3531	1	10000
+##S[4]	0.1971	0.1987	0.001868	-0.209	0.2003	0.5715	1	10000
+##S[5]	0.3891	0.1914	0.00197	0.009187	0.3927	0.7583	1	10000
+##S[6]	0.01712	0.2166	0.002037	-0.4136	0.02405	0.4305	1	10000
+
+## agrees!!
+
+
+
+
+
 
 
 
 library(nimble)
+##nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+##
+## Scottish Lip Cancer example from WinBUGS/geoBUGS of dcar_normal() distribuion
+##
+## data copied from WinBUGS
+N <- 56
+E <- c(1.4, 8.7, 3.0, 2.5, 4.3, 2.4, 8.1, 2.3, 2.0, 6.6,
+       4.4, 1.8, 1.1, 3.3, 7.8, 4.6, 1.1, 4.2, 5.5, 4.4,
+       10.5,22.7, 8.8, 5.6,15.5,12.5, 6.0, 9.0,14.4,10.2,
+       4.8, 2.9, 7.0, 8.5,12.3,10.1,12.7, 9.4, 7.2, 5.3,
+       18.8,15.8, 4.3,14.6,50.7, 8.2, 5.6, 9.3,88.7,19.6,
+       3.4, 3.6, 5.7, 7.0, 4.2, 1.8)
+X <- c(16,16,10,24,10,24,10, 7, 7,16, 7,16,10,24, 7,16,10,
+       7, 7,10, 7,16,10, 7, 1, 1, 7, 7,10,10,7,24,10, 7, 7,
+       0,10, 1,16, 0, 1,16,16, 0, 1, 7, 1, 1, 0, 1,1, 0, 1, 1,16,10)
+num <- c(3, 2, 1, 3, 3, 0, 5, 0, 5, 4, 0, 2, 3, 3, 2, 6, 6, 6, 5, 3,
+         3, 2, 4, 8, 3, 3, 4, 4, 11, 6, 7, 3, 4, 9, 4, 2, 4, 6, 3, 4, 
+         5, 5, 4, 5, 4, 6, 6, 4, 9, 2, 4, 4, 4, 5, 6, 5)
+adj <- c(19, 9, 5, 10, 7, 12, 28, 20, 18, 19, 12, 1, 
+         17, 16, 13, 10, 2, 29, 23, 19, 17, 1, 22, 16, 7, 2, 
+         5, 3, 19, 17, 7, 35, 32, 31, 29, 25, 29, 22, 21, 17,
+         10, 7, 29, 19, 16, 13, 9, 7, 56, 55, 33, 28, 20, 4,
+         17, 13, 9, 5, 1, 56, 18, 4, 50, 29, 16, 16, 10, 39, 34, 29, 9,
+         56, 55, 48, 47, 44, 31, 30, 27, 29, 26, 15, 43, 29, 25,
+         56, 32, 31, 24, 45, 33, 18, 4, 50, 43, 34, 26, 25, 23, 21,
+         17, 16, 15, 9, 55, 45, 44, 42, 38, 24, 47, 46, 35, 32, 27, 24, 14, 
+         31, 27, 14, 55, 45, 28, 18, 54, 52, 51, 43, 42, 40, 39, 29, 23,
+         46, 37, 31, 14, 41, 37, 46, 41, 36, 35, 54, 51, 49, 44, 42, 30,
+         40, 34, 23, 52, 49, 39, 34, 53, 49, 46, 37, 36, 51, 43, 38, 34, 30,
+         42, 34, 29, 26, 49, 48, 38, 30, 24, 55, 33, 30, 28, 53, 47, 41,
+         37, 35, 31, 53, 49, 48, 46, 31, 24, 49, 47, 44, 24, 54, 53, 52,
+         48, 47, 44, 41, 40, 38, 29, 21, 54, 42, 38, 34, 54, 49, 40, 34,
+         49, 47, 46, 41, 52, 51, 49, 38, 34, 56, 45, 33, 30, 24, 18,
+         55, 27, 24, 20, 18)
+L <- length(adj)
+weights <- rep(1, L)
+constantsIslands <- list(N=N, L=L, E=E, X=X, num=num, adj=adj, weights=weights)
+##
+## alternate data with no islands, copied from Breslow and Clatyon (1993)
+## no islands in this data
+num <- c(4, 2, 2, 3, 5, 2, 5, 1, 6, 4, 4, 3, 4, 3, 3, 6, 6, 6, 5,  ##different!
+         3, 3, 2, 6, 8, 3, 4, 4, 4, 11, 6, 7, 4, 4, 9, 5, 4, 5, 6,
+         5, 5, 7, 6, 4, 5, 4, 6, 6, 4, 9, 3, 4, 4, 4, 5, 5, 6)
+adj <- c(5,9,11, 19, 7,10, 6,12, 18, 20, 28, 1, 11, 12,13,19, 3,  ## different!!
+         8, 2,10,13,16,17, 6, 1, 11, 17,19,23,29, 2, 7, 16, 22,
+         1,5,9,12, 3, 5, 11, 5, 7,17,19, 31, 32, 35, 25, 29, 50,
+         7,10,17,21, 22,29, 7,9,13,16,19,29, 4,20,28,33,55,56, 1,
+         5,9,13,17, 4,18,55, 16,29,50, 10,16, 9,29,34,36,37,39, 27,
+         30,31,44,47,48,55,56, 15,26,29, 25,29,42,43, 24,31,32,55,
+         4,18,33,45, 9, 15, 16, 17, 21, 23, 25, 26, 34, 43, 50, 24,
+         38,42,44,45,56, 14,24,27,32,35,46,47, 14,27,31,35, 18,28,
+         45,56, 23, 29, 39, 40, 42, 43, 51, 52, 54, 14, 31, 32, 37,
+         46, 23, 37, 39, 41, 23, 35, 36, 41, 46, 30,42,44,49,51,54,
+         23,34,36,40,41, 34,39,41,49,52, 36,37,39,40,46,49,53, 26,
+         30, 34, 38, 43, 51, 26, 29, 34, 42, 24, 30, 38, 48, 49, 28,
+         30, 33, 56, 31, 35, 37, 41, 47, 53, 24, 31, 46, 48, 49, 53,
+         24,44,47,49, 38, 40, 41, 44, 47, 48, 52, 53, 54, 15,21, 29,
+         34, 38, 42, 54, 34,40,49,54, 41, 46, 47, 49, 34, 38, 49,
+         51, 52, 18, 20, 24, 27, 56, 18, 24, 30, 33, 45, 55)
+L <- length(adj)
+weights <- rep(1, L)
+constantsNoIslands <- list(N=N, L=L, E=E, X=X, num=num, adj=adj, weights=weights)
+##
+## observations:
+Y <- c(9, 39, 11, 9, 15, 8, 26, 7, 6, 20, 13, 5, 3, 8, 17, 9, 2, 7, 9,
+       7, 16, 31, 11, 7, 19, 15, 7, 10, 16, 11, 5, 3, 7, 8, 11, 9, 11,
+       8, 6, 4, 10, 8, 2, 6, 19, 3, 2, 3, 28, 6, 1, 1, 1, 1, 0, 0)
+data <- list(Y=Y)
+##
+## model code (simple)
+## from geoBUGS manual
+## and used in Breslow and Clatyon (1993)
+codeSimple <- nimbleCode({
+    alpha0  ~ dflat()  
+    alpha1 ~ dnorm(0, 0.00001)
+    tau ~ dgamma(0.5, 0.0005)
+    sigma <- sqrt(1 / tau)
+    ##for(k in 1:L)    ## need to make this work!
+    ##    weights[k] <- 1
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    for(i in 1:N) {
+        log(mu[i]) <- log(E[i]) + alpha0 + alpha1 * X[i]/10 + S[i]
+        Y[i] ~ dpois(mu[i])
+        RR[i] <- exp(alpha0 + alpha1 * X[i]/10 + S[i])
+    }
+})
+##initsSimple <- list(tau = 1, alpha0 = 0, alpha1 = 0,    ## need to make this work!!
+##                    S=c(0,0,0,0,0,NA,0,NA,0,0,
+##                        NA,0,0,0,0,0,0,0,0,0,
+##                        0,0,0,0,0,0,0,0,0,0,
+##                        0,0,0,0,0,0,0,0,0,0,
+##                        0,0,0,0,0,0,0,0,0,0,
+##                        0,0,0,0,0,0))
+initsSimple <- list(tau = 1, alpha0 = 0, alpha1 = 0, 
+                    S=c(0,0,0,0,0,0,0,0,0,0,
+                        0,0,0,0,0,0,0,0,0,0,
+                        0,0,0,0,0,0,0,0,0,0,
+                        0,0,0,0,0,0,0,0,0,0,
+                        0,0,0,0,0,0,0,0,0,0,
+                        0,0,0,0,0,0))
+##
+## more complex model code
+## also used in geoBUGS manual, includes results for this:
+## code from geoBUGS example model
+codeComplex <- nimbleCode({
+    alpha0 ~ dflat()
+    alpha1 ~ dnorm(0, 0.00001)
+    tau ~ dgamma(0.5, 0.0005)
+    tau.h ~ dgamma(0.5, 0.0005)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    for(i in 1:N) {
+        H[i] ~ dnorm(0, tau.h)
+        log(mu[i]) <- log(E[i]) + alpha0 + alpha1 * X[i]/10 + S[i] + H[i]
+        Y[i] ~ dpois(mu[i])
+        RR[i]  <- exp(alpha0 + alpha1 * X[i]/10 + S[i] + H[i])
+        residRR[i] <- exp(S[i] + H[i])
+        X.pred[i] <- alpha1 * X[i]/10
+        lE[i] <- log(E[i])
+    }
+    rr.x <- exp(alpha1)
+    sdS <- sd(S[1:N])
+    sdH <- sd(H[1:N])
+    sdX <- sd(X.pred[1:N])
+    sdE <- sd(lE[1:N])
+    sumvar <- sdS^2 + sdH^2 + sdX^2 + sdE^2
+    pS <- sdS^2 / sumvar
+    pH <- sdH^2 / sumvar
+    pX <- sdX^2 / sumvar
+    pE <- sdE^2 / sumvar
+})
+initsComplex <- list(alpha0=0, alpha1=0, tau=1, tau.h=1, S=rep(0,N), H=rep(0,N))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+conf$printMonitors()
+conf$addMonitors('sigma', 'RR', 'S')
+conf$addMonitors('rr.x', 'pS', 'pH', 'pX', 'pE')
+conf$addMonitors('rr.x', 'pS', 'pH', 'pX', 'pE', 'RR')
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+niter <- 100000
+set.seed(0); system.time(Cmcmc$run(niter))
+samples <- as.matrix(Cmcmc$mvSamples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+res <- cbind(means, sds)
+##res <- res[c('pE','pH','pS','pX','rr.x'),]
+
+res
+
+
+
+
+## hand-implement the "ranked" statistics to verify against BUGS book
+colnames(samples)
+rrnames <- paste0('RR[', 1:56, ']')
+rrsamples <- samples[, rrnames]
+colnames(rrsamples)
+dim(rrsamples)
+apply(rrsamples, 2, effectiveSize)
+ 
+a <- rrsamples[50001:100000,]
+low <- 6
+high <- 51
+out <- array(NA, c(dim(a)[1], 2))
+ 
+for(i in 1:dim(a)[1]) {
+    vals <- a[i,]
+    sor <- sort(vals)
+    out[i,1] <- sor[low]
+    out[i,2] <- sor[high]
+}
+ 
+ratio <- out[,2] / out[,1]
+mean(ratio)
+median(ratio)
+sd(ratio)
+
+
+
+
+
+
+
+## test models for dcar_normal distribution
+
+library(nimble)
+N <- 15
+num <- c(9,    rep(1,9), 0,0,0,0,0)
+adj <- c(2:10, rep(1,9))
+L <- length(adj)
+weights <- rep(1, L)
+code <- nimbleCode({
+    t ~ dunif(0, 100)
+    x[1:N] ~ dcar_normal(adj[1:L], weights[1:L], num[1:N], tau=t)
+    y1 ~ dexp(x[1])
+    y2 ~ dnorm(x[2], 1)
+    z <- x[3] + 3
+    y3 ~ dnorm(z, 1)
+    y4 ~ dnorm(x[4]*x[4], 1)
+    y51 ~ dnorm(x[5]+5, 1)
+    y52 ~ dnorm(x[5]/2, 2)
+    for(i in 1:9) {
+        mu[i] <- i
+    }
+    mu[10] <- x[6]
+    y6[1:10] ~ dmnorm(mu[1:10], C[1:10,1:10])
+})
+constants <- list(N = N, L = L, adj = adj, weights = weights, num = num, C = diag(10))
+data <- list(y1=1, y2=1, y3=1, y4=1, y51=1, y52=1, y6=rep(0,10))
+inits <- list(x = rep(1,N), t = 1)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+
+library(nimble)
+N <- 5
+num <- c(0, 0, 0, 1, 1)
+adj <- c(5, 4)
+L <- length(adj)
+weights <- rep(1, L)
+code <- nimbleCode({
+    t ~ dunif(0, 100)
+    x[1:N] ~ dcar_normal(adj[1:L], weights[1:L], num[1:N], tau = t)
+    y2 ~ dnorm(x[2], 1)
+    y3 ~ dexp(x[3])
+})
+constants <- list(N = N, L = L, adj = adj, weights = weights, num = num)
+data <- list(y2 = 2, y3 = 3)
+inits <- list(x = 1:N, t = 1)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+
+
+conf <- configureMCMC(Rmodel)
+##conf <- configureMCMC(Rmodel, control=list(adaptInterval=1000000))
+##conf <- configureMCMC(Rmodel, control=list(carUseConjugacy=FALSE))
+##conf$printSamplers(displayControlDefaults = TRUE)
+conf$printSamplers()
+##conf$addMonitors('x')
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+Rmodel$calculate('x')
+Cmodel$calculate('x')
+## -8.270447
+## -1.837877  (3 islands model)
+## -47.7848   (Scottish lip cancer)
+
+niter <- 10
+set.seed(0); Rmcmc$run(niter)
+set.seed(0); Cmcmc$run(niter)
+Rsamples <- as.matrix(Rmcmc$mvSamples)
+Csamples <- as.matrix(Cmcmc$mvSamples)
+sampnames <- dimnames(Rsamples)[[2]]
+Rsamples[, sampnames]
+Csamples[, sampnames]
+Rsamples[, sampnames] - Csamples[, sampnames]
+
+niter <- 100000
+##niter <- 10
+##set.seed(0); Rmcmc$run(niter)
+set.seed(0); Cmcmc$run(niter)
+
+samples <- as.matrix(Cmcmc$mvSamples)
+
+samples[niter,]
+##         t       x[1]       x[2]       x[3]       x[4]       x[5]       x[6] 
+## 0.1287901  0.5934936 -0.4500610 -1.7883696 -1.6046201 -0.9227700  0.6587114 
+##      x[7]       x[8]       x[9]      x[10] 
+## 4.7227748 -0.3847551  0.7452862  2.3125083 
+
+apply(samples, 2, mean)
+apply(samples, 2, sd)
+
+samplesPlot(samples, 1)
+samplesPlot(samples, 2:6)
+samplesPlot(samples, c(3,4))
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+
+
+
+> apply(samples, 2, mean)
+          t        x[1]        x[2]        x[3]        x[4]        x[5] 
+ 0.10855950  1.15413864  0.99105430 -1.73847094  0.08252756 -1.81795004 
+       x[6]        x[7]        x[8]        x[9]       x[10] 
+ 0.08001419  1.15626026  1.14893480  1.16751225  1.13389828 
+
+> apply(samples, 2, sd)
+        t      x[1]      x[2]      x[3]      x[4]      x[5]      x[6]      x[7] 
+0.1131858 0.8444364 0.9587355 0.9704785 0.9258072 0.8092274 0.9547935 5.8191558 
+     x[8]      x[9]     x[10] 
+5.6441207 5.6973708 5.8381872 
+
+> apply(samples, 2, effectiveSize)
+        t      x[1]      x[2]      x[3]      x[4]      x[5]      x[6]      x[7] 
+ 2106.414  7062.471 93635.441 44922.136 20619.570 48727.286 22121.622 87259.953 
+     x[8]      x[9]     x[10] 
+79181.284 64071.703 78410.282 
+
+
+
+
+## example of summing 0-length vector in nimble
+library(nimble)
 
 code <- nimbleCode({
     a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+nfDef <- nimbleFunction(
+    setup = function(model, nodes) {},
+    run = function() {
+        a <- values(model, nodes)
+        b <- sum(a)
+    }
+)
+
+Rnf <- nfDef(Rmodel, character(0))
+
+Cmodel <- compileNimble(Rmodel)
+Cnf <- compileNimble(Rnf, project = Rmodel)
+
+Rnf$run()
+Cnf$run()
+
+
+
+
+
+## very quick test of compilation of dcar_normal(), for Chris P.
+library(nimble)
+code <- nimbleCode({
+    x[1:3] ~ dcar_normal(adj[1:3], weights[1:3], num[1:3], t)
+})
+constants <- list(adj = 1:3, weights = 1:3, num = 1:3, t = 0)
+data <- list()
+inits <- list()
+Rmodel <- nimbleModel(code, constants, data, inits, calculate=FALSE)
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+
+
+
+## bug in getDependencies(..., self=FALSE) !
+library(nimble)
+code <- nimbleCode({
+    x[1:4] ~ dmnorm(mu[1:4], C[1:4,1:4])
+    y ~ dexp(x[1])
+})
+constants <- list(mu = rep(0,4), C = diag(4))
+Rmodel <- nimbleModel(code, constants)
+
+Rmodel$getDependencies('x[1:4]')
+Rmodel$getDependencies('x[1:4]', self=FALSE)
+Rmodel$getDependencies('x[1:4]', returnScalarComponents = TRUE)
+Rmodel$getDependencies('x[1:4]', self=FALSE, returnScalarComponents = TRUE)
+
+Rmodel$getDependencies('x[1]')
+Rmodel$getDependencies('x[1]', self=FALSE)
+Rmodel$getDependencies('x[1]', returnScalarComponents = TRUE)
+Rmodel$getDependencies('x[1]', self=FALSE, returnScalarComponents = TRUE)
+
+
+
+
+## bug in model building!
+library(nimble)
+code <- nimbleCode({
+    x[1:4] ~ dmnorm(mu[1:4], C[1:4,1:4])
+    y[1] ~ dnorm(x[2], 1)
+})
+constants <- list(mu = rep(0,4), C = diag(4))
+Rmodel <- nimbleModel(code, constants)
+
+
+
+
+## testing speed comparisons of new sampler assignment rules system
+
+
+?Rprof
+?summaryRprof
+
+library(nimble)
+nimbleOptions('MCMCuseSamplerAssignmentRules')
+
+nimbleOptions(MCMCuseSamplerAssignmentRules = FALSE)
+nimbleOptions(MCMCuseSamplerAssignmentRules = TRUE)
+
+nimbleOptions('MCMCuseSamplerAssignmentRules')
+
+N <- 5000
+code <- nimbleCode({
+    for(i in 1:N) {
+        a[i] ~ dnorm(0, 1)
+        b[i] ~ dexp(a[i])
+    }
+})
+constants <- list(N = N)
+data <- list(b = rep(10,N))
+inits <- list(a = rep(0,N))
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+profFile <- '~/temp/prof.txt'
+Rprof(profFile)
+
+system.time(conf <- configureMCMC(Rmodel))
+
+Rprof(NULL)
+
+profFile <- '~/temp/prof.txt'
+summaryRprof(profFile)
+
+##conf$printSamplers()
+
+timer <- function(n) {
+    N <- 10^n
+    library(nimble)
+    code <- nimbleCode({
+        for(i in 1:N) {
+            a[i] ~ dnorm(0, 1)
+            b[i] ~ dexp(a[i])
+        }
+    })
+    constants <- list(N = N)
+    data <- list(b = rep(10,N))
+    inits <- list(a = rep(0,N))
+    Rmodel <- nimbleModel(code, constants, data, inits)
+    t <- system.time(conf <- configureMCMC(Rmodel))
+    ##conf$printSamplers()
+    return(as.numeric(t[3]))
+}
+
+sapply(1:4, function(n) timer(n))
+
+
+## old system:
+old <- c(0.035, 0.191, 2.441, 21.571)
+## new sampler assignment rules:
+new <- c(0.061, 0.460, 5.660, 52.530)
+
+new/old
+
+plot(1:4, new, col='red', type='l')
+lines(1:4, old)
+
+## table of quantiles of t-distribution
+
+dfs <- c(1,2,5,10,100,1000)
+coverages <- c(.9, .95, .99)
+
+ps <- 1-(1-coverages)/2
+dfarg <- rep(dfs, each=length(coverages))
+probarg <- rep(ps, length(dfs))
+tvals <- qt(probarg, dfarg)
+tab <- t(matrix(tvals, nrow=length(coverages), ncol=length(dfs)))
+dimnames(tab) <- list(`df` = dfs, `CI Coverage` = paste0(100*coverages,'%'))
+tab
+
+
+
+
+
+## testing that nimble MCMC doesn't put samplers on deterministic nodes
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, rs)
+    b <- a + 1
+    c ~ dnorm(b, 1)
+    d <- c-1
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0, c=0, rs=1)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+conf$addSampler('a', 'RW')
+conf$addSampler('b', 'RW')
+conf$addSampler('d', 'RW')
+conf$addSampler('rs', 'RW')
+conf$addSampler(c('a','rs'), 'RW_block')
+
+Rmodel$getNodeNames()
+
+conf <- configureMCMC(Rmodel, nodes = c('a', 'b', 'c', 'rs'))
+conf$printSamplers()
+conf <- configureMCMC(Rmodel, nodes = Rmodel$getNodeNames(includeRHSonly=TRUE))
+
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+## example of Central Limit Theorem (CLT) for STAT201
+unifMeans <- function(n, rep=500, breaks=100, curve=TRUE) {
+    um <- replicate(rep, mean(runif(n)))
+    hist(um, xlim=c(0,1), breaks=breaks, prob=TRUE, main=paste0('Uniform sample mean (n = ', n, ')'))
+    if(curve) curve(dnorm(x, mean(um), sd(um)), col='red', add=TRUE)
+}
+
+n <- 4
+par(mfrow=c(n,1), mar=c(2,2,2,2))
+unifMeans(1, curve=FALSE)
+##unifMeans(2)
+##unifMeans(3)
+unifMeans(4)
+unifMeans(16)
+unifMeans(64)
+
+
+
+
+
+## playing with and testing new MCMC sampler assignment rules
+library(nimble)
+getNimbleOption('MCMCdefaultSamplerAssignmentRules')
+
+code <- nimbleCode({
+    for(i in 1:10) {
+        a[i] ~ dnorm(0, 1)
+    }
     for(i in 1:5) {
-        b[i] ~ dnorm(0, 1)
+        b[i] ~ dexp(a[i] + 1)
+    }
+    x[1:10] ~ dmnorm(mu[1:10], C[1:10,1:10])
+    y ~ dexp(x[1])
+})
+constants <- list(mu = rep(0,10), C = diag(10))
+Rmodel <- nimbleModel(code, constants = constants)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b1 ~ dnorm(0, 1)
+    b2 ~ dnorm(0, 1)
+    c1 ~ dnorm(0, 1)
+    c2 ~ dnorm(0, 1)
+    c3 ~ dnorm(0, 1)
+    d ~ dnorm(0, 1)
+    e1 ~ dnorm(0, 1)
+    e2 ~ dnorm(0, 1)
+    f ~ dnorm(0, 1)
+    g ~ dnorm(0, 1)
+    h ~ dnorm(0, 1)
+    i ~ dnorm(0, 1)
+    j ~ dnorm(0, 1)
+    k1 ~ dnorm(0, 1)
+    k2 ~ dnorm(0, 1)
+    l1 ~ dnorm(0, 1)
+    l2 ~ dnorm(0, 1)
+    l3 ~ dnorm(0, 1)
+    z1 ~ dnorm(0, 1)
+    z2 ~ dnorm(0, 1)
+})
+Rmodel <- nimbleModel(code)
+
+a_sampler <- nimbleFunction(setup = function() {}, run = function() 2)
+x_sampler <- nimbleFunction(setup = function() {}, run = function() 3)
+
+em <- samplerAssignmentRules(empty=TRUE, print=TRUE)
+em$addRule(quote(grepl('^a', node)), 'a_sampler')
+em$addRule(quote(grepl('^b1', node)), a_sampler)
+em$addRule(quote(grepl('^b2', node)), a_sampler, name = 'sampler_for_node_b')
+em$addRule(quote(grepl('^c1', node)), nimbleFunction(setup = function() {}, run = function() 4))
+ll <- list()
+ll[[1]] <- nimbleFunction(setup = function() {}, run = function() 5)
+em$addRule(quote(grepl('^c2', node)), ll[[1]])
+em$addRule(quote(grepl('^c3', node)), ll[[1]], name = 'sampler_for_c3')
+em$addRule(quote(grepl('^d', node)), 'RW')
+em$addRule(quote(grepl('^e1', node)), 'sampler_RW')
+em$addRule(quote(grepl('^e2', node)), 'sampler_RW', name = 'sampler_for_e2')
+em$addRule(quote(grepl('^f', node)), sampler_RW)
+em$addRule(quote(grepl('^g', node)), quote(addSampler(target=node, type=sampler_RW)))
+em$addRule(quote(grepl('^h', node)), quote(addSampler(target=node, type='RW')))
+em$addRule(quote(grepl('^i', node)), quote(addSampler(target=node, type='sampler_RW')))
+em$addRule(quote(grepl('^j', node)), quote(addSampler(target=node, type='x_sampler')))
+em$addRule(quote(grepl('^k1', node)), quote(addSampler(target=node, type=x_sampler)))
+em$addRule(quote(grepl('^k2', node)), quote(addSampler(target=node, type=x_sampler, name='sampler_for_k2')))
+em$addRule(quote(grepl('^l1', node)), quote(addSampler(target=node, type=nimbleFunction(setup = function() {}, run = function() 6))))
+em$addRule(
+    quote(grepl('^l2', node)),
+    quote(addSampler(
+        target=node,
+        type=nimbleFunction(setup = function() {}, run = function() 6),
+        name='sampler_for_node_l2')))
+em$addRule(
+    quote(grepl('^l3', node)),
+    quote(addSampler(
+        target=node,
+        type=nimbleFunction(setup = function() {}, run = function() 6))),
+          name='sampler_for_node_l3')
+em
+
+conf <- configureMCMC(Rmodel, rules = em)
+conf$printSamplers()
+
+conf <- configureMCMC(Rmodel, rules = em, warnNoSamplerAssigned = FALSE)
+warnings()
+conf$printSamplers()
+
+nimbleOptions(MCMCdefaultSamplerAssignmentRules = em)
+getNimbleOption('MCMCdefaultSamplerAssignmentRules')
+
+conf <- configureMCMC(Rmodel)
+warnings()
+conf$printSamplers()
+
+nimbleOptions(MCMCdefaultSamplerAssignmentRules = samplerAssignmentRules())
+getNimbleOption('MCMCdefaultSamplerAssignmentRules')
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+
+samplerAssignmentRules()
+
+defaults$ruleList[[3]]
+defaults$printRules(3)
+defaults$printRules(c(3,5))
+
+defaults$addRule(1, 5, print=TRUE, position=12)
+defaults
+defaults$orderRules(1:5, print=TRUE)
+
+defaults$addRule(quote({a+b;TRUE;4}), 5, print=TRUE, position=3)
+defaults$addRule(quote({a+b;TRUE;4}), quote({for(i in 1:10) {a + b; TRUE}}), print=TRUE)
+defaults
+
+defaults$addRule(TRUE, mean, print=TRUE)
+defaults$addRule(TRUE, sampler_RW, print=TRUE)
+
+defaults$reorder(c(1,4,5), print=TRUE)
+defaults
+
+
+defaults$reorder(c(1,3,2))
+defaults$reorder(2:12)
+defaults$reorder(c(1,4,0,3))
+defaults$reorder(c(1,4,5.5,3))
+defaults$addRule(quote(grepl('^a', node)), 'a_sampler', position=1, print=TRUE)
+
+
+em <- samplerAssignmentRules(empty=TRUE, print=TRUE)
+em$addRule(quote(grepl('^a', node)), 'a_sampler', position=1, print=TRUE)
+
+em <- samplerAssignmentRules(empty=TRUE, print=TRUE)
+em$addRule(quote(grepl('^a', node)), a_sampler, position=1, print=TRUE)
+
+em$printRules()
+
+conf <- configureMCMC(Rmodel, rules = em)
+conf$printSamplers()
+
+
+conf$printSamplers()
+
+
+Rmodel$isMultivariate('a[1]')
+Rmodel$isMultivariate('a[1:2]')
+Rmodel$isMultivariate('x')
+Rmodel$isMultivariate('x[1:5]')
+Rmodel$isMultivariate(c('x[1:5]', 'x', 'a'))
+
+
+## bug in copying models?
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:N) {
+        x[i] ~ dnorm(0, 1)
+    }
+})
+constants <- list(N=10)
+
+def <- nimbleModel(code, constants, returnDef = TRUE)
+
+Rmodel1 <- def$newModel(check = FALSE)
+
+Rmodel2 <- def$newModel(check = FALSE)
+
+Rmodel1$newModel(check=FALSE)
+                 
+
+## read and XML document
+
+library(XML)
+
+url <- 'https://www.w3schools.com/xml/plant_catalog.xml'
+url
+
+?xmlTreeParse
+formals(xmlTreeParse)
+args(xmlTreeParse)
+
+xmlfile <- xmlTreeParse(url)
+xmlfile <- xmlTreeParse(url, isURL=TRUE)
+
+                                        # the xml file is now saved as an object you can easily work with in R:
+class(xmlfile)
+# Use the xmlRoot-function to access the top node
+xmltop = xmlRoot(xmlfile)
+# have a look at the XML-code of the first subnodes:
+print(xmltop)[1:2]
+
+
+## error in getDependencies
+
+library(nimble)
+
+code <- nimbleCode({
+    x[1:10] ~ dmnorm(mu[1:10], C[1:10,1:10])
+    for(i in 1:10) {
+        y[i] ~ dnorm(x[i], 1)
+    }
+})
+
+constants <- list(mu = rep(0,10), C = diag(10))
+data <- list()
+inits <- list(x = rep(0,10), y = rep(0,10))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$getDependencies('x[5]')
+
+Rmodel$calculate('x')
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+##Cmcmc$run(10000)
+##samples <- as.matrix(Cmcmc$mvSamples)
+
+colnames(samples)
+apply(samples, 2, mean)
+
+samplesPlot(samples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+
+
+
+
+
+## testing output of printSamplers() and getSamplers()
+
+library(nimble)
+
+N <- 10
+code <- nimbleCode({
+    mu[1:N] ~ dmnorm(ones[1:N], C[1:N,1:N])
+    a[1:N] ~ dmnorm(mu[1:N], C[1:N,1:N])
+    x ~ dnorm(z, 1)
+    y ~ dnorm(x, 1)
+    z ~ dgamma(1, 1)
+    for(i in 1:N) {
+        qq[i] ~ dnorm(a[i], 1)
+    }
+})
+constants <- list(N=N, C=diag(N), ones=rep(0,N))
+data <- list(y = 0)
+inits <- list(a = rep(0,N), x=0, qq=rep(0,N))
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+
+conf$printSamplers()
+conf$getSamplerDefinition(3)
+
+conf$addSampler('a', 'RW_block', control=list(scale=2, adaptInterval=500, propCov=10*diag(N)))
+conf$addSampler('z', 'RW', control=list(scale=3))
+conf$addSampler('z', 'RW', control=list(scale=1:10))
+conf$addSampler('z', 'RW', control=list(scale=c(1,4,6,7)))
+
+conf$printSamplers()
+conf$printSamplers(displayConjugateDep = TRUE)
+conf$printSamplers(displayControlDefaults = TRUE)
+conf$printSamplers(displayNonScalars = TRUE)
+conf$getSamplers()
+
+conf$samplerConfs[[1]]
+class(conf$samplerConfs[[1]])
+
+
+## testing using if() statements inside BUGS code
+
+library(nimble)
+
+code <- nimbleCode({
+    if(orderx == 1) {
+        y ~ dnorm(0,1)
+    } else {
+        y ~ dpois(1)
+    }
+})
+
+orderx <- 1
+
+m <- nimbleModel(code, constants=list(orderx=1))
+
+
+## demo of using splines
+library(splines)
+
+data <- data.frame(value = c(0.01590000, 0.04040333, 0.08487666,
+                             0.36868000, 0.31937660),
+                   depth = c(10, 25, 50, 100, 180),
+                   t = 1:5)
+
+value.sp <- interpSpline(value ~ t, data)
+depth.sp <- interpSpline(depth ~ t, data)
+class(value.sp)
+value.sp
+plot(value.sp)
+plot(depth ~ value, data)
+lines(predict(value.sp)$y, predict(depth.sp)$y)
+
+## demo of coin flips and LLN
+
+set.seed(0)
+n <- 15
+flips <- rbinom(n, 1, 0.5)
+flips
+
+cumsum(flips)
+
+cumsum(flips) / 1:n
+
+running_avg <- cumsum(flips) / 1:n
+running_avg
+
+par(mfrow=c(1,1))
+plot(running_avg, type='l')
+abline(h=0.5, col='red', lty=3)
+
+ks <- 2:4
+par(mfrow=c(length(ks),1), mar=c(2,2,2,2))
+for(i in ks) {
+    set.seed(0)
+    n <- 10^i
+    flips <- rbinom(n, 1, 0.5)
+    running_avg <- cumsum(flips) / seq_along(flips)
+    plot(running_avg, type='l')
+    abline(h=0.5, col='red', lty=3)
+}
+
+
+
+## testing use of rep() in NIMBLE DSL code
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:5) {
+        a[i] ~ dnorm(0, 1)
     }
 })
 constants <- list()
 data <- list()
-inits <- list(a = 0, b=1:5)
+inits <- list(a = 1:5)
 
 Rmodel <- nimbleModel(code, constants, data, inits)
+Cmodel <- compileNimble(Rmodel)
 
-Rmodel$getVarNames()
+nfDef <- nimbleFunction(
+    setup = function(model) {
+        d <- 5
+        node <- 'a[1:5]'
+    },
+    run = function(a = double()) {
+        model[[node]] <<- rep(a, d)
+    }
+)
 
-Rmodel$getVarNames(nodes = 'a', includeData=TRUE)
+Rnf <- nfDef(Rmodel)
 
-Rmodel$getVarNames(nodes = 'a', includeData=FALSE)
+Cnf <- compileNimble(Rnf, project=Rmodel)
 
-Rmodel$getVarNames(includeData=FALSE)
+Rmodel$a
+Rnf$run(3)
+Rmodel$a
+
+Cmodel$a
+Cnf$run(3)
+Cmodel$a
 
 
+
+## looking at Hurricane Damage data file for STAT201 takehome midterm
+
+df <- read.csv("~/github/courses/stat201/data/HurricaneDamage.csv")
+head(df)
+dim(df)
+df
+with(df, plot(Year, Damage))
+i <- which.max(df$Damage)
+i
+df[i,]
+
+with(df, plot(Year[-1], Damage[-1]))
 
 
 ## trying to figure out what's meant by github issue for setData()
@@ -97,6 +1413,10 @@ cor(Height, Friends)
 lm(Height ~ Friends)
 
 str(survey)
+
+survey$Siblings
+table(survey$Siblings)
+prop.table(table(survey$Siblings))
 
 
 ## warning messing in NIMBLE for forgetting type declaration
@@ -2742,6 +4062,14 @@ plot(samples3[,'b'], type='l', ylab='b')
 ##samplesPlot(samples, var=c('sigOE','sigPN'))
 ##samplesPlot(samples2, var=c('sigOE','sigPN'))
 
+pdf('~/downloads/RWblock.pdf')
+par(mfrow=c(2,1), mar=c(2,1,2,1))
+indToPlot <- 1:200000
+plot( samples[indToPlot,'a'], type='l', ylab='a', main = 'MCMC Samples of Parameter 1')
+plot( samples[indToPlot,'b'], type='l', ylab='b', main = 'MCMC Samples of Parameter 2')
+dev.off()
+
+
 block_scales <- Cmcmc$samplerFunctions$contentsList[[1]]$getScaleHistory()
 length(block_scales)
 block_propCovHistory <- Cmcmc$samplerFunctions$contentsList[[1]]$getPropCovHistory()
@@ -4024,39 +5352,6 @@ observed_ratio <- cond.tab[2,1] - cond.tab[1,1]
 abline(v = observed_ratio, col = 'red', lwd = 2)
 
 
-
-## demo of coin flips and LLN
-
-n <- 30
-n
-
-flips <- rbinom(n, 1, 0.5)
-flips
-
-cumsum(flips)
-
-seq_along(flips)
-
-cumsum(flips) / seq_along(flips)
-
-running_avg <- cumsum(flips) / seq_along(flips)
-
-running_avg
-
-par(mfrow=c(1,1))
-plot(running_avg, type='l')
-abline(h=0.5, col='red', lty=3)
-
-ks <- 2:4
-par(mfrow=c(length(ks),1), mar=c(2,2,2,2))
-
-for(i in ks) {
-    n <- 10^i
-    flips <- rbinom(n, 1, 0.5)
-    running_avg <- cumsum(flips) / seq_along(flips)
-    plot(running_avg, type='l')
-    abline(h=0.5, col='red', lty=3)
-}
 
 
 
@@ -19625,7 +20920,6 @@ code <- nimbleCode({
     sigma <- 1 / sqrt(tau)
     tau ~ dgamma(0.001, 0.001)
 })
-
 constants <- list(N = 10, n = c(12,20,18,19,10,23,19,15,8,10))
 data <- list(r = c(4,7,10,3,6,7,11,9,3,8))
 inits <- list(mu = 0, tau = 1)
