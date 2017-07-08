@@ -1,71 +1,1893 @@
-## CAR scalar_RW sampler
-## no islands
-## also sampling tau
+
+
+
+## test of current samples from AF_slice sampler
 library(nimble)
+load('~/github/hybridBlockSamplers/data/model_litters.RData')
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+conf$addSampler(c('a','b'), 'AF_slice')
+##conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+set.seed(0); system.time(samples <- runMCMC(Cmcmc, 20000))
+if(!all(c(round(samples[1,],7) == c(14.7334414, 1.2708328, 2.8708787, 0.9404118),
+          round(samples[1000,],7) == c(321.6325351, 1.5995729, 34.4197040, 0.5525827),
+          round(samples[10000,2:4],6) == c(4.443445, 329.645757, 1.776704),
+          round(samples[20000,],6) == c(2803.235783, 4.217422, 390.150481, 1.218532))))
+    stop('something broke') else message('OK')
+
+
+
+
+## test of conf$removeSamplers('a', 'b', 'c')
+library(nimble)
+load('~/github/hybridBlockSamplers/data/model_litters.RData')
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$removeSamplers('a', 'b')
+conf$printSamplers()
+
+
+
+
+
+## dcar_proper example from WinBUGS geoBUGS user manual:
+## for running in NIMBLE
+library(nimble)
+
+code <- nimbleCode({
+    ## Set up 'data' to define spatial dependence structure
+    ## =====================================
+    ## The vector C[] required as input into the car.proper distribution is a vector respresention
+    ## of the weight matrix with elements Cij. The first J1 elements of the C[] vector contain the
+    ## weights for the J1 neighbours of area i=1; the (J1+1) to J2 elements of the C[] vector contain
+    ## the weights for the J2 neighbours of area i=2; etc.
+    ## To set up this vector, we need to define a variable cumsum, which gives the values of J1,
+    ## J2, etc.; we then set up an index matrix pick[,] with N columns corresponding to the
+    ## i=1,...,N areas, and with the same number of rows as there are elements in the C[] vector 
+    ## (i.e. L). The elements C[ (cumsum[i]+1):cumsum[i+1] ] correspond to 
+    ## the set of weights Cij associated with area i, and so we set up ith column of the matrix pick[,]
+    ## to have a 1 in all the rows k for which cumsum[i] < k <= cumsum[i+1], and 0's elsewhere. 
+    ## For example, let N=4 and cumsum=c(0,3,5,6,8), so area i=1 has 3 neighbours, area i=2 has 2 
+    ## neighbours, area i=3 has 1 neighbour and area i=4 has 2 neighbours. The the matrix pick[,] is:
+    ##                pick                  
+    ##             1, 0, 0, 0,                   
+    ##             1, 0, 0, 0,                   
+    ##             1, 0, 0, 0,                    
+    ##             0, 1, 0, 0,                   
+    ##             0, 1, 0, 0,                   
+    ##             0, 0, 1, 0,                   
+    ##             0, 0, 0, 1,                   
+    ##             0, 0, 0, 1,                   
+    ##
+    ## We can then use the inner product (inprod(,)) function in WinBUGS and the kth row of pick to 
+    ## select which area corresponds to the kth element in the vector C[]; likewise, we can use inprod(,) 
+    ## and the ith column of pick to select the elements of C[] which correspond to area i.
+    ##
+    ## Note: this way of setting up the C vector is somewhat convoluted!!!! In future versions, we hope the 
+    ## GeoBUGS adjacency matrix tool will be able to dump out the relevant vectors required. Alternatively, 
+    ## the C vector could be created using another package (e.g. Splus) and read into WinBUGS as data.
+    ##
+    cumsum[1] <- 0
+    for(i in 2:(N+1)) {
+        cumsum[i] <- sum(num[1:(i-1)])
+    }
+    for(k in 1:L) {
+        for(i in 1:N) {
+            pick[k,i] <- step(k - cumsum[i] - epsilon)  * step(cumsum[i+1] - k)
+            ##  pick[k,i] = 1    if     cumsum[i] < k <= cumsum[i=1];  otherwise, pick[k,i] = 0
+        }
+        C[k] <- sqrt(E[adj[k]] / inprod(E[1:N], pick[k,1:N]))    # weight for each pair of neighbours
+    }
+    epsilon <- 0.0001
+    ## Model
+    ## =====
+    ## Priors:
+    alpha  ~ dnorm(0, 0.0001)
+    prec  ~ dgamma(0.5, 0.0005)     ## prior on precision
+    v <- 1/prec                     ## variance
+    sigma <- sqrt(1 / prec)         ## standard deviation
+    gamma.min <- min.bound(C[1:L], adj[1:L], num[1:N], M[1:N])
+    gamma.max <- max.bound(C[1:L], adj[1:L], num[1:N], M[1:N])
+    gamma ~ dunif(gamma.min, gamma.max)
+    S[1:N] ~ car.proper(theta[1:N], C[1:L], adj[1:L], num[1:N], M[1:N], prec, gamma)
+    ## Likelihood:
+    for(i in 1:N) {
+        log(mu[i]) <- log(E[i]) + S[i]
+        Y[i] ~ dpois(mu[i])
+        RR[i] <- exp(S[i])      ## Area-specific relative risk
+        theta[i] <- alpha
+    }
+})
+
+N <- 56
+E <- c(1.4, 8.7, 3.0, 2.5, 4.3, 2.4, 8.1, 2.3, 2.0, 6.6,
+       4.4, 1.8, 1.1, 3.3, 7.8, 4.6, 1.1, 4.2, 5.5, 4.4,
+       10.5,22.7, 8.8, 5.6,15.5,12.5, 6.0, 9.0,14.4,10.2,
+       4.8, 2.9, 7.0, 8.5,12.3,10.1,12.7, 9.4, 7.2, 5.3,
+       18.8,15.8, 4.3,14.6,50.7, 8.2, 5.6, 9.3,88.7,19.6,
+       3.4, 3.6, 5.7, 7.0, 4.2, 1.8)
+M <- 1/E
+##X <- c(16,16,10,24,10,24,10, 7, 7,16, 7,16,10,24, 7,16,10,
+##       7, 7,10, 7,16,10, 7, 1, 1, 7, 7,10,10,7,24,10, 7, 7,
+##       0,10, 1,16, 0, 1,16,16, 0, 1, 7, 1, 1, 0, 1,1, 0, 1, 1,16,10)
+num <- c(3, 2, 1, 3, 3, 0, 5, 0, 5, 4, 0, 2, 3, 3, 2, 6, 6, 6, 5, 3,
+         3, 2, 4, 8, 3, 3, 4, 4, 11, 6, 7, 3, 4, 9, 4, 2, 4, 6, 3, 4, 
+         5, 5, 4, 5, 4, 6, 6, 4, 9, 2, 4, 4, 4, 5, 6, 5)
+adj <- c(19, 9, 5, 10, 7, 12, 28, 20, 18, 19, 12, 1, 
+         17, 16, 13, 10, 2, 29, 23, 19, 17, 1, 22, 16, 7, 2, 
+         5, 3, 19, 17, 7, 35, 32, 31, 29, 25, 29, 22, 21, 17,
+         10, 7, 29, 19, 16, 13, 9, 7, 56, 55, 33, 28, 20, 4,
+         17, 13, 9, 5, 1, 56, 18, 4, 50, 29, 16, 16, 10, 39, 34, 29, 9,
+         56, 55, 48, 47, 44, 31, 30, 27, 29, 26, 15, 43, 29, 25,
+         56, 32, 31, 24, 45, 33, 18, 4, 50, 43, 34, 26, 25, 23, 21,
+         17, 16, 15, 9, 55, 45, 44, 42, 38, 24, 47, 46, 35, 32, 27, 24, 14, 
+         31, 27, 14, 55, 45, 28, 18, 54, 52, 51, 43, 42, 40, 39, 29, 23,
+         46, 37, 31, 14, 41, 37, 46, 41, 36, 35, 54, 51, 49, 44, 42, 30,
+         40, 34, 23, 52, 49, 39, 34, 53, 49, 46, 37, 36, 51, 43, 38, 34, 30,
+         42, 34, 29, 26, 49, 48, 38, 30, 24, 55, 33, 30, 28, 53, 47, 41,
+         37, 35, 31, 53, 49, 48, 46, 31, 24, 49, 47, 44, 24, 54, 53, 52,
+         48, 47, 44, 41, 40, 38, 29, 21, 54, 42, 38, 34, 54, 49, 40, 34,
+         49, 47, 46, 41, 52, 51, 49, 38, 34, 56, 45, 33, 30, 24, 18,
+         55, 27, 24, 20, 18)
+L <- length(adj)
+constants <- list(N=N, L=L, E=E, num=num, adj=adj, M=M)
+
+Y <- c(9, 39, 11, 9, 15, 8, 26, 7, 6, 20, 13, 5, 3, 8, 17, 9, 2, 7, 9,
+       7, 16, 31, 11, 7, 19, 15, 7, 10, 16, 11, 5, 3, 7, 8, 11, 9, 11,
+       8, 6, 4, 10, 8, 2, 6, 19, 3, 2, 3, 28, 6, 1, 1, 1, 1, 0, 0)
+data <- list(Y=Y)
+
+inits <- list(alpha = 3, prec = 1, gamma = 0.1,
+              S = c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0))
+
+
+## dcar_proper example from WinBUGS geoBUGS user manual:
+## this is the model as I ran it in WinBUGS,
+## and the RESULTS FROM WINBUGS for comparison.
+
+model
+{
+  for(i in 1 : N) { 
+     m[i] <- 1/E[i]       # scaling factor for variance in each cell
+  } 
+  cumsum[1] <- 0
+  for(i in 2:(N+1)) {
+     cumsum[i] <- sum(num[1:(i-1)])
+  }	
+  for(k in 1 : sumNumNeigh) { 
+ 	 for(i in 1:N) {
+          pick[k,i] <- step(k - cumsum[i] - epsilon)  * step(cumsum[i+1] - k)   
+      }                                                       
+      C[k] <- sqrt(E[adj[k]] / inprod(E[], pick[k,]))    # weight for each pair of neighbours
+  }
+  epsilon <- 0.0001
+  for (i in 1 : N) {
+      Y[i]  ~ dpois(mu[i])
+      log(mu[i]) <- log(E[i]) + S[i]
+      RR[i] <- exp(S[i])      # Area-specific relative risk 
+      theta[i] <- alpha
+  }
+  S[1:N] ~ car.proper(theta[], C[], adj[], num[], m[], prec, gamma)
+  alpha  ~ dnorm(0, 0.0001)  
+  prec  ~ dgamma(0.5, 0.0005)     # prior on precision
+   v <- 1/prec                               # variance
+  sigma <- sqrt(1 / prec)               # standard deviation
+  gamma.min <- min.bound(C[], adj[], num[], m[])
+  gamma.max <- max.bound(C[], adj[], num[], m[])
+  gamma ~ dunif(gamma.min, gamma.max)
+}
+
+## data
+list(N = 56,  
+     Y   = c(    9,   39,   11,    9,   15,    8,   26,    7,    6,   20,
+         13,    5,    3,    8,   17,    9,    2,    7,    9,    7,
+         16,   31,   11,    7,   19,   15,    7,   10,   16,   11,
+         5,    3,    7,    8,   11,    9,   11,    8,    6,    4,
+         10,    8,    2,    6,   19,    3,    2,    3,   28,    6,
+         1,    1,    1,    1,    0,    0),
+     E = c(1.4, 8.7, 3.0, 2.5, 4.3, 2.4, 8.1, 2.3, 2.0, 6.6, 4.4, 1.8, 1.1, 3.3, 7.8, 4.6, 1.1, 4.2, 5.5, 4.4,
+         10.5,22.7, 8.8, 5.6,15.5,12.5, 6.0, 9.0,14.4,10.2, 4.8, 2.9, 7.0, 8.5,12.3,10.1,12.7, 9.4, 7.2, 5.3,
+         18.8,15.8, 4.3,14.6,50.7, 8.2, 5.6, 9.3,88.7,19.6, 3.4, 3.6, 5.7, 7.0, 4.2, 1.8),
+     num = c(3, 2, 1, 3, 3, 0, 5, 0, 5, 4, 0, 2, 3, 3, 2, 6, 6, 6, 5, 3, 3, 2, 4, 8, 3, 3, 4, 4, 11, 6, 7, 3,
+         4, 9, 4, 2, 4, 6, 3, 4, 5, 5, 4, 5, 4, 6, 6, 4, 9, 2, 4, 4, 4, 5, 6, 5),
+     adj = c(19, 9, 5, 10, 7, 12, 28, 20, 18, 19, 12, 1, 17, 16, 13, 10, 2, 
+         29, 23, 19, 17, 1, 22, 16, 7, 2, 5, 3, 19, 17, 7, 35, 32, 31, 
+         29, 25, 29, 22, 21, 17, 10, 7, 29, 19, 16, 13, 9, 7, 56, 55, 33, 28, 20, 4, 
+         17, 13, 9, 5, 1, 56, 18, 4, 50, 29, 16, 16, 10, 39, 34, 29, 9, 56, 55, 48, 47, 44, 31, 30, 27, 
+         29, 26, 15, 43, 29, 25, 56, 32, 31, 24, 45, 33, 18, 4, 50, 43, 34, 26, 25, 23, 21, 17, 16, 15, 9, 
+         55, 45, 44, 42, 38, 24, 47, 46, 35, 32, 27, 24, 14, 31, 27, 14, 55, 45, 28, 18, 
+         54, 52, 51, 43, 42, 40, 39, 29, 23, 46, 37, 31, 14, 41, 37, 46, 41, 36, 35, 54, 51, 49, 44, 42, 30, 
+         40, 34, 23, 52, 49, 39, 34, 53, 49, 46, 37, 36, 51, 43, 38, 34, 30, 42, 34, 29, 26, 49, 48, 38, 30, 24, 
+         55, 33, 30, 28, 53, 47, 41, 37, 35, 31, 53, 49, 48, 46, 31, 24, 49, 47, 44, 24, 54, 53, 52, 48, 47, 44, 41, 40, 38, 
+         29, 21, 54, 42, 38, 34, 54, 49, 40, 34, 49, 47, 46, 41, 52, 51, 49, 38, 34, 56, 45, 33, 30, 24, 18, 55, 27, 24, 20, 18),
+     sumNumNeigh = 234)
+
+## inits
+list(alpha=3, prec=1, S=c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0), gamma=0.1)
+
+## results from WinBUGS for dcar_proper:
+## dcar_proper example from WinBUGS geoBUGS user manual:
+## for running in NIMBLE
+##  node	 mean	 sd	2.5%	median	97.5%
+##  alpha	-0.1391	0.1592	-0.4531	-0.1396	0.1732
+##  gamma	0.1634	0.01875	0.1129	0.1689	0.1823
+##  prec	0.3342	0.09314	0.1859	0.3226	0.5491
+
+winbugsResults <- matrix(c(-0.1391,0.1592,-0.4531,-0.1396,0.1732,0.1634,0.01875,0.1129,0.1689,0.1823,0.3342,0.09314,0.1859,0.3226,0.5491), nrow=3, ncol=5, byrow=TRUE)
+rownames(winbugsResults) <- c('alpha', 'gamma', 'prec')
+colnames(winbugsResults) <- c('mean', 'sd', '2.5%', 'median', '97.5%')
+winbugsResults
+##          mean      sd    2.5%  median  97.5%
+## alpha -0.1391 0.15920 -0.4531 -0.1396 0.1732
+## gamma  0.1634 0.01875  0.1129  0.1689 0.1823
+## prec   0.3342 0.09314  0.1859  0.3226 0.5491
+
+##S[1]	1.743	0.3439	0.001097	1.016	1.762	2.368	501	99500
+##S[2]	1.397	0.1632	5.225E-4	1.067	1.402	1.707	501	99500
+##S[3]	1.143	0.3117	9.69E-4	0.4913	1.157	1.714	501	99500
+##S[4]	1.126	0.3423	0.001084	0.4093	1.143	1.752	501	99500
+##S[5]	1.129	0.2605	7.779E-4	0.59	1.14	1.611	501	99500
+##S[6]	1.018	0.3665	0.001187	0.2505	1.037	1.681	501	99500
+##S[7]	1.084	0.1942	5.992E-4	0.6894	1.09	1.449	501	99500
+##S[8]	0.9187	0.3893	0.001243	0.09141	0.9405	1.618	501	99500
+##S[9]	0.9715	0.4085	0.001309	0.1061	0.9946	1.7	501	99500
+##S[10]	1.036	0.2199	6.416E-4	0.5859	1.043	1.446	501	99500
+##S[11]	0.9193	0.2842	9.177E-4	0.3267	0.9312	1.442	501	99500
+##S[12]	0.8776	0.4498	0.001464	-0.07956	0.9062	1.679	501	99500
+##S[13]	0.8362	0.5806	0.001909	-0.4341	0.8821	1.84	501	99500
+##S[14]	0.7018	0.3602	0.001163	-0.05503	0.7194	1.357	501	99500
+##S[15]	0.6455	0.2399	7.549E-4	0.1524	0.6531	1.092	501	99500
+##S[16]	0.6387	0.3135	9.77E-4	-0.01128	0.6519	1.214	501	99500
+##S[17]	0.5477	0.6598	0.002289	-0.8985	0.606	1.674	501	99500
+##S[18]	0.3313	0.3711	0.001216	-0.4439	0.3496	1.005	501	99500
+##S[19]	0.4437	0.3107	9.139E-4	-0.2032	0.4586	1.013	501	99500
+##S[20]	0.3253	0.364	0.001044	-0.4397	0.3424	0.9856	501	99500
+##S[21]	0.2978	0.2382	7.383E-4	-0.1894	0.3042	0.7465	501	99500
+##S[22]	0.245	0.1679	5.286E-4	-0.09421	0.2487	0.5618	501	99500
+##S[23]	0.1375	0.2776	8.674E-4	-0.4362	0.1469	0.6536	501	99500
+##S[24]	-0.09633	0.3869	0.001406	-0.9039	-0.07928	0.6078	501	99500
+##S[25]	0.1488	0.2098	7.077E-4	-0.278	0.1544	0.5439	501	99500
+##S[26]	0.1014	0.2378	7.583E-4	-0.3835	0.1082	0.5479	501	99500
+##S[27]	0.02065	0.3505	0.001112	-0.7117	0.03649	0.6625	501	99500
+##S[28]	0.007397	0.2895	9.733E-4	-0.589	0.01767	0.5463	501	99500
+##S[29]	0.0935	0.2217	6.994E-4	-0.3598	0.09998	0.5113	501	99500
+##S[30]	-0.1558	0.2916	9.563E-4	-0.7564	-0.1461	0.3874	501	99500
+##S[31]	-0.111	0.4157	0.001364	-0.9859	-0.08949	0.6387	501	99500
+##S[32]	-0.05884	0.5173	0.001618	-1.162	-0.02871	0.8635	501	99500
+##S[33]	-0.155	0.3465	0.001048	-0.8779	-0.1405	0.4833	501	99500
+##S[34]	-0.266	0.3345	0.001164	-0.9582	-0.2517	0.3513	501	99500
+##S[35]	-0.1531	0.2626	8.8E-4	-0.6914	-0.1448	0.3414	501	99500
+##S[36]	-0.1871	0.2935	9.404E-4	-0.7946	-0.1764	0.3574	501	99500
+##S[37]	-0.2241	0.2653	8.216E-4	-0.7694	-0.2154	0.2753	501	99500
+##S[38]	-0.4511	0.3403	0.001183	-1.152	-0.4382	0.1817	501	99500
+##S[39]	-0.2213	0.3515	0.001097	-0.9473	-0.2063	0.428	501	99500
+##S[40]	-0.517	0.4516	0.001434	-1.464	-0.4969	0.3053	501	99500
+##S[41]	-0.641	0.2547	8.162E-4	-1.164	-0.6343	-0.1627	501	99500
+##S[42]	-0.5665	0.2712	9.55E-4	-1.124	-0.557	-0.06094	501	99500
+##S[43]	-0.619	0.5202	0.001687	-1.717	-0.5893	0.3157	501	99500
+##S[44]	-0.7859	0.3004	9.681E-4	-1.404	-0.7759	-0.2268	501	99500
+##S[45]	-0.6555	0.172	7.411E-4	-1.009	-0.6506	-0.3324	501	99500
+##S[46]	-0.8712	0.4106	0.001378	-1.728	-0.8558	-0.1191	501	99500
+##S[47]	-1.154	0.5385	0.001751	-2.284	-1.128	-0.1731	501	99500
+##S[48]	-0.997	0.3996	0.001411	-1.83	-0.9819	-0.2598	501	99500
+##S[49]	-0.8482	0.1408	6.438E-4	-1.136	-0.8441	-0.5841	501	99500
+##S[50]	-0.6966	0.2663	0.001019	-1.253	-0.6847	-0.2069	501	99500
+##S[51]	-1.083	0.6658	0.002157	-2.505	-1.042	0.1048	501	99500
+##S[52]	-1.299	0.68	0.002363	-2.738	-1.26	-0.07973	501	99500
+##S[53]	-1.406	0.566	0.002052	-2.597	-1.376	-0.3815	501	99500
+##S[54]	-1.354	0.5102	0.001772	-2.43	-1.328	-0.4254	501	99500
+##S[55]	-1.422	0.6701	0.002154	-2.848	-1.378	-0.2378	501	99500
+##S[56]	-1.364	0.9762	0.003289	-3.505	-1.283	0.2978	501	99500
+
+
+
+
+## test of compilation of dcar_proper()
+## CURRENTLY FAILING
+## NEED TO GET HELP FROM CJP
+##
+## ALSO:
+## building nimble package gives this disturbing warning:
+## ** testing if installed package can be loaded
+## Warning: failed to assign RegisteredNativeSymbol for C_dcar_normal to C_dcar_normal since C_dcar_normal is already defined in the ‘nimble’ namespace
+## * DONE (nimble)
+##
+library(nimble)
+
+code <- nimbleCode({
+    x[1:3] ~ dcar_proper(mu[1:3], C[1:6], adj[1:6], num[1:3], M[1:3], t, g)
+})
+constants <- list(mu = 1:3, C = 1:6, adj = 1:6, num = 1:3, M = 1:3, t = 1, g = 1)
+data <- list()
+inits <- list(x = c(1, 2, NA))
+
+Rmodel <- nimbleModel(code, constants, data, inits, calculate=FALSE)
+
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+
+
+
+
+## problem from TR J/A 2
+## deck of 52, A=1, face = 10
+## drawing cards w/ replacement
+## draw 2, prob(sum is even) ?
+## draw 4, or draw 100?
+pE <- 8/13
+pO <- 5/13
+
+N <- 100
+pevensum <- numeric(N)
+pevensum[1] <- pE
+
+if(N > 1) for(i in 2:N) {
+    pevensum[i] <- (1-pevensum[i-1])*pO + pevensum[i-1]*pE
+    }
+pevensum
+
+pevensum[99] - pevensum[100]
+plot(1:N, pevensum, type = 'l', xlim=c(1,10))
+
+## testing as.carAdjacency() conversions
+library(nimble)
+as.carAdjacency
+as.carAdjacency(matrix(c(0,0,0,0,0,2,0,2,0), 3, 3))
+
+as.carAdjacency(list(numeric(0), 3, 2), list(numeric(0), 2, 2))
+
+## testing about providing numIslands argument to dcar_normal()
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:L) {   weights[i] <- 1   }
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 1)
+    for(i in 1:N) { y[i] ~ dnorm(S[i], 1) }
+})
+constants <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    ##weights = c(1,1,1,1,1,1,1,1),
+    L = 8)
+data <- list( y = c(1,2,3,4,5) )
+inits <- list( S = c(1,2,3,4,5) )
+
+code <- nimbleCode({
+    for(i in 1:L) {   weights[i] <- 1   }
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 1, 3)
+    for(i in 1:N) { y[i] ~ dnorm(S[i], 1) }
+})
+constants <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    ##weights = c(1,1,1,1,1,1,1,1),
+    L = 8)
+data <- list( y = c(1,2,3,4,5) )
+inits <- list( S = c(1,2,3,4,5) )
+
+code <- nimbleCode({
+    for(i in 1:L) {   weights[i] <- 1   }
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 1, numI)
+    for(i in 1:N) { y[i] ~ dnorm(S[i], 1) }
+})
+constants <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    ##weights = c(1,1,1,1,1,1,1,1),
+    L = 8)
+data <- list( y = c(1,2,3,4,5) )
+inits <- list( S = c(1,2,3,4,5), numI = 4)
+
+code <- nimbleCode({
+    for(i in 1:L) {   weights[i] <- 1   }
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 1, numI)
+    for(i in 1:N) { y[i] ~ dnorm(S[i], 1) }
+})
+constants <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    ##weights = c(1,1,1,1,1,1,1,1),
+    L = 8,
+    numI = 1)
+data <- list( y = c(1,2,3,4,5) )
+inits <- list( S = c(1,2,3,4,5) )
+
+## 5-8
+
+code <- nimbleCode({
+    S[1:N] ~ car.normal(adj[1:L], num = num[1:N], tau = 1)
+    for(i in 1:N) { y[i] ~ dnorm(S[i], 1) }
+})
+constants <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    L = 8)
+data <- list( y = c(1,2,3,4,5) )
+inits <- list( S = c(1,2,3,4,5) )
+
+code <- nimbleCode({
+    S[1:N] ~ car.normal(adj[1:L], num = num[1:N], tau = 1, numIslands = 3)
+    for(i in 1:N) { y[i] ~ dnorm(S[i], 1) }
+})
+constants <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    L = 8)
+data <- list( y = c(1,2,3,4,5) )
+inits <- list( S = c(1,2,3,4,5) )
+
+code <- nimbleCode({
+    S[1:N] ~ car.normal(adj[1:L], num = num[1:N], tau = 1, numIslands = numI)
+    for(i in 1:N) { y[i] ~ dnorm(S[i], 1) }
+})
+constants <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    L = 8)
+data <- list( y = c(1,2,3,4,5) )
+inits <- list( S = c(1,2,3,4,5), numI = 4)
+
+library(nimble)
+code <- nimbleCode({
+    ##S[1:N] ~ car.normal(adj[1:L], num = num[1:N], tau = 1, numIslands = numI)
+    S[1:N] ~ car.normal(adj[1:L], num = num[1:N], tau = 1, c = numI, zero_mean = 1)
+    for(i in 1:N) { y[i] ~ dnorm(S[i], 1) }
+})
+constants <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    L = 8,
+    numI = 1)
+data <- list( y = c(1,2,3,4,5) )
+inits <- list( S = c(1,2,3,4,5) )
+inits <- list( S = rep(NA,5) )
+
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Rmodel$S
+Cmodel$S
+
+Rmodel$calculate()
+Cmodel$calculate()
+niter <- 20
+set.seed(0); Rmcmc$run(niter)
+set.seed(0); Cmcmc$run(niter)
+
+Rsamples <- as.matrix(Rmcmc$mvSamples)
+Csamples <- as.matrix(Cmcmc$mvSamples)
+round(Rsamples - Csamples, 3)
+Rsamples
+Csamples
+round(apply(Rsamples, 1, sum), 5)
+round(apply(Csamples, 1, sum), 5)
+
+
+debug(Rmcmc$run)
+
+##[20,] -1.81243476 -1.10311996  0.31018093  0.69365670 1.9117171
+
+
+niter <- 10000
+set.seed(0); Cmcmc$run(niter)
+Csamples <- as.matrix(Cmcmc$mvSamples)
+samplesPlot(Csamples)
+samplesPlot(Csamples, var = 1:2)
+
+
+
+##options(warn=2)
+##options(error = recover)
+
+
+
+## testing how WinBUGS imposes the sum-to-zero constraint...
+## on a per-island-basis?
+
+library(nimble)
+
+code <- nimbleCode({
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 1)
+    for(i in 1:N) {
+        y[i] ~ dnorm(S[i], 1)
+    }
+    sum1 <- S[1] + S[2]
+    sum2 <- S[3] + S[4] + S[5]
+    sum3 <- S[1] + S[2] + S[3] + S[4] + S[5]
+})
+##
+data <- list(
+    N = 5,
+    num = c(1,1,2,2,2),
+    adj = c(2,1,   4,5,   3,5,   3,4),
+    weights = c(1,1,1,1,1,1,1,1),
+    L = 8,
+    y = c(1,2,3,4,5)
+)
+##
+inits <- list(
+    S = c(1,2,3,4,5)
+)
+
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['y'], inits)
+
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+
+
+## learning hose to use tapply()
+
+require(stats)
+rbinom(32, n = 5, prob = 0.4)
+as.factor(rbinom(32, n = 5, prob = 0.4))
+groups <- as.factor(rbinom(32, n = 5, prob = 0.4))
+groups
+tapply(groups, groups, length) #- is almost the same as
+table(groups)
+
+## contingency table from data.frame : array with named dimnames
+str(warpbreaks)
+head(warpbreaks)
+warpbreaks$breaks
+identical(warpbreaks[,-1], warpbreaks[-1])
+str(warpbreaks[-1])
+
+tapply(warpbreaks$breaks, warpbreaks[,-1], sum)
+tapply(warpbreaks$breaks, warpbreaks[,-1], sum, simplify=FALSE)
+tapply(warpbreaks$breaks, warpbreaks[,-1], function(x) x+1000)
+
+class(tapply(warpbreaks$breaks, warpbreaks[,-1], function(x) x+1000))
+typeof(tapply(warpbreaks$breaks, warpbreaks[,-1], function(x) x+1000))
+tapply(warpbreaks$breaks, warpbreaks[,-1], function(x) x+1000)[1,1]
+
+warpbreaks[, 3, drop = FALSE]
+warpbreaks[, 3]
+tapply(warpbreaks$breaks, warpbreaks[, 3, drop = FALSE], sum)
+tapply(warpbreaks$breaks, warpbreaks[, 3], sum)
+
+aggregate(warpbreaks$breaks, warpbreaks[, 3, drop=FALSE], sum)
+aggregate(warpbreaks$breaks, warpbreaks[, -1, drop=FALSE], sum)
+
+
+
+
+n <- 17
+rep_len(1:3, n)
+factor(rep_len(1:3, n), levels = 1:5)
+fac <- factor(rep_len(1:3, n), levels = 1:5)
+fac
+table(fac)
+tapply(1:n, fac, sum)
+tapply(1:n, fac, sum, default = 0) # maybe more desirable
+tapply(1:n, fac, sum, simplify = FALSE)
+##tapply(1:n, fac, range, default=c(1,3))
+tapply(1:n, fac, quantile)
+tapply(1:n, fac, length) ## NA's
+tapply(1:n, fac, length, default = 0) # == table(fac)
+
+
+
+## example of ... argument: find quarterly means
+tapply(presidents, cycle(presidents), mean, na.rm = TRUE)
+
+ind <- list(c(1, 2, 2), c("A", "A", "B"))
+ind
+table(ind)
+tapply(1:3, ind) #-> the split vector
+tapply(1:3, ind, sum)
+
+
+
+
+## checking car car_calcNumIslands()
+
+myfun <- function() CAR_calcNumIslands(adj, num)
+
+c_CAR_calcNumIslands <- compileNimble(CAR_calcNumIslands)
+myfun <- function() c_CAR_calcNumIslands(adj, num)
+
+num <- c(1, 1)
+adj <- c(2, 1)
+myfun()
+## c = 1
+
+library(nimble)
+myfun <- function() {
+    N <- length(num)
+    L <- sum(num)
+    weights <- rep(1, L)
+    code <- nimbleCode({
+        S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    })
+    constants <- list(adj=adj, weights=weights, num=num, N=N, L=L)
+    data <- list(S = rep(0,N))
+    inits <- list(tau = 1)
+    Rmodel <- nimbleModel(code, constants, data, inits)
+    Rmodel$calculate()
+}
+
+num <- c(1, 1)
+adj <- c(2, 1)
+myfun()
+## c = 1
+
+num <- c(2, 1, 1)
+adj <- c(2,3,   1,  1)
+myfun()
+## c = 1
+
+num <- c(2, 2, 2)
+adj <- c(2,3,   1,3,   1,2)
+myfun()
+## c = 1
+
+num <- c(1, 0, 1)
+adj <- c(3,    1)
+myfun()
+## c = 2
+
+num <- c(2, 2, 2, 0)
+adj <- c(2,3,   1,3,   1,2)
+myfun()
+## c = 2
+
+num <- c(2, 2, 2, 0, 0)
+adj <- c(2,3,   1,3,   1,2)
+myfun()
+## c = 3
+
+num <- c(2, 2, 2, 0, 1, 1)
+adj <- c(2,3,   1,3,   1,2,     6,    5)
+myfun()
+## c = 3
+
+num <- c(2, 2, 2, 0, 1, 1, 1, 1)
+adj <- c(2,3,   1,3,   1,2,     6,    5,    8,     7)
+myfun()
+## c = 4
+
+num <- c(2, 2, 2, 0, 1, 1, 2, 2, 2)
+adj <- c(2,3,   1,3,   1,2,     6,    5,    8,9,     7,9,   7,8)
+myfun()
+## c = 4
+
+num <- c(2, 2, 2, 0, 1, 1, 2, 2, 2, 0, 0)
+adj <- c(2,3,   1,3,   1,2,     6,    5,    8,9,     7,9,   7,8)
+myfun()
+## c = 6
+
+
+
+
+## equivalance of geoBUGS / winBUGS and nimble
+## CAR dcar_normal density evaluation for tau?
+
+N <- 4
+x <- 1:4
+num <- c(3,2,2,1)
+adj <- c(2,3,4,   1,3,    1,2,   1)
+weights <- c(2,2,2,   2,3,   2,3,  2)
+
+k <- length(x)
+c <- 1
+lp <- 0
+count <- 1
+for(i in 1:k) {
+    if(num[i] == 0)   c <- c + 1
+    xi <- x[i]
+    for(j in 1:num[i]) {
+        xj <- x[adj[count]]
+        lp <- lp + weights[count] * (xi-xj)^2
+        count <- count + 1
+    }
+}
+lp
+
+k <- length(x)
+lp <- 0
+count <- 1
+qf <- 0
+for(i in 1:k) {
+    xi <- x[i]
+    mu <- 0
+    wPlus <- 0
+    for(j in 1:num[i]) {
+        mu <- mu + x[adj[count]] * weights[count]
+        wPlus <- wPlus + weights[count]
+        count <- count + 1
+    }
+    mu <- mu / wPlus
+    qf <- qf + 1/2 * xi * (xi - mu) * wPlus
+}
+qf
+qf*4
+
+
+if(count != (length(adj)+1)) stop('something wrong')
+lp <- lp * (-1/2) * tau / 2
+lp <- lp + (k-c)/2 * log(tau/2/pi)
+lp
+
+
+
+
+## testing island nodes = NA values
+library(nimble)
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
 ##
 code <- nimbleCode({
     alpha0 ~ dflat()
-    for(k in 1:L) {
-        weights[k] <- 1
-    }
-    ##sd ~ dunif(0, 1000)
-    ##tau <- 1/(sd*sd)
-    ##tau ~ dunif(0, 1000)
-    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 3)
-    for(i in 1:N) {
+    tau ~ dgamma(0.001, 0.001)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    for(i in 1:3) {
         mu[i] <- S[i] + alpha0
-        Y[i] ~ dnorm(mu[i], 1)
+        Y[i] ~ dnorm(mu[i], 2)
     }
+    z[1] ~ dnorm(S[6], 1)
+    z[2] ~ dnorm(S[7], 1)
+    z[3] ~ dnorm(S[8] + 0*S[8]^2, 1)
+    z[4] ~ dnorm(S[9] + 0*S[9]^2, 1)
+    z[5] ~ dnorm(S[10] + 0*S[10]^2, 1)
+})
+##
+data <- list(
+    N = 10,
+    num = c(1, 2, 1, 0, 0, 0, 0, 0, 0, 0),
+    adj = c(2,   1,3,    2),
+    weights = c(1,1,1,1),
+    L = 4,
+    Y = c(1,2,3),
+    z = c(0, 0, 0, 0, 0)
+)
+##
+inits <- list(
+    alpha0 = 0,
+    tau = 1,
+    S = c(0, 0, 0, 3, NA, 0, NA, 0, NA, NaN)
+)
+##
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data[c('Y','z')], inits)
+
+conf <- configureMCMC(Rmodel, control = list(log=TRUE))
+conf$printSamplers()
+conf$addMonitors('S')
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+niter <- 200000#500000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)
+dim(samples)
+length(samples)
+##
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+medians <- apply(samples, 2, median)
+q025 <- apply(samples, 2, function(x) quantile(x, 0.025, na.rm=TRUE))
+q975 <- apply(samples, 2, function(x) quantile(x, 0.975, na.rm=TRUE))
+res <- cbind(means, sds, medians, q025, q975)
+res
+
+               means         sds      medians        q025        q975
+S[1]   -3.941210e-01   0.4893330 -0.225937468 -1.59038344   0.1910843
+S[2]    1.565404e-05   0.2975876  0.000138869 -0.67216986   0.6661552
+S[3]    3.941054e-01   0.4887008  0.227770323 -0.19113529   1.5807439
+alpha0  2.003152e+00   0.4080147  2.003949375  1.19972110   2.8056662
+tau     9.120936e+01 280.8845605  4.164618835  0.04471161 861.5163085
+
+## winBUGS output
+
+
+conf$printSamplers()
+Rmodel$getLogProb('alpha0')
+Rmodel$getLogProb('tau')
+Rmodel$getLogProb('S')
+Rmodel$getLogProb('Y')
+
+debug(Rmcmc$samplerFunctions$contentsList[[1]]$run)
+
+niter <- 30
+set.seed(0); Rmcmc$run(niter)
+set.seed(0); Cmcmc$run(niter)
+Rsamples <- as.matrix(Rmcmc$mvSamples)
+Csamples <- as.matrix(Cmcmc$mvSamples)
+sampnames <- dimnames(Rsamples)[[2]]
+Rsamples[, sampnames]
+
+Csamples[, sampnames]
+
+Rsamples[, sampnames] - Csamples[, sampnames]
+
+
+catListContents <- function(lst) {
+    cat('list(')
+    for(i in seq_along(lst)) {
+        cat(names(lst)[i])
+        cat(' = ')
+        val <- lst[[i]]
+        if(length(val) == 1) {
+            cat(val)
+        } else {
+            cat('c(')
+            cat(paste(val, collapse=', '))
+            cat(')')
+        }
+        if(i < length(lst)) cat(', ')
+    }
+    cat(')\n\n')
+}
+catCode <- function(code, data, inits, file) {
+    if(!missing(file)) sink(file)
+    cat('\n\nmodel\n')
+    print(code)
+    cat('\n\n## data\n')
+    catListContents(data)
+    cat('\n## inits\n')
+    catListContents(inits)
+    if(!missing(file)) sink()
+}
+
+catCode(code, data, inits)
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+
+
+x <- runif(100000, 0, 10000000)
+hist(x)
+t <- 1/x
+hist(t, breaks=1000, xlim=c(0, 0.0001))
+
+
+
+## finding BUGS tau sampling (11)
+## with a gamma(0.001, 0.001) prior on tau
+library(nimble)
+##
+code <- nimbleCode({
+    tau ~ dgamma(0.001, 0.001)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(
+    N = 4,
+    num = c(1,2,1,0),
+    adj = c(2,   1,3,    2),
+    weights = c(1,1,1,1),
+    L = 4,
+    S = c(1,0,0,0)
+)
+##
+inits <- list(
+    tau = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##
+niter <- 1000000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:1000000,]
+dim(samples)
+length(samples)
+##
+
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+##q025 <- apply(samples, 2, function(x) quantile(x, 0.025))
+##q975 <- apply(samples, 2, function(x) quantile(x, 0.975))
+mean(samples)
+var(samples)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
+q025 <- quantile(samples, 0.025)
+q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, q025, medians, q975)
+res
+##        means     sds       q025 medians     q975
+##2.5% 2.006003 1.99855 0.05131201  1.3909 7.396893
+
+
+
+## true posterior (for tau):
+WSSD <- 1
+N <- 4
+c <- 2
+a <- (N-c)/2 
+b <- WSSD/2
+a
+b
+
+## NIMBLE
+## a
+a <- mean(samples)^2 / var(samples)
+## b
+b <- mean(samples) / var(samples)
+a
+b
+
+
+## winBUGS output
+##node  mean   sd     2.5%     median  97.5%
+##tau   2.008  2.006  0.04963  1.389   7.42
+
+m <- 2.008
+s <- 2.006
+a <- m^2 / s^2
+b <- m / s^2
+a
+b
+
+
+
+
+
+
+
+## finding BUGS tau sampling (10)
+## now with a transformation on tau
+## prior is uniform on variance
+## this time, with two more islands!
+library(nimble)
+##
+code <- nimbleCode({
+    sigma2 ~ dunif(0, 10000)
+    tau <- 1/sigma2
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(             
+    N = 9,
+    num = c(1,2,2,2,2,2,1,0,0),
+    adj = c(2,   1,3,    2,4,   3,5,   4,6,   5,7,   6),
+    weights = c(1,1,1,1,1,1,1,1,1,1,1,1),
+    L = 12,
+    S = c(1,0,0,0,0,0,0,0,0)
+)
+##
+inits <- list(
+    sigma2 = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addMonitors('tau')
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##
+niter <- 1000000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:1000000,]
+dim(samples)
+length(samples)
+##
+
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+medians <- apply(samples, 2, median)
+q025 <- apply(samples, 2, function(x) quantile(x, 0.025))
+q975 <- apply(samples, 2, function(x) quantile(x, 0.975))
+##mean(samples)
+##var(samples)
+##means <- mean(samples)
+##q025 <- quantile(samples, 0.025)
+##q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, q025, medians, q975)
+res
+##           means      sds       q025   medians      q975
+##sigma2 0.5124162 1.035113 0.08940902 0.2994832  2.081309
+##tau    3.9918965 2.838581 0.48046693 3.3390858 11.184554
+
+
+## true posterior (for tau):
+WSSD <- 1
+N <- 9
+c <- 3
+a <- (N-c)/2 - 1
+b <- WSSD/2
+a
+b
+
+## NIMBLE
+tau.samp <- samples[, 'tau']
+mean(tau.samp)
+var(tau.samp)
+
+## theoretical gamma, for tau:
+## mean = a/b
+a / b
+## var = a / b^2
+a / b^2
+
+sigma2.samp <- samples[, 'sigma2']
+mean(sigma2.samp)
+var(sigma2.samp)
+
+## theoretical inverse-gamma, for sigma2:
+## mean = b/(a-1), for a>1   (from wikipedia)
+b / (a-1)
+## var = b^2 / ((a-1)^2 * (a-2)),   for a>2   (from wikipedia)
+b^2 / ((a-1)^2 * (a-2))
+
+
+
+## winBUGS output
+##node     mean   sd      2.5%     median  97.5%
+##sigma2   0.487  0.8645  0.09028  0.2972  2.009
+##tau      4.004  2.81    0.4977   3.365   11.08
+
+
+    
+## finding BUGS tau sampling (9)
+## now with a transformation on tau
+## prior is uniform on variance
+library(nimble)
+##
+code <- nimbleCode({
+    sigma2 ~ dunif(0, 10000)
+    tau <- 1/sigma2
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(             
+    N = 9,
+    num = c(1,2,2,2,2,2,2,2,1),
+    adj = c(2,   1,3,    2,4,   3,5,   4,6,   5,7,   6,8,   7,9,   8),
+    weights = c(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1),
+    L = 16,
+    S = c(1,0,0,0,0,0,0,0,0)
+)
+##
+inits <- list(
+    sigma2 = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addMonitors('tau')
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##
+niter <- 1000000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:1000000,]
+dim(samples)
+length(samples)
+##
+
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+medians <- apply(samples, 2, median)
+q025 <- apply(samples, 2, function(x) quantile(x, 0.025))
+q975 <- apply(samples, 2, function(x) quantile(x, 0.975))
+##mean(samples)
+##var(samples)
+##means <- mean(samples)
+##q025 <- quantile(samples, 0.025)
+##q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, q025, medians, q975)
+res
+##           means      sds       q025  medians       q975
+##sigma2 0.2515433 0.237622 0.06912374 0.188005  0.8239204
+##tau    5.9778155 3.469859 1.21370951 5.319008 14.4668096
+
+## true posterior (for tau):
+WSSD <- 1
+N <- 9
+c <- 1
+a <- (N-c)/2 - 1
+b <- WSSD/2
+a
+b
+
+## NIMBLE
+tau.samp <- samples[, 'tau']
+mean(tau.samp)
+var(tau.samp)
+
+## theoretical gamma, for tau:
+## mean = a/b
+a / b
+## var = a / b^2
+a / b^2
+
+sigma2.samp <- samples[, 'sigma2']
+mean(sigma2.samp)
+var(sigma2.samp)
+
+## theoretical inverse-gamma, for sigma2:
+## mean = b/(a-1), for a>1   (from wikipedia)
+b / (a-1)
+## var = b^2 / ((a-1)^2 * (a-2)),   for a>2   (from wikipedia)
+b^2 / ((a-1)^2 * (a-2))
+
+
+
+## winBUGS output
+##node     mean    sd      2.5%      median   97.5%
+##sigma2   0.2467  0.2254  0.06937   0.186    0.7953
+##tau      6.014   3.438   1.257     5.375    14.41
+
+
+
+
+
+## finding BUGS tau sampling (8)
+library(nimble)
+##
+code <- nimbleCode({
+    tau ~ dunif(0, 10000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(
+    N = 4,
+    num = c(1,2,1,0),
+    adj = c(2,   1,3,    2),
+    weights = c(1,1,1,1),
+    L = 4,
+    S = c(1,0,0,0)
+)
+##
+inits <- list(
+    tau = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##
+niter <- 500000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:500000,]
+dim(samples)
+length(samples)
+##
+
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+mean(samples)
+var(samples)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
+q025 <- quantile(samples, 0.025)
+q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, medians, q025, q975)
+res
+
+## true posterior:
+WSSD <- 1
+N <- 4
+c <- 2
+a <- (N-c)/2 + 1
+b <- WSSD/2
+a
+b
+
+## NIMBLE
+## a
+a <- mean(samples)^2 / var(samples)
+## b
+b <- mean(samples) / var(samples)
+a
+b
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+a
+b
+
+## winBUGS output
+ node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+tau	2.002	2.01	0.009006	0.04942	1.389	7.469	1	50000
+
+##a = mean^2  / sd^2
+##b = mean    / sd^2
+
+m <- 2.001
+s <- 2.01
+a <- m^2 / s^2
+b <- m / s^2
+a
+b
+
+a <- 1
+b <- 0.5
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+
+WSSD <- 1
+N <- 4
+c <- 4 ## BUGS is using 4 islands here
+a <- (N-c)/2 + 1
+b <- WSSD/2
+a
+b
+
+
+
+
+
+## finding BUGS tau sampling (7)
+library(nimble)
+##
+code <- nimbleCode({
+    tau ~ dunif(0, 10000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(
+    N = 4,
+    num = c(1,2,2,1),
+    adj = c(2,   1,3,    2,4,   3),
+    weights = c(1,1,1,1,1,1),
+    L = 6,
+    S = c(1,0,0,0)
+)
+##
+inits <- list(
+    tau = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##
+niter <- 500000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:500000,]
+dim(samples)
+length(samples)
+##
+
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+mean(samples)
+var(samples)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
+q025 <- quantile(samples, 0.025)
+q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, medians, q025, q975)
+res
+
+## true posterior:
+WSSD <- 1
+N <- 4
+c <- 1
+a <- (N-c)/2 + 1
+b <- WSSD/2
+a
+b
+
+## NIMBLE
+## a
+a <- mean(samples)^2 / var(samples)
+## b
+b <- mean(samples) / var(samples)
+a
+b
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+a
+b
+
+## winBUGS output
+node	 mean	sd	MC error  2.5%	 median	97.5%	start	sample
+tau	3.012  	2.463	0.01127	  0.2203 2.373	9.356	1	50000
+
+##a = mean^2  / sd^2
+##b = mean    / sd^2
+
+m <- 3.012
+s <- 2.463
+a <- m^2 / s^2
+b <- m / s^2
+a
+b
+
+a <- 1.5
+b <- 0.5
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+
+WSSD <- 1
+N <- 4
+c <- 3 ## BUGS is using 3 islands here
+a <- (N-c)/2 + 1
+b <- WSSD/2
+a
+b
+
+
+
+## finding BUGS tau sampling (6)
+## transformation of tau (to sd)
+library(nimble)
+##
+code <- nimbleCode({
+    ##sd ~ dgamma(0.001, 0.001)
+    ##tau ~ dgamma(0.001, 0.001)
+    b ~ dbern(0.5)
+    tau <- b+1
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    ##for(i in 1:N) {
+    ##    mu[i] <- S[i] + alpha0
+    ##    Y[i] ~ dnorm(mu[i], 1)
+    ##}
 })
 ##
 data <- list(
     N = 3,
     num = c(1,2,1),
     adj = c(2,   1,3,    2),
+    weights = c(1,1,1,1),
     L = 4,
-    Y = c(1,2,3)
+    ##Y = c(1,2,3)
+    S = c(0, 0, 0)
 )
 ##
 inits <- list(
-    alpha0 = 0,
-    S = c(0,0,0)
+    ##tau = 1
+    b=0
 )
 ##
-Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','L')], data=data['Y'], inits)
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel, control = list(log=TRUE))
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##
+niter <- 100000#500000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)##[100001:500000,]
+dim(samples)
+length(samples)
+##
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
+q025 <- quantile(samples, 0.025)
+q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, medians, q025, q975)
+res
+
+##      means      sds  medians     q025     q975
+##sd 500.2603 287.7832 500.1425 26.28444 974.5512
+
+
+## winBUGS output
+node   mean	sd	2.5%	  median	97.5%	
+sd     7.2166	31.5099	0.276503  0.630709	2.09074	
+
+
+x0 <- sum(samples==0)
+x1 <- sum(samples==1)
+
+x1/(x0+x1)
+
+
+Rmodel$sd <- Cmodel$sd
+Rmodel$sd
+Rmodel$tau
+Rmodel$calculate()
+exp(Rmodel$calculate('sd'))
+Rmodel$calculate('S')
+
+
+Cmodel$sd
+Cmodel$tau
+exp(Cmodel$calculate('sd'))
+Cmodel$calculate('S')
+
+debug(Rmcmc$samplerFunctions[[1]]$run)
+Rmcmc$run(10)
+
+samples <- as.matrix(Cmcmc$mvSamples)
+length(samples)
+
+samplesPlot(samples, ind=1:1000)
+
+## finding BUGS tau sampling (5)
+library(nimble)
+##
+code <- nimbleCode({
+    tau ~ dunif(0, 1000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(
+    N = 8,
+    num = c(2,2,2,2,2,2,2,2),
+    adj = c(2,8,    1,3,    2,4,     3,5,     4,6,     5,7,      6,8,     1,7),
+    weights = c(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1),
+    L = 16,
+    S = c(0,1,0,1,0,1,0,1)
+)
+##
+inits <- list(
+    tau = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
 ##
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
-conf$addMonitors('S')
 Rmcmc <- buildMCMC(conf)
 ##
 Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 ##
-niter <- 200000
+niter <- 500000
 set.seed(0); Cmcmc$run(niter)
-samples <- as.matrix(Cmcmc$mvSamples)[50000:200000,]
+samples <- as.matrix(Cmcmc$mvSamples)[100001:500000,]
+dim(samples)
+length(samples)
 ##
-##samplesPlot(samples, 'alpha0')
-##samplesPlot(samples, 'tau')
+
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
+q025 <- quantile(samples, 0.025)
+q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, medians, q025, q975)
+res
+## a
+a <- mean(samples)^2 / var(samples)
+## b
+b <- mean(samples) / var(samples)
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+a
+b
+
+## winBUGS output
+ node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+tau	0.874155	0.467162	0.00145191	0.214319	0.792857	1.99685	1	100000
+
+##a = mean^2  / sd^2
+##b = mean    / sd^2
+## ===> WinBUGS is getting a gamma(1.5,3.5) posterior
+
+a <- 1.5
+b <- 3.5
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+
+
+
+## finding BUGS tau sampling (4)
+library(nimble)
 ##
-means <- apply(samples, 2, mean)
-sds <- apply(samples, 2, sd)
-medians <- apply(samples, 2, median)
+code <- nimbleCode({
+    tau ~ dunif(0, 1000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(
+    N = 5,
+    num = c(1,3,3,3,2),
+    adj = c(2,   1,3,4,    2,4,5,    2,3,5,    3,4),
+    weights = rep(1,12),
+    L = 12,
+    S = c(-1, 0, 1, 2, 2)
+)
+##
+inits <- list(
+    tau = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+##
+niter <- 500000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:500000,]
+dim(samples)
+length(samples)
+##
+
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
+q025 <- quantile(samples, 0.025)
+q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, medians, q025, q975)
+res
+## a
+a <- mean(samples)^2 / var(samples)
+## b
+b <- mean(samples) / var(samples)
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+a
+b
+
+## winBUGS output
+node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+tau	0.499872	0.354029	0.00117622	0.0613616	0.419798	1.39341	1	100000
+
+##a = mean^2  / sd^2
+##b = mean    / sd^2
+## ===> WinBUGS is getting a gamma(1.5,3.5) posterior
+
+a <- 1.5
+b <- 3.5
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+
+
+
+## finding BUGS tau sampling (3)
+library(nimble)
+##
+code <- nimbleCode({
+    tau ~ dunif(0, 1000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(
+    N = 4,
+    num = c(1,3,2,2),
+    adj = c(2,   1,3,4,    2,4,   2,3),
+    weights = c(1,1,1,1,1,1,1,1),
+    L = 8,
+    S = c(-1, 0, 1, 2)
+)
+##
+inits <- list(
+    tau = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+##
+niter <- 500000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:500000,]
+dim(samples)
+length(samples)
+##
+
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
+q025 <- quantile(samples, 0.025)
+q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, medians, q025, q975)
+res
+## a
+a <- mean(samples)^2 / var(samples)
+## b
+b <- mean(samples) / var(samples)
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+a
+b
+
+## winBUGS output
+node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+tau	0.429886	0.35268	0.00114715	0.031528	0.338512	1.33672	1	100000
+
+##a = mean^2  / sd^2
+##b = mean    / sd^2
+## ===> WinBUGS is getting a gamma(1.5,3.5) posterior
+
+a <- 1.5
+b <- 3.5
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+
+
+## finding BUGS tau sampling (2)
+library(nimble)
+##
+code <- nimbleCode({
+    tau ~ dunif(0, 1000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+})
+##
+data <- list(
+    N = 4,
+    num = c(1,2,2,1),
+    adj = c(2,   1,3,    2,4,   3),
+    weights = c(1,1,1,1,1,1),
+    L = 6,
+    S = c(-1, 0, 1, 2)
+)
+##
+inits <- list(
+    tau = 1
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+##
+niter <- 500000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:500000,]
+dim(samples)
+length(samples)
+##
+
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
+q025 <- quantile(samples, 0.025)
+q975 <- quantile(samples, 0.975)
+res <- cbind(means, sds, medians, q025, q975)
+res
+## a
+a <- mean(samples)^2 / var(samples)
+## b
+b <- mean(samples) / var(samples)
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+a
+b
+
+## winBUGS output
+node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
+tau	1.003	0.8229	0.002677	0.07357	0.7899	3.119	1	100000
+
+##a = mean^2  / sd^2
+##b = mean    / sd^2
+## ===> WinBUGS is getting a gamma(1.5,1.5) posterior
+
+a <- 1.5
+b <- 1.5
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
+
+
+## finding BUGS tau sampling (1)
+library(nimble)
+##
+code <- nimbleCode({
+    ##alpha0 ~ dflat()
+    ##sd ~ dunif(0, 1000)
+    ##tau <- 1/(sd*sd)
+    tau ~ dunif(0, 1000)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    ##for(i in 1:N) {
+    ##    mu[i] <- S[i] + alpha0
+    ##    Y[i] ~ dnorm(mu[i], 1)
+    ##}
+})
+##
+data <- list(
+    N = 3,
+    num = c(1,2,1),
+    adj = c(2,   1,3,    2),
+    weights = c(1,1,1,1),
+    L = 4,
+    ##Y = c(1,2,3)
+    S = c(-1, 0, 1)
+)
+##
+inits <- list(
+    tau = 1
+    ##alpha0 = 0,
+    ##S = c(0,0,0)
+)
+##
+catCode(code, data, inits, file='~/temp/BUGS.txt')
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','weights','L')], data=data['S'], inits)
+##
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+##
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+##
+niter <- 500000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)[100001:500000,]
+dim(samples)
+length(samples)
+##
+
+##means <- apply(samples, 2, mean)
+##sds <- apply(samples, 2, sd)
+##medians <- apply(samples, 2, median)
+means <- mean(samples)
+sds <- sd(samples)
+medians <- median(samples)
 res <- cbind(means, sds, medians)
 res
+        means      sds  medians
+[1,] 2.517552 1.586795 2.194357
+
+## a
+mean(samples)^2 / var(samples)
+## b
+mean(samples) / var(samples)
+
+
+a <- 5
+b <- 4
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
 
 
 ## winBUGS output
 node	 mean	 sd	 MC error	2.5%	median	97.5%	start	sample
-
-
-
-
+tau	1.002	1.008	0.004465	0.02487	0.6956	3.749	1	47200
+## ===> WinBUGS is getting a gamma(1,1) posterior
+a <- 1
+b <- 1
+n <- 1e5
+x <- rgamma(n,a,b)
+mean(x)
+sd(x)
+median(x)
+quantile(x, probs=c(0.025, 0.975))
 
 
 ## preproducible example of problem with weights[k] <- 1
 ## for Perry
+## FILED ON GITHUB 5/31/17
 library(nimble)
 ##
 code <- nimbleCode({
@@ -100,6 +1922,20 @@ Rmcmc <- buildMCMC(conf)
 ##
 Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Rmcmc$samplerFunctions[[1]]$componentSamplerFunctions[[1]]$dcar$neighborWeights
+Rmcmc$samplerFunctions[[1]]$componentSamplerFunctions[[2]]$dcar$neighborWeights
+Rmcmc$samplerFunctions[[1]]$componentSamplerFunctions[[3]]$dcar$neighborWeights
+
+niter <- 100
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)
+
+samples[98:100, ]
+## [98,]  0.190857546 -3.875851e-01  0.19672751
+## [99,] -0.473204489  1.077377e-01  0.36546680
+##[100,] -0.370861918 -8.497980e-02  0.45584172
+
 
 
 
@@ -331,7 +2167,7 @@ library(nimble)
 code <- nimbleCode({
     alpha0 ~ dflat()
     for(k in 1:L) {
-        weights[k] <- 1
+	weights[k] <- 1
     }
     S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], 1)
     for(i in 1:N) {
@@ -397,6 +2233,61 @@ res
 
 
 
+
+## testing default weights in dcar_normal() distribution
+library(nimble)
+
+code <- nimbleCode({
+    alpha0 ~ dflat()
+    ##for(i in 1:L) {
+    ##    weights[i] <- 1
+    ##}
+    S[1:N] ~ car.normal(adj = adj[1:L], num = num[1:N], tau = 1)
+    for(i in 1:N) {
+        log(mu[i]) <- alpha0 + S[i]
+        Y[i] ~ dpois(mu[i])
+    }
+})
+data <- list(
+    N = 6,
+    num = c(3,4,4,3,2,2),
+    adj =     c(2,3,4,   1,3,5,6,   1,2,4,5,   1,3,6,  2,3,   2,4),
+    ##weights = rep(1, 18),
+    L = 18,
+    Y = c(10,12,15,20,24,16)
+)
+inits <- list(
+    alpha0 = 0,
+    ##weights = rep(1, 18),
+    S = c(0,0,0,0,0,0)
+)
+
+Rmodel <- nimbleModel(code, constants=data[c('N','num','adj','L')], data=data['Y'], inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Rmodel$calculate('S')
+Cmodel$calculate('S')
+
+niter <- 100000
+set.seed(0); Cmcmc$run(niter)
+samples <- as.matrix(Cmcmc$mvSamples)
+means <- apply(samples, 2, mean)
+sds <- apply(samples, 2, sd)
+res <- cbind(means, sds)
+res
+##             means       sds
+##S[1]   -0.36240674 0.2350176
+##S[2]   -0.20235429 0.2146017
+##S[3]   -0.03327436 0.2060798
+##S[4]    0.19690032 0.1976192
+##S[5]    0.38665926 0.1936092
+##S[6]    0.01447581 0.2166168
+##alpha0  2.72605237 0.1060945
 
 
 
@@ -482,7 +2373,7 @@ codeSimple <- nimbleCode({
     sigma <- sqrt(1 / tau)
     ##for(k in 1:L)    ## need to make this work!
     ##    weights[k] <- 1
-    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau, zero_mean = 1)
     for(i in 1:N) {
         log(mu[i]) <- log(E[i]) + alpha0 + alpha1 * X[i]/10 + S[i]
         Y[i] ~ dpois(mu[i])
@@ -512,7 +2403,7 @@ codeComplex <- nimbleCode({
     alpha1 ~ dnorm(0, 0.00001)
     tau ~ dgamma(0.5, 0.0005)
     tau.h ~ dgamma(0.5, 0.0005)
-    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau)
+    S[1:N] ~ car.normal(adj[1:L], weights[1:L], num[1:N], tau, zero_mean = 1)
     for(i in 1:N) {
         H[i] ~ dnorm(0, tau.h)
         log(mu[i]) <- log(E[i]) + alpha0 + alpha1 * X[i]/10 + S[i] + H[i]
@@ -535,25 +2426,35 @@ codeComplex <- nimbleCode({
 })
 initsComplex <- list(alpha0=0, alpha1=0, tau=1, tau.h=1, S=rep(0,N), H=rep(0,N))
 
-Rmodel <- nimbleModel(code, constants, data, inits)
+## this mimics Breslow and Clatyon (1993)
+Rmodel <- nimbleModel(codeSimple, constantsNoIslands, data, initsSimple)
+
+## this mimics geoBUGS manual
+Rmodel <- nimbleModel(codeComplex, constantsIslands, data, initsComplex)
+
 Rmodel$calculate()
 
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
 
 conf$printMonitors()
-conf$addMonitors('sigma', 'RR', 'S')
-conf$addMonitors('rr.x', 'pS', 'pH', 'pX', 'pE')
+conf$addMonitors('sigma')      ## for (B&C 1993) model
+conf$addMonitors('sigma', 'S')
+conf$addMonitors('sigma', 'S', 'RR')
+conf$addMonitors('rr.x', 'pS', 'pH', 'pX', 'pE')        ## for geoBUGS manual model
 conf$addMonitors('rr.x', 'pS', 'pH', 'pX', 'pE', 'RR')
 
 Rmcmc <- buildMCMC(conf)
 
 Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
-
-niter <- 100000
-set.seed(0); system.time(Cmcmc$run(niter))
-samples <- as.matrix(Cmcmc$mvSamples)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##
+niter <- 300000
+nburnin <- 50000
+set.seed(0); system.time(Cmcmc$run(niter))   ## ~30 sec (B&C 1993 model), ~45 sec (geoBUGS manual model)
+samples <- as.matrix(Cmcmc$mvSamples)[(nburnin+1):niter, ]
+dim(samples)
+colnames(samples)
 
 library(coda)
 apply(samples, 2, effectiveSize)
@@ -561,11 +2462,37 @@ apply(samples, 2, effectiveSize)
 means <- apply(samples, 2, mean)
 sds <- apply(samples, 2, sd)
 res <- cbind(means, sds)
-##res <- res[c('pE','pH','pS','pX','rr.x'),]
 
 res
+res[c('alpha0','alpha1','sigma'), ]
+res[c('alpha0','alpha1','sigma','tau'), ]
+res[c('pE','pH','pS','pX','rr.x'), ]
 
+## this mimics Breslow and Clatyon (1993)
+## their results:
+## alpha0: -0.18 (sd = 0.12)
+## alpha1: -0.35 (sd = 0.12)
+## sigma:   0.73 (sd = 0.13)
+## NIMBLE:
+##            means       sds
+##alpha0 -0.2099181 0.1201011
+##alpha1  0.3582498 0.1279591
+##sigma   0.7176594 0.1239661
 
+## this mimics geoBUGS manual
+## their results:
+##pE:   0.6238 (sd = 0.0367)
+##pH:   0.0182 (sd = 0.0308)
+##pS:   0.2718 (sd = 0.0549)
+##pX:   0.0862 (sd = 0.0407)
+##rr.x: 1.587  (sd = 0.1907)
+## NIMBLE:
+##           means        sds
+##pE   0.600743362 0.03484688
+##pH   0.005349068 0.01306911
+##pS   0.320298241 0.05209477
+##pX   0.073609329 0.04107101
+##rr.x 1.537977214 0.20651663
 
 
 ## hand-implement the "ranked" statistics to verify against BUGS book
@@ -754,6 +2681,46 @@ Cnf$run()
 
 
 
+## timing comparison of named vs. indexed lookup for named vectors
+N <- 5
+n <- 10^N
+vec <- 1:n
+nn <- paste0('x', 1:n)
+names(vec) <- nn
+##system.time(for(i in 1:n) { thisname <- paste0('x', i); out <- vec[thisname] })
+system.time(for(i in 1:n) { thisname <- paste0('x', i); out <- vec[i] })   ## WAYYYYY FASTER !!!!!!!
+
+
+
+## making conditional code block for samplerAssignmentRules
+
+library(nimble)
+nimbleOptions('MCMCuseSamplerAssignmentRules')
+nimbleOptions(MCMCuseSamplerAssignmentRules = TRUE)
+nimbleOptions('MCMCuseSamplerAssignmentRules')
+
+rules <- nimbleOptions('MCMCdefaultSamplerAssignmentRules')
+rules
+
+
+code <- nimbleCode({
+  a ~ dnorm(0, rs)
+  b <- a + 1
+  c ~ dnorm(b, 1)
+  d <- c-1
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0, c=0, rs=1)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+
+conf$printSamplers()
+
+
+
+
 ## very quick test of compilation of dcar_normal(), for Chris P.
 library(nimble)
 code <- nimbleCode({
@@ -762,7 +2729,10 @@ code <- nimbleCode({
 constants <- list(adj = 1:3, weights = 1:3, num = 1:3, t = 0)
 data <- list()
 inits <- list()
+
+
 Rmodel <- nimbleModel(code, constants, data, inits, calculate=FALSE)
+
 Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
 
 
@@ -788,7 +2758,12 @@ Rmodel$getDependencies('x[1]', returnScalarComponents = TRUE)
 Rmodel$getDependencies('x[1]', self=FALSE, returnScalarComponents = TRUE)
 
 
-
+## looking at how it always lifts chol()
+nms <- ls(Rmodel$nodes)
+i <- 2
+ls(Rmodel$nodes[[nms[i]]])
+Rmodel$nodes[[nms[i]]]$calculate
+Rmodel$nodes[[nms[i]]]$simulate
 
 ## bug in model building!
 library(nimble)
@@ -805,9 +2780,6 @@ Rmodel <- nimbleModel(code, constants)
 ## testing speed comparisons of new sampler assignment rules system
 
 
-?Rprof
-?summaryRprof
-
 library(nimble)
 nimbleOptions('MCMCuseSamplerAssignmentRules')
 
@@ -815,30 +2787,6 @@ nimbleOptions(MCMCuseSamplerAssignmentRules = FALSE)
 nimbleOptions(MCMCuseSamplerAssignmentRules = TRUE)
 
 nimbleOptions('MCMCuseSamplerAssignmentRules')
-
-N <- 5000
-code <- nimbleCode({
-    for(i in 1:N) {
-        a[i] ~ dnorm(0, 1)
-        b[i] ~ dexp(a[i])
-    }
-})
-constants <- list(N = N)
-data <- list(b = rep(10,N))
-inits <- list(a = rep(0,N))
-Rmodel <- nimbleModel(code, constants, data, inits)
-
-profFile <- '~/temp/prof.txt'
-Rprof(profFile)
-
-system.time(conf <- configureMCMC(Rmodel))
-
-Rprof(NULL)
-
-profFile <- '~/temp/prof.txt'
-summaryRprof(profFile)
-
-##conf$printSamplers()
 
 timer <- function(n) {
     N <- 10^n
@@ -862,14 +2810,51 @@ sapply(1:4, function(n) timer(n))
 
 
 ## old system:
-old <- c(0.035, 0.191, 2.441, 21.571)
+old <- c(0.049, 0.255, 2.986, 21.344)
 ## new sampler assignment rules:
-new <- c(0.061, 0.460, 5.660, 52.530)
+new <- c(0.061, 0.460, 5.660, 52.530)   ## original
+0.078  0.505  5.552 49.853  ## ruleSelectionCodeBlock, and only 1 eval()
+0.066  0.474  5.688 49.230  ##
+0.164  0.430  4.555 43.934  ## with isEndNode[], and nodeDistributions[] defined
+0.139  0.376  3.271 32.278  ## is isEndNode[i], isBinary[i], isMultivariate[i], isConjugate[i]
+0.034  0.276  3.316 35.299
+0.082  0.393  3.625 35.707
+0.105  0.287  3.261 32.724  ## ruleSelectFunction()
+0.033  0.282  3.384 33.004
 
 new/old
 
 plot(1:4, new, col='red', type='l')
 lines(1:4, old)
+
+
+## my attempt at profiling the time for samplerAssignmentRules
+?Rprof
+?summaryRprof
+
+N <- 5000
+code <- nimbleCode({
+    for(i in 1:N) {
+        a[i] ~ dnorm(0, 1)
+        b[i] ~ dexp(a[i])
+    }
+})
+constants <- list(N = N)
+data <- list(b = rep(10,N))
+inits <- list(a = rep(0,N))
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+profFile <- '~/temp/prof.txt'
+Rprof(profFile)
+
+system.time(conf <- configureMCMC(Rmodel))
+
+Rprof(NULL)
+
+profFile <- '~/temp/prof.txt'
+summaryRprof(profFile)
+
+
 
 ## table of quantiles of t-distribution
 
