@@ -1,4 +1,100 @@
 
+## testing Chris's new sampler_categorical for dcat nodes:
+library(nimble)
+
+code <- nimbleCode({
+    x ~ dcat(p[1:5])
+    ##y ~ dnorm(x, 10)
+})
+constants <- list(p = c(.1, .15, .2, .25, .3))
+data <- list()##y=1)
+inits <- list(x = 1)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+##conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addSampler('x', 'categorical')
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+niter <- 100000
+set.seed(0); samples <- runMCMC(Cmcmc, niter)
+##Cmcmc$run(10000)
+##samples <- as.matrix(Cmcmc$mvSamples)
+
+table(samples[,1])/niter
+##      1       2       3       4       5 
+##0.09990 0.15075 0.20022 0.24818 0.30095 
+
+##      1       2       3       4       5 
+##  0.100    0.15     0.2    0.25     0.3
+
+
+
+
+
+
+## Nick's test of fakeDist() and mixedSizes
+
+library(nimble)
+
+dFakeDist <- nimbleFunction(
+    run = function(x = double(0), y = double(2), log = integer(0, default = 0)) {
+        returnType(double(0))
+        return(0)
+    })
+
+rFakeDist <- nimbleFunction(
+    run = function(n = integer(0),  y = double(2)) {
+        returnType(double(0))
+        if(n != 1) nimPrint('rmyexp only allows n = 1; using n = 1')
+        return(0)
+    }
+)
+
+registerDistributions(list(
+    dFakeDist = list(
+        BUGSdist = 'dFakeDist(y)',
+        types = c('value = double(0)', 'y = double(2)'),
+        mixedSizes = TRUE)
+))
+
+fakeCode <- nimbleCode({
+    x ~ dFakeDist(y[1:3, 1:2])
+})
+
+fakeModel <- nimbleModel(code = fakeCode, data = list(x = 0), constants = list(y = matrix(nrow = 3, ncol = 2)))
+
+
+
+## old MCMC control list defaults
+##log = FALSE,
+##reflective = FALSE,
+##adaptive = TRUE,
+##adaptScaleOnly = FALSE,
+##adaptInterval = 200,
+##scale = 1,
+##propCov = 'identity',
+##sliceWidth = 1,
+##sliceMaxSteps = 100,
+##sliceAdaptFactorMaxIter = 15000,  ##factorBurnIn = 15000,
+##sliceAdaptFactorInterval = 1000,  ##factorAdaptInterval = 1000,
+##sliceAdaptWidthMaxIter = 512,     ##sliceBurnIn = 512,
+##sliceAdaptWidthTolerance = 0.1,
+##scaleAdaptInterval = 200,
+##sliceWidths = 'oneVec',
+##pfNparticles = 1000,
+##pfResample = FALSE,
+##pfOptimizeNparticles = FALSE,
+##pfType = 'bootstrap',
+##pfLookahead = 'simulate',
+##carUseConjugacy = TRUE
+
+
 
 
 ## test of current samples from AF_slice sampler
@@ -7,7 +103,7 @@ load('~/github/hybridBlockSamplers/data/model_litters.RData')
 Rmodel <- nimbleModel(code, constants, data, inits)
 conf <- configureMCMC(Rmodel)
 conf$addSampler(c('a','b'), 'AF_slice')
-##conf$printSamplers()
+conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
 Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
@@ -22283,7 +22379,9 @@ apply(samples, 2, mean)
 ## using rankSample
 
 library(nimble)
+
 ##Cmodel <- compileNimble(Rmodel = nimbleModel(quote({a ~ dnorm(0, 1)})))
+
 nfDef <- nimbleFunction(
     setup = function() {},
     run = function(wts = double(1), m = integer(), silent = logical()) {
