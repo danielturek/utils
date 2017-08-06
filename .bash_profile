@@ -51,6 +51,7 @@ alias pull='git pull'
 alias push='git push'
 alias checkout='git checkout'
 alias branch='git branch'
+alias log='git log'
 alias commit=~/github/utils/commit.sh
 
 
