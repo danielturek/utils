@@ -8,6 +8,7 @@ data <- list()
 inits <- list(a = 0)
 
 Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
 
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
@@ -28,4 +29,18 @@ samplesPlot(samples)
 
 library(coda)
 apply(samples, 2, effectiveSize)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
 

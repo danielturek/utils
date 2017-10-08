@@ -1,4 +1,1800 @@
 
+set.seed(0)
+s <- list()
+nchains <- 3
+nparams <- 10
+nparamnames <- 20
+for(i in 1:nchains) {
+    samples <- matrix(rnorm(100*nparams), ncol=nparams)
+    colnames(samples) <- paste0('beta[', sort(sample(1:nparamnames, nparams)), ']')
+    s[[i]] <- samples
+}
+names(s) <- paste0('chain', 1:nchains)
+samplesList <- s
+
+nrows=3; width=7; height=min(1+3*nrows, 10); legend=!is.null(names(samplesList)); legend.location='topright'; jitter.factor=1; buffer.right=0; buffer.left=0
+
+
+chainsPlot <- function(samplesList, nrows=3, width=7, height=min(1+3*nrows,7), legend=!is.null(names(samplesList)), legend.location='topright', jitter=1, buffer.right=0, buffer.left=0, cex=1, file=NULL) {
+    if(!is.null(file)) pdf(file, width=width, height=height) else
+    if(inherits(try(knitr::opts_chunk$get('dev'), silent=TRUE), 'try-error') || is.null(knitr::opts_chunk$get('dev')))   ## if called from Rmarkdown/knitr
+        dev.new(height=height, width=width)
+    par.save <- par(no.readonly = TRUE)
+    par(mfrow=c(nrows,1), oma=c(3,1,1,1), mar=c(4,1,0,1), mgp=c(3,0.5,0))
+    if(class(samplesList) != 'list') samplesList <- list(samplesList)
+    chainParamNamesList <- lapply(samplesList, function(s) colnames(s))
+    nChains <- length(samplesList)
+    paramNamesAll <- unique(as.character(sapply(samplesList, function(s) colnames(s))))
+    nParamsAll <- length(paramNamesAll)
+    cols <- rainbow(nChains)
+    ## construct 3D summary array:
+    summary <- array(as.numeric(NA), dim = c(nChains, 3, nParamsAll))
+    if(!is.null(names(samplesList))) dimnames(summary)[[1]] <- names(samplesList)
+    dimnames(summary)[[2]] <- c('mean','low','upp')
+    dimnames(summary)[[3]] <- paramNamesAll
+    for(iChain in 1:nChains) {
+        theseSamples <- samplesList[[iChain]]
+        thisSummary <- rbind(mean = apply(theseSamples, 2, mean),
+                             low  = apply(theseSamples, 2, function(x) quantile(x, 0.025)),
+                             upp  = apply(theseSamples, 2, function(x) quantile(x, 0.975)))
+        summary[iChain,c('mean','low','upp'),colnames(thisSummary)] <- thisSummary
+    }
+    nParamsPerRow <- ceiling(nParamsAll/nrows)
+    sq <- if(nChains==1) 0 else seq(-1,1,length=nChains)
+    scale <- width/nParamsPerRow * jitter * 0.1  ## adjust jitter scale factor at end
+    for(iRow in 1:nrows) {
+        rowParamInd <- (1+(iRow-1)*nParamsPerRow) : ifelse(iRow==nrows,nParamsAll,iRow*nParamsPerRow)
+        nRowParams <- length(rowParamInd)
+        rowParamNames <- paramNamesAll[rowParamInd]
+        xs <- 1:nRowParams
+        names(xs) <- rowParamNames
+        ylim <- range(summary[,c('low','upp'),rowParamNames], na.rm=TRUE)
+        plot(x=-100, y=0, xlim=c(1-buffer.left,nParamsPerRow+buffer.right), ylim=ylim, xaxt='n', ylab='', xlab='', tcl=-0.3, cex.axis=cex)
+        axis(1, at=1:nRowParams, labels=FALSE, tcl=-0.3)
+        text(x=1:nRowParams, y=par()$usr[3]-0.1*(par()$usr[4]-par()$usr[3]), labels=rowParamNames, srt=45, adj=1, xpd=TRUE, cex=0.9*cex)
+        for(iChain in 1:nChains) {
+            ps <- intersect(rowParamNames, chainParamNamesList[[iChain]])
+            xsJittered <- xs + sq[iChain]*scale
+            points(x=xsJittered[ps], y=summary[iChain,'mean',ps], pch=16, col=cols[iChain])
+            segments(x0=xsJittered[ps], y0=summary[iChain,'low',ps], y1=summary[iChain,'upp',ps], lwd=1, col=cols[iChain])
+        }
+        if(legend) legend(legend.location, legend=names(samplesList), pch=16, col=cols, cex=cex)
+    }
+    if(!is.null(file)) dev.off()
+    invisible(par(par.save))
+}
+
+chainsPlot(samplesList, buffer.right = 0.7, nrows=1)
+chainsPlot(samplesList, buffer.right = 2, nrows=1, cex=0.8, jitter=3)
+chainsPlot(samplesList, buffer.right = 0.7, nrows=2)
+chainsPlot(samplesList, buffer.right = 0.7, nrows=3)
+
+samplesPlot(samplesList[[1]])
+samplesPlot(samplesList[[1]], file = '~/temp/FILEX.pdf')
+
+1
+
+##dimnames(summary)
+##dim(summary)
+##summary
+##sampleSummaries <- lapply(samplesList, function(s) rbind(
+##    mean = apply(s, 2, mean),
+##    low  = apply(s, 2, function(x) quantile(x, 0.025)),
+##    upp  = apply(s, 2, function(x) quantile(x, 0.975))))
+
+
+
+
+
+
+
+
+pdf.f(f, file=file.path(save.dir, "../figures/allparams.pdf"), height=10, width=8.5)
+
+
+
+## testing samplers used by JAGS for non-conjugate Wishart nodes
+
+##remove.packages('rjags')
+##install.packages('rjags')
+library(rjags)
+library(nimble)
+
+
+code <- quote({
+    x[1:3, 1:3] ~ dwish(A[1:3, 1:3], 5)
+    y[1] ~ dnorm(x[1,1], 1)
+    y[2] ~ dnorm(x[1,2], 3)
+})
+constants <- list(A = diag(3))
+data <- list(y = 1:2)
+inits <- list(x = diag(3))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 100
+monitorVars <- c('x')
+constsAndData <- c(constants, data)
+modelfile <- file.path(tempdir(), 'model.txt')
+writeLines(paste0('model\n', paste0(deparse(code, width.cutoff=500L), collapse='\n')), con=modelfile)
+set.seed(0); jags_mod <- jags.model(file=modelfile, data=constsAndData, inits=inits, n.chains=1, quiet=FALSE, n.adapt=40)
+
+set.seed(0); jags_out <- rjags::coda.samples(model=jags_mod, variable.names=monitorVars, n.iter=niter, thin=1)
+
+list.samplers(jags_mod)
+
+
+
+
+
+## trying Lauren's occupancy modelling, and my new crossLevel_binary_DT sampler
+library(nimble)
+setwd('~/github/occupancy/analysis/multiSpp-singleSea')
+
+code <- ms.ss.occ
+constants <- model.input$constants
+data <- model.input$data
+inits <- model.input$inits
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+base.names <- c('a1', 'a2', 'a3', 'a4', 'b1', 'b2', 'u.cato', 'u.fcw', 'v.cato', 'v.fcw')
+conf$removeSamplers('Z')
+conf$removeSamplers(base.names)
+conf$printSamplers()
+
+conf$addSampler(target = base.names, type ='sampler_crossLevel_binary_DT', print = TRUE)
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 1000)
+
+## testing my new crossLevel_binary_DT sampler
+
+library(nimble)
+
+binary2_virtual <- nimbleFunctionVirtual(
+    run = function() { },
+    methods = list(
+        calcBinaryPosteriorLogDensity = function() { returnType(double()) },
+        reset = function() { }
+    )
+)
+sampler_binary2 <- nimbleFunction(
+    name = 'sampler_binary2',
+    contains = binary2_virtual,
+    setup = function(model, mvSaved, target, control) {
+        ## node list generation
+        targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        calcNodes <- model$getDependencies(target)
+        ## checks
+        if(length(targetAsScalar) > 1)  stop('cannot use binary sampler on more than one target node')
+        if(!model$isBinary(target))     stop('can only use binary sampler on discrete 0/1 (binary) nodes')
+    },
+    run = function() {
+        currentLogProb <- getLogProb(model, calcNodes)
+        model[[target]] <<- 1 - model[[target]]
+        otherLogProb <- calculate(model, calcNodes)
+        acceptanceProb <- 1/(exp(currentLogProb - otherLogProb) + 1)
+        if(!is.nan(acceptanceProb) & runif(1,0,1) < acceptanceProb)
+            nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+        else
+            nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE)
+    },
+    methods = list(
+        calcBinaryPosteriorLogDensity = function() {
+            currentValue <- model[[target]]
+            currentLogProb <- getLogProb(model, calcNodes)
+            model[[target]] <<- 1 - currentValue
+            otherLogProb <- calculate(model, calcNodes)
+            model[[target]] <<- currentValue
+            calculate(model, calcNodes)
+            lp <- -log(exp(otherLogProb - currentLogProb) + 1)
+            returnType(double(0))
+            return(lp)
+        },
+        reset = function() { }
+    )
+)
+sampler_crossLevel_binary_DT <- nimbleFunction(
+    name = 'sampler_crossLevel_binary_DT',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        adaptive <- if(!is.null(control$adaptive)) control$adaptive else TRUE
+        ## node list generation
+        target       <- model$expandNodeNames(target)
+        lowNodes     <- model$getDependencies(target, self = FALSE, stochOnly = TRUE, includeData = FALSE)
+        lowCalcNodes <- model$getDependencies(lowNodes)
+        calcNodes    <- model$getDependencies(c(target, lowNodes))
+        ## nested function and function list definitions
+        mvInternal <- modelValues(model)
+        topRWblockSamplerFunction <- sampler_RW_block(model, mvInternal, target, control)
+        lowBinarySamplerFunctions <- nimbleFunctionList(binary2_virtual)
+        for(iLN in seq_along(lowNodes)) {
+            lowNode <- lowNodes[iLN]
+            if(!model$isBinary(lowNode))     stop('non-binary lowNode \'', lowNode, '\' in crossLevel_binary_DT sampler')
+            lowBinarySamplerFunctions[[iLN]] <- sampler_binary2(model, mvSaved, lowNode, control)
+        }
+        my_setAndCalculateTop <- setAndCalculate(model, target)
+        my_decideAndJump <- decideAndJump(model, mvSaved, calcNodes)
+    },
+    run = function() {
+        modelLP0 <- getLogProb(model, calcNodes)
+        propLP0 <- 0
+        for(iSF in seq_along(lowBinarySamplerFunctions))  { propLP0 <- propLP0 + lowBinarySamplerFunctions[[iSF]]$calcBinaryPosteriorLogDensity() }
+        propValueVector <- topRWblockSamplerFunction$generateProposalVector()
+        topLP <- my_setAndCalculateTop$run(propValueVector)
+        if(is.na(topLP))
+            jump <- my_decideAndJump$run(-Inf, 0, 0, 0)
+        else {
+            for(iSF in seq_along(lowBinarySamplerFunctions))
+                lowBinarySamplerFunctions[[iSF]]$run()
+            modelLP1 <- calculate(model, calcNodes)
+            propLP1 <- 0
+            for(iSF in seq_along(lowBinarySamplerFunctions))
+                propLP1 <- propLP1 + lowBinarySamplerFunctions[[iSF]]$calcBinaryPosteriorLogDensity()
+            jump <- my_decideAndJump$run(modelLP1, modelLP0, propLP1, propLP0)
+    	}
+        if(adaptive)     topRWblockSamplerFunction$adaptiveProcedure(jump)
+    },
+    methods = list(
+        reset = function() {
+            topRWblockSamplerFunction$reset()
+            for(iSF in seq_along(lowBinarySamplerFunctions)) {
+                lowBinarySamplerFunctions[[iSF]]$reset()
+            }
+        }
+    )
+)
+
+code <- nimbleCode({
+    for(i in 1:2) {
+        a[i] ~ dunif(0, 1)
+        b[i] ~ dunif(0, 1)
+        x[i, 1] ~ dbern(a[i])
+        x[i, 2] ~ dbern(sqrt(b[i]))
+        x[i, 3] ~ dbern(a[i] * b[i])
+        y[i, 1] ~ dnorm(x[i, 1], sd = 1)
+        y[i, 2] ~ dnorm(x[i, 2], sd = 2)
+        y[i, 3] ~ dnorm(x[i, 3], sd = 3)
+    }
+})
+
+constants <- list()
+y <- c(1, 2, 3)
+ymatrix <- rbind(y, y)
+data <- list(y = ymatrix)
+x <- c(1, 0, 0)
+xmatrix <- rbind(x, x)
+inits <- list(a = rep(1/2,2), b = rep(1/2,2), x = xmatrix)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+calculate(Rmodel)
+
+conf <- configureMCMC(Rmodel)
+conf$getMonitors()
+conf$printSamplers()
+conf$removeSamplers(c('a[2]', 'b[2]', 'x[2, 1]', 'x[2, 2]', 'x[2, 3]'))
+conf$printSamplers()
+conf$addSampler(c('a[2]', 'b[2]'), type = sampler_crossLevel_binary_DT)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 100000)
+
+colnames(samples)
+apply(samples, 2, mean)
+
+samplesPlot(samples, c('a[1]', 'a[2]'))
+samplesPlot(samples, c('b[1]', 'b[2]'))
+
+
+## Perry's example spatial capture-recapture model
+## maybe an idea for ISEC
+
+tr<-seq(15,85, length=10)
+X<-cbind(rep(tr,each=length(tr)),rep(tr,times=length(tr))) # 100 coord. traps
+plot(X, xlim=c(0,100), ylim=c(0,100), pch=3, cex=0.75)
+
+set.seed(10)
+xlim <- c(0,100); ylim <- c(0,100)      # Area 100*100=1e4
+A <- (xlim[2]-xlim[1])*(ylim[2]-ylim[1])/10000
+mu <- 50                 # Density
+N <- rpois(1, mu*A) ;N   # Generate population
+## 50
+
+s <- cbind(runif(N, xlim[1], xlim[2]), runif(N, ylim[1], ylim[2]))
+points(s, pch=16, col=2)
+
+sigma <- 5
+lambda0 <- 0.4
+J <- nrow(X)
+K <- 5
+yy <- array(NA, c(N, J, K))
+
+for(j in 1:J) {
+    dist <- sqrt((X[j,1]-s[,1])^2 + (X[j,2]-s[,2])^2)
+    lambda <- lambda0*exp(-dist^2/(2*sigma^2))
+    for(k in 1:K) {
+        yy[,j,k] <- rpois(N, lambda)
+    }
+}
+
+n <- apply(yy, c(2,3), sum)
+
+## Plot capture events
+tot<-apply(n, 1,sum)
+symbols(X, circles=tot, inches=F, bg="#00000022", add=TRUE)
+points(X, pch=3, cex=0.75); points(s, pch=16, col=2)
+
+## Case 1
+## Model in BUGS, as written, using NIMBLE
+## First I’ll run in NIMBLE ‘out of the box’.
+
+library(nimble)
+
+## DT's questions:
+## - lack of identifiability between M (possible) individuals?
+## - missing sqrt() on the dist term in model code
+
+code <- nimbleCode({
+    sigma ~ dunif(0,10)
+    lam0 ~ dunif(0,5)
+    psi ~ dbeta(1,1)
+    for(i in 1:M) {
+        z[i] ~ dbern(psi)
+        s[i,1] ~ dunif(xlim[1], xlim[2])
+        s[i,2] ~ dunif(ylim[1], ylim[2])
+        for(j in 1:J) {# Number of traps
+            dist[i,j] <- (s[i,1] - X[j,1])^2 + (s[i,2] - X[j,2])^2
+            lam[i,j] <- lam0*exp(-dist[i,j]/(2*sigma^2))*z[i]
+        }
+    }
+    for(j in 1:J){
+        bigLambda[j] <- sum(lam[1:M,j])
+        for(k in 1:K) {
+            n[j,k] ~ dpois(bigLambda[j])
+        }
+    }
+    N <- sum(z[1:M])
+})
+
+
+M<-200
+
+constants <- list(M = M, K=K, J=J)
+n1<-apply(n,1,sum)
+data<-list(n=n, X=X, xlim=xlim, ylim=ylim)
+s<-cbind(runif(M, xlim[1], xlim[2]), runif(M, ylim[1], ylim[2]))
+z<-rep(1,M)
+inits <- list (sigma=0.5, lam0=0.1, s=s, z=z)
+
+##Rmodel <- nimbleModel(code=code, constants=constants, data=data, inits=inits)
+Rmodel <- nimbleModel(code=code, constants=constants, data=data, inits=inits, check=FALSE) ## check=FALSE is faster
+##calculate(Rmodel)
+
+mcmcspec<-configureMCMC(Rmodel, print=TRUE, monitors = c("N", "lam0", "psi", "sigma"))
+scrMCMC <- buildMCMC(mcmcspec)
+Cmodel <- compileNimble(Rmodel) 
+CscrMCMC <- compileNimble(scrMCMC, project = Rmodel)
+
+## It's pretty slow to run so I just want an execution time first for a small sample
+t1_100 <- system.time(CscrMCMC$run(100))
+t1_100
+
+## And now I want a decent sample
+t1_20k <- system.time(CscrMCMC$run(20000))
+t1_20k_samples <- as.matrix(CscrMCMC$mvSamples)
+save(t1_100, t1_20k, t1_20k_samples, file = "case1results.Rdata")
+
+
+
+
+
+
+## testing whether / why nimbleOptions() now prints the result??
+
+library(nimble)
+
+nimbleOptions('allowDynamicIndexing')
+nimbleOptions(allowDynamicIndexing = FALSE)
+nimbleOptions(allowDynamicIndexing = TRUE)
+nimbleOptions('allowDynamicIndexing')
+
+
+## making the distributions_implementations example for dcar_proper()
+
+library(nimble)
+##dcar_proper(mu, C, adj, num, M, tau, gamma, evs)
+
+x <- c(1, 3, 3, 4)
+mu <- rep(3, 4)
+adj <- c(2, 1,3, 2,4, 3)
+num <- c(1, 2, 2, 1)
+
+## omitting C and M uses all weights = 1
+dcar_proper(x, mu, adj=adj, num=num, tau=1, gamma=0)
+
+## equivalent to above: specifying all weights = 1,
+## then using as.carCM to generate C and M arguments
+weights <- rep(1, 6)
+CM <- as.carCM(adj, weights, num)
+C <- CM$C
+M <- CM$M
+dcar_proper(x, mu, C, adj, num, M, tau=1, gamma=0)
+
+## now using non-unit weights
+weights <- c(2, 2, 3, 3, 4, 4)
+as.carCM(adj, weights, num)
+CM2 <- as.carCM(adj, weights, num)
+C2 <- CM2$C
+M2 <- CM2$M
+dcar_proper(x, mu, C2, adj, num, M2, tau=1, gamma=0)
+
+
+
+
+
+C <- c(1, 0.2, 0.8, 0.6, 0.4, 1)
+M <- 1/num
+tau <- 1
+
+## note that in the case of a row-normalised C matrix, and M
+## taking values 1/num, the bounds on gamma are necessarily [-1, 1].
+gamma <- (carMinBound(C, adj, num, M) + carMaxBound(C, adj, num, M)) / 2
+
+lp <- dcar_proper(x, mu, C, adj, num, M, tau, gamma)
+
+
+library(nimble)
+
+code1 <- nimbleCode({
+    z ~ dnorm(0,1)
+})
+
+m1 <- nimbleModel(code1)
+cm1 <- compileNimble(m1)
+cm1$z
+cm1$z <- 4
+cm1$z
+
+code2 =nimbleCode({
+    y ~ dnorm(0,1)
+})
+
+m2 = nimbleModel(code2)
+cm2 <- compileNimble(m2)
+
+cm2$y
+cm2$y <- 1
+cm2$y 
+
+cm1$z <- 3
+
+
+
+
+## testing new CAR_calcM() function for dcar_proper()
+
+library(nimble)
+
+C <- c(1, 0.2, 0.8, 0.6, 0.4, 1)
+C <- c(1,.5,.5,.5,.5,1)
+
+adj <- c(2, 1, 3, 2, 4, 3)
+num <- c(1, 2, 2, 1)
+##M <- CAR_calcM(C, adj, num)
+M <- rep(1, 4)
+M
+Cmatrix <- CAR_calcCmatrix(C, adj, num)
+Cmatrix
+
+diag(1/M) %*% Cmatrix
+t(diag(1/M) %*% Cmatrix)
+diag(1/M) %*% Cmatrix - t(diag(1/M) %*% Cmatrix)
+
+t(diag(1/M) %*% Cmatrix)
+t(Cmatrix) %*% diag(1/M)
+
+Cnf <- compileNimble(CAR_calcM)
+Cnf(C, adj, num)
+
+Cmatrix <- CAR_calcCmatrix(C, adj, num)
+
+code <- nimbleCode({
+    mu0 ~ dnorm(0, 0.0001)
+    tau ~ dgamma(0.001, 0.001)
+    gamma ~ dunif(-1, 1)
+    s[1:N] ~ dcar_proper(mu[1:N], C[1:L], adj[1:L], num[1:N], tau = tau, gamma = gamma)
+    for(i in 1:N) {
+        mu[i] <- mu0
+        logit(p[i]) <- s[i]
+        y[i] ~ dbern(p[i])
+    }
+})
+
+C <- c(1, 0.2, 0.8, 0.6, 0.4, 1)
+adj <- c(2, 1, 3, 2, 4, 3)
+num <- c(1, 2, 2, 1)
+
+constants <- list(C = C, adj = adj, num = num, N = 4, L = 6)
+
+data <- list(y = c(1, 0, 1, 1))
+
+inits <- list(mu0 = 0, tau = 1, gamma = 0, s = rep(0, 4))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+
+## internet use dataset for STAT101
+
+df <- read.csv('~/Downloads/InternetUse.csv')
+head(df)
+names(df)
+df$GDP.in.billions.of..US
+
+## testing new functionality with zero neighbor components
+## for dcar_normal and dcar_proper
+
+library(nimble)
+
+code <- nimbleCode({
+    x[1:N] ~ dcar_proper(mu[1:N], C[1:L], adj[1:L], num[1:N], M[1:N], tau, gamma)
+    for(i in 1:N) {
+        y[1] ~ dnorm(x[1], 1)
+        y[2] ~ dexp(x[2])
+        y[3] ~ dnorm(x[4], 1)
+        y[4] ~ dnorm(x[5], 1)
+    }
+})
+
+mu <- 1:5
+adj <- c(5,4)
+num <- c(0,0,0,1,1)
+M <- rep(1,5)
+C <- CAR_calcC(adj, num, M)
+bounds <- CAR_calcBounds(C, adj, num, M)
+tau <- 1
+gamma <- as.numeric(quantile(bounds, 0.8))
+constants <- list(mu = mu, C = C, adj = adj, num = num, M = M, N = 5, L = 2, tau = tau, gamma = gamma)
+data <- list(y = c(3, 6, 8, 10))
+inits <- list(x = rep(1, 5))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+##Cmodel <- compileNimble(Rmodel)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addMonitors('x')
+Rmcmc <- buildMCMC(conf)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 3
+set.seed(0); Rmcmc$run(niter)
+
+
+library(nimble)
+
+code <- nimbleCode({
+    x[1:N] ~ dcar_normal(adj[1:L], weights[1:L], num[1:N], tau)
+    for(i in 1:N) {
+        y[1] ~ dnorm(x[1], 1)
+        y[2] ~ dexp(x[2])
+        y[3] ~ dnorm(x[4], 1)
+        y[4] ~ dnorm(x[5], 1)
+    }
+})
+
+adj <- c(5,4)
+weights <- c(1,1)
+num <- c(0,0,0,1,1)
+CAR_calcNumIslands(adj, num)
+constants <- list(adj = adj, weights = weights, num = num, tau = 1, N = 5, L = 2)
+data <- list(y = c(3, 6, 8, 10))
+inits <- list(x = rep(1, 5))
+
+Rmodel <- nimbleModel(code, constants, data, inits, calculate=FALSE)
+Rmodel$calculate()
+##Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addMonitors('x')
+Rmcmc <- buildMCMC(conf)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 3
+set.seed(0); Rmcmc$run(niter)
+
+
+
+
+
+## STAT101 class demo on historgrams and barplots
+
+setwd('~/Downloads')
+survey <- read.csv('ClassSurvey.csv')
+survey$Phone <- as.character(survey$Phone)
+survey$Phone <- factor(survey$Phone, levels = c('iPhone', 'Android', 'other smartphone'))
+levels(survey$Phone) <- factor(c('iPhone', 'Android', 'other smartphone'))
+
+head(survey)
+gender <- survey$Gender
+chocolate <- survey$Chocolate
+table(gender, chocolate)
+
+
+survey$Phone
+
+table(survey$Phone)
+
+barplot(table(survey$Phone), col=3:5)
+
+pie(table(survey$Phone), init.angle = 50, col=3:5)
+
+pie(table(survey$Chapter1), init.angle = 50, col=2:3)
+
+hist(survey$Minutes, xlim = c(0,20))
+
+br <- c(4,8,20)
+N <- length(br)
+par(mfrow = c(N, 1))
+for(i in 1:N) hist(survey$Minutes, breaks = br[i], main = paste0('breaks = ', br[i]), xlab='', ylab='', xlim=c(0,20))
+par(mfrow = c(1,1))
+
+
+hist(data, breaks = xxxxxx)
+
+## bug in conjugacy??  github issue #590
+
+library(nimble)
+
+code <- nimbleCode({
+    intercept ~ dnorm(0,1)
+    a <- intercept + (X[1,1:K] %*% params[1:K])[1,1]
+    y ~ dnorm(a, 1)
+})
+constants <- list(K = 2)
+
+Rmodel <- nimbleModel(code, constants)
+
+##Rmodel$checkConjugacy('intercept')
+##nimble:::cc_expandDetermNodesInExpr(Rmodel, quote(a), targetNode = 'intercept')
+##nimble:::checkConjugacyOneDep
+##= function(model, targetNode, depNode) {
+##conf <- configureMCMC(Rmodel)
+
+conf <- configureMCMC(Rmodel)
+conf <- configureMCMC(Rmodel, useConjugacy = FALSE)
+
+conf$printSamplers()
+
+
+
+## testing of nimbleMCMC()
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10)
+        x[i] ~ dnorm(mu, sd = sigma)
+})
+data <- list(x = c(2, 5, 3, 4, 1, 0, 1, 3, 5, 3))
+inits <- function() list(mu = rnorm(1,0,1), sigma = runif(1,0,10))
+
+nchains <- 1
+nchains <- 2
+
+## execute one MCMC chain, monitoring the "mu" 
+## and "sigma" variables with thinning interval 10.
+## also fix the random number seed, for reproducible results.
+## by default, only returns posterior samples.
+mcmc.out <- nimbleMCMC(code = code, data = data, inits = inits,
+                       monitors = c("mu", "sigma"), thin = 10,
+                       niter = 20000, nchains = nchains, setSeed = TRUE)
+
+str(mcmc.out)
+
+## note that the inits argument to nimbleModel must be a
+## list of initial values, whereas nimbleMCMC can accept
+## inits as a function for generating initial values
+Rmodel <- nimbleModel(code, data = data, inits = inits())
+
+## this time using the existing Rmodel object,
+## execute 3 MCMC chains with specified burn-in.
+## return posterior summary statistics and WAIC values,
+## in addition to the posterior samples
+mcmc.out <- nimbleMCMC(model = Rmodel,
+                       niter = 20000, nchains = nchains, nburnin = 2000,
+                       returnSummary = TRUE, returnWAIC = TRUE)
+
+str(mcmc.out)
+mcmc.out$summary
+mcmc.out$waic
+
+
+
+
+## working on implementing nimbleMCMC() function
+
+cbind(
+    `Mean`     = apply(samples, 2, mean),
+    `Median`   = apply(samples, 2, median),
+    `St.Dev.`  = apply(samples, 2, sd),
+    `95% CI Lower` = apply(samples, 2, function(x) quantile(x, 0.025)),
+    `95% CI Upper` = apply(samples, 2, function(x) quantile(x, 0.975))
+)
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10) {
+        x[i] ~ dnorm(mu, sd = sigma)
+    }
+})
+Rmodel <- nimbleModel(code)
+Rmodel$setData(list(x = c(2, 5, 3, 4, 1, 0, 1, 3, 5, 3)))
+Rmcmc <- buildMCMC(Rmodel)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+inits <- function() list(mu = rnorm(1,0,1), sigma = runif(1,0,10))
+samplesList <- runMCMC(Cmcmc, niter = 10000, nchains = 3, inits = inits, returnWAIC = TRUE)
+str(samplesList)
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10) {
+        x[i] ~ dnorm(mu, sd = sigma)
+    }
+})
+data <- list(x = c(2, 5, 3, 4, 1, 0, 1, 3, 5, 3))
+inits <- function() list(mu = rnorm(1,0,1), sigma = runif(1,0,10))
+
+mcmc.output <- nimbleMCMC(code, data = data, inits = inits,
+                          monitors = c("mu", "sigma"), thin = 10,
+                          niter = 20000, nburnin = 1000, nchains = 3,
+                          returnSummary = TRUE, returnWAIC = TRUE)
+
+str(mcmc.output)
+mcmc.output$summary
+mcmc.output$waic
+
+
+
+## experimenting with RW2 sampler for Frederick (by email)
+
+library(nimble)
+
+RW2 <- nimbleFunction(
+    name = 'RW2',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        logScale      <- if(!is.null(control$log))           control$log           else FALSE
+        reflective    <- if(!is.null(control$reflective))    control$reflective    else FALSE
+        adaptive      <- if(!is.null(control$adaptive))      control$adaptive      else TRUE
+        adaptInterval <- if(!is.null(control$adaptInterval)) control$adaptInterval else 200
+        scale         <- if(!is.null(control$scale))         control$scale         else 1
+        niterNoUpdateTarget  <- if(!is.null(control$niterNoUpdateTarget))  control$niterNoUpdateTarget  else 0
+        niterNoAdaptation    <- if(!is.null(control$niterNoAdaptation))    control$niterNoAdaptation    else 0
+        niterNoAdaptiveDecay <- if(!is.null(control$niterNoAdaptiveDecay)) control$niterNoAdaptiveDecay else 0
+        ## node list generation
+        targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        calcNodes <- model$getDependencies(target)
+        ## numeric value generation
+        scaleOriginal <- scale
+        timesRan      <- 0
+        timesAccepted <- 0
+        timesAdapted  <- 0
+        optimalAR     <- 0.44
+        gamma1        <- 0
+        ## checks
+        if(length(targetAsScalar) > 1)   stop('cannot use RW sampler on more than one target; try RW_block sampler')
+        if(model$isDiscrete(target))     stop('cannot use RW sampler on discrete-valued target; try slice sampler')
+        if(logScale & reflective)        stop('cannot use reflective RW sampler on a log scale (i.e. with options log=TRUE and reflective=TRUE')
+    },
+    run = function() {
+        timesRan <<- timesRan + 1
+        if(timesRan > niterNoUpdateTarget) {
+            currentValue <- model[[target]]
+            propLogScale <- 0
+            if(logScale) { propLogScale <- rnorm(1, mean = 0, sd = scale)
+                           propValue <- currentValue * exp(propLogScale)
+                       } else         propValue <- rnorm(1, mean = currentValue,  sd = scale)
+            if(reflective) {
+                lower <- model$getBound(target, 'lower')
+                upper <- model$getBound(target, 'upper')
+                while(propValue < lower | propValue > upper) {
+                    if(propValue < lower) propValue <- 2*lower - propValue
+                    if(propValue > upper) propValue <- 2*upper - propValue
+                }
+            }
+            model[[target]] <<- propValue
+            logMHR <- calculateDiff(model, calcNodes) + propLogScale
+            jump <- decide(logMHR)
+            if(jump) nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+            else     nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE)
+            if(adaptive & timesRan > niterNoAdaptation)     adaptiveProcedure(jump)
+        }
+    },
+    methods = list(
+        adaptiveProcedure = function(jump = logical()) {
+            if(jump)     timesAccepted <<- timesAccepted + 1
+            if(timesRan %% adaptInterval == 0) {
+                acceptanceRate <- timesAccepted / adaptInterval
+                if(timesRan > niterNoAdaptiveDecay)   timesAdapted <<- timesAdapted + 1
+                gamma1 <<- 1/((timesAdapted + 3)^0.8)
+                gamma2 <- 10 * gamma1
+                adaptFactor <- exp(gamma2 * (acceptanceRate - optimalAR))
+                scale <<- scale * adaptFactor
+                timesAccepted <<- 0
+            }
+        },
+        reset = function() {
+            scale <<- scaleOriginal
+            timesRan      <<- 0
+            timesAccepted <<- 0
+            timesAdapted  <<- 0
+            gamma1 <<- 0
+        }
+    )
+)
+
+
+code <- nimbleCode({
+    a ~ dexp(5)
+    b ~ dnorm(a, 1)
+})
+constants <- list()
+data <- list(b = 4)
+inits <- list(a = 5)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$printSamplers()
+conf$addSampler(target = 'a', type = 'RW2', control = list(niterNoAdaptation = 1000))
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+
+
+
+
+
+## testing how to implement ddirch-dcat conjugacy, in light of complication
+## with dcat distribution being univariate, but with multivariate 'prob' parameter
+## addressing github issue #559
+
+library(nimble)
+
+set.seed(0)
+n <- 100
+alpha <- c(10, 30, 15, 60, 1)
+K <- length(alpha)
+p <- c(.12, .24, .09, .54, .01)
+y <- rmulti(1, n, p)
+y <- rep(seq_along(y), times = y)
+code <- nimbleCode( {
+    for(i in 1:n) {
+        y[i] ~ dcat(p[1:K])
+    }
+    p[1:K] ~ ddirch(alpha[1:K])
+    for(i in 1:K) {
+        alpha[i] ~ dgamma(.001, .001)
+    }
+    ##yy ~ dnorm(p[1], 1)
+})
+constants <- list(n = n, K = K)
+data <- list(y = y)##, yy = 1)
+inits <- list(alpha = 1:5, p = rep(0.2, 5))
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+##Rmodel$calculate('alpha')
+##Rmodel$calculate('p')
+##Rmodel$calculate('y')
+##Rmodel$calculate('yy')
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+##conf$getSamplerDefinition(6)
+## 
+##[6] conjugate_ddirch_dcat sampler: p[1:5]
+##$setup
+##function (model, mvSaved, target, control) 
+##{
+##    calcNodes <- model$getDependencies(target)
+##    calcNodesDeterm <- model$getDependencies(target, determOnly = TRUE)
+##    d <- max(determineNodeIndexSizes(target))
+##    dep_dcat_nodeNames <- control$dep_dcat
+##    N_dep_dcat <- length(control$dep_dcat)
+##    dep_dcat_nodeSizes <- sapply(dep_dcat_nodeNames, function(node) max(nimDim(model$getParam(node, 
+##        "prob"))), USE.NAMES = FALSE)
+##    if (length(dep_dcat_nodeSizes) == 1) 
+##        dep_dcat_nodeSizes <- c(dep_dcat_nodeSizes, -1)
+##    dep_dcat_nodeSizeMax <- max(dep_dcat_nodeSizes)
+##    dep_dcat_values <- array(0, dim = N_dep_dcat)
+##    dep_dcat_prob <- array(0, dim = c(N_dep_dcat, dep_dcat_nodeSizeMax))
+##    contribution_alpha <- rep(0, length = d)
+##}
+##<environment: 0x7fad2133ca00>
+## 
+##$run
+##function () 
+##{
+##    prior_alpha <- model$getParam(target[1], "alpha")
+##    for (iDep in 1:N_dep_dcat) {
+##        thisNodeSize <- dep_dcat_nodeSizes[iDep]
+##        dep_dcat_values[iDep] <<- model$getParam(dep_dcat_nodeNames[iDep], 
+##            "value")
+##        dep_dcat_prob[iDep, 1:thisNodeSize] <<- model$getParam(dep_dcat_nodeNames[iDep], 
+##            "prob")
+##    }
+##    contribution_alpha <<- rep(0, length = d)
+##    for (iDep in 1:N_dep_dcat) {
+##        thisNodeSize <- dep_dcat_nodeSizes[iDep]
+##        contribution_alpha <<- contribution_alpha + calc_dcatConjugacyContributions(dep_dcat_prob[iDep, 
+##            1:thisNodeSize], dep_dcat_values[iDep])
+##    }
+##    newValue <- rdirch(1, alpha = prior_alpha + contribution_alpha)
+##    model[[target]] <<- newValue
+##    calculate(model, calcNodes)
+##    nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, 
+##        logProb = TRUE)
+##}
+##<environment: 0x7fad2133ca00>
+
+Rmcmc <- buildMCMC(conf)
+
+##lst <- compileNimble(Rmodel, Rmcmc)
+##lst
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+set.seed(0)
+samplesList <- runMCMC(Cmcmc, 10000, nchains = 3, returnCodaMCMC = TRUE, returnWAIC = TRUE)
+str(samplesList)
+samplesList$waic
+
+Cmcmc$run(10000)
+samples <- as.matrix(Cmcmc$mvSamples)
+Cmcmc$calculateWAIC()
+
+
+colnames(samples)
+apply(samples, 2, mean)
+
+samplesPlot(samples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+class(samplesList)
+traceplot(samplesList, ask = TRUE, param = c('alpha[2]'))
+traceplot(samplesList[[1]])
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+    
+
+## testing unneeded variables created in conjugate samplers?
+## github issue #557
+
+library(nimble)
+
+nimbleOptions('verifyConjugatePosteriors')
+nimbleOptions(verifyConjugatePosteriors = TRUE)
+nimbleOptions('verifyConjugatePosteriors')
+
+code <- nimbleCode({
+    x ~ dbeta(3, 13)
+    y[1] ~ dbin(x, 10)
+    y[2] ~ dbin(x, 20)
+})
+
+constants <- list()
+data <- list(y = c(3,4))
+inits <- list(x = 0.5)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+conf$getSamplerDefinition(1)
+
+[1] conjugate_dbeta_dbin sampler: x
+$setup
+function (model, mvSaved, target, control) 
+{
+    calcNodes <- model$getDependencies(target)
+    calcNodesDeterm <- model$getDependencies(target, determOnly = TRUE)
+    dep_dbin_nodeNames <- control$dep_dbin
+    N_dep_dbin <- length(control$dep_dbin)
+    dep_dbin_values <- array(0, dim = N_dep_dbin)
+    dep_dbin_prob <- array(0, dim = N_dep_dbin)
+    dep_dbin_size <- array(0, dim = N_dep_dbin)
+    contribution_shape1 <- 0
+    contribution_shape2 <- 0
+}
+<environment: 0x7f84b7cf04a8>
+
+$run
+function () 
+{
+    prior_shape1 <- model$getParam(target[1], "shape1")
+    prior_shape2 <- model$getParam(target[1], "shape2")
+    for (iDep in 1:N_dep_dbin) {
+        dep_dbin_values[iDep] <<- model$getParam(dep_dbin_nodeNames[iDep], 
+            "value")
+        dep_dbin_prob[iDep] <<- model$getParam(dep_dbin_nodeNames[iDep], 
+            "prob")
+        dep_dbin_size[iDep] <<- model$getParam(dep_dbin_nodeNames[iDep], 
+            "size")
+    }
+    contribution_shape1 <<- 0
+    contribution_shape2 <<- 0
+    for (iDep in 1:N_dep_dbin) {
+        contribution_shape1 <<- contribution_shape1 + dep_dbin_values[iDep]
+        contribution_shape2 <<- contribution_shape2 + (dep_dbin_size[iDep] - 
+            dep_dbin_values[iDep])
+    }
+    newValue <- rbeta(1, shape1 = prior_shape1 + contribution_shape1, 
+        shape2 = prior_shape2 + contribution_shape2)
+    model[[target]] <<- newValue
+    calculate(model, calcNodes)
+    nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, 
+        logProb = TRUE)
+}
+<environment: 0x7f84b7cf04a8>
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+    
+
+## testing sd() and var() functions in DSL
+
+library(nimble)
+
+nfDef <- nimbleFunction(
+    setup = function() {
+        a <- 1:10
+    },
+    run = function() {
+        s <- sd(a)
+        print(s)
+        v <- var(a)
+        print(v)
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf, dirName = '~/temp/tempcpp')#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+
+
+
+# here is the script:
+                                        # Imports
+library(dplyr)
+library(tibble)
+library(coda)
+library(nimble)
+
+##library(gProfileR)
+
+##library(devtools)
+##devtools::install_github('nimble-dev/gprofiler')
+##library(gprofiler)
+
+# Subsample data during profiling.
+subsample <- TRUE
+
+# Set user-specific file paths.
+data_dir <- '.'
+out_dir <- '.'
+cpp_dir <- out_dir
+setwd('~/temp')
+nimbleOptions(showCompilerOutput = TRUE)
+
+# getting data ready ------------------------------------------------------------------------------
+# Observed tone data
+tone_data <- read.csv(file.path(data_dir, 'tone-data.csv')) 
+if (subsample) {
+    tone_data <- tone_data[sample(1:nrow(tone_data), 5000, replace=FALSE),]
+}
+bad_eas <- tone_data %>%
+    group_by(ea) %>%
+    filter(length(unique(neg_count)) == 1) %>%
+    filter(neg_count == 0) %>%
+    ungroup(ea) %>%
+    distinct(ea) %>%
+    mutate(ea = as.character(ea))
+bad_eas <- bad_eas$ea
+# taking out bad eas and recomputing ea and src ids.
+tone_data <- tone_data %>%
+    filter(!is.element(ea, bad_eas)) %>%
+    mutate(ea=as.factor(as.character(ea)),
+           src=as.factor(as.character(src))) %>%
+    mutate(src_id=as.numeric(src),
+           ea_id=as.numeric(ea))
+glimpse(tone_data)
+# Number non-missing values:
+colSums(!is.na(tone_data))
+
+# Selection model data
+selection_vars <- c("BtoM", "logMV", "RetVol", "ESurp", "NrAnalyst",
+                    "PriRet", "InstHold", "SToneEA", "NrEAs")
+
+selection_data <- read.csv(file.path(data_dir, 'selection-model-data.csv')) %>%
+    filter(!is.element(ea, bad_eas)) %>%
+    filter(is.element(as.character(ea), as.character(tone_data$ea))) %>% # eas that are also in tone
+    filter(is.element(as.character(src), as.character(tone_data$src))) %>%
+    mutate(ea=as.factor(as.character(ea)),
+           src=as.factor(as.character(src))) %>%
+    mutate(src_id=as.numeric(src),
+           ea_id=as.numeric(ea))
+# center all continuous variables to help the mcmc a algorithm fight serial dependence between variables
+selection_data[, selection_vars] <- scale(selection_data[, selection_vars])
+selection_data <- as.data.frame(selection_data)
+if (subsample) {
+    selection_data <- selection_data[sample(1:nrow(selection_data), 10000, replace=FALSE),]
+}
+glimpse(selection_data)
+# Number non-missing values:
+colSums(!is.na(selection_data))
+#' **IMPORTANT: Check this every time. Both datasets should not have missing values**
+#' This is important so that the news source ids in both datasets match
+#' Always check whether src ids align
+
+# The Model ----------------------------------------------------------------------------------
+code <- nimbleCode({
+    # sampling distribution
+    for (n in 1:SELMOD_N) {
+        # coverage decision model
+        # Icov is 1 if news source i wrote an article about an earnings announcement j
+        # and 0 if not
+        Icov[n] ~  dbern(prob=prob_cov[n]);
+        probit(prob_cov[n])  <- b_0 +
+            b_1 * scaled_theta_n[ sel_src[n] ] + b_2 * scaled_theta_c[ sel_src[n] ] +
+            b_3 * RetVol[n] +
+            b_4 * BtoM[n] + b_5 * BtoM[n] * scaled_theta_n[ sel_src[n] ] +
+            b_6 * logMV[n] + b_7 * logMV[n] * scaled_theta_c[ sel_src[n] ] +
+            b_8 * InstHold[n] + b_9 * InstHold[n] * scaled_theta_c[ sel_src[n] ] +
+            b_10 * PriRet[n] +
+            b_11 * ESurp[n] + b_12 * ESurp[n] * scaled_theta_n[ sel_src[n] ] +
+            b_13 * SToneEA[n] + b_14 * SToneEA[n] * scaled_theta_n[ sel_src[n] ] +
+            b_15 * NrAnalyst[n] + b_16 * NrAnalyst[n] * scaled_theta_c[ sel_src[n] ] +
+            b_17 * NrEAs[n];
+        }
+    for (s in 1:TONE_N) {
+        # writing dimensions for actually written posts
+        # This is explaining the amount of negatively connoted words in a news post
+        neg[s] ~ dbin(prob=prob_neg[s], size=wrd_cnt[s]);
+        probit(prob_neg[s]) <- a_n[ ea[s] ] + theta_n[ tone_src[s] ];
+        # This is explaining the amount of complex financial words in a news post
+        cplx[s] ~ dbin(prob=prob_cplx[s], size=wrd_cnt[s]);
+        probit(prob_cplx[s]) <- a_c[ ea[s] ] + theta_c[ tone_src[s] ];
+        }
+    for (i in 1:SOURCES){
+        # These are the latent random effects of prime interest:
+        #  (also creating demeaned, scaled version for the regression to make coefficient
+        #   better interpretable)
+        # _n is for the negativity/optimism dimension
+        scaled_theta_n[i] <- (theta_n[i] - u_n_i) / sigma_n_i;
+        theta_n[i] ~ dnorm(mean=u_n_i, sd=sigma_n_i);
+        # _c is for the complexity/financial sophistication dimension
+        scaled_theta_c[i] <- (theta_c[i] - u_c_i) / sigma_c_i;
+        theta_c[i] ~ dnorm(mean=u_c_i, sd=sigma_c_i);
+        }
+    for (j in 1:EAS) {
+        # these are earnings announcement specific effects
+        # fixed effects specification
+        a_n[j] ~ dnorm(0, sd=100);
+        a_c[j] ~ dnorm(0, sd=100);
+        }
+    # priors
+    # coverage coefficients
+    b_0  ~ dnorm(mean=0, sd=100);
+    b_1  ~ dnorm(mean=0, sd=100);
+    b_2  ~ dnorm(mean=0, sd=100);
+    b_3  ~ dnorm(mean=0, sd=100);
+    b_4  ~ dnorm(mean=0, sd=100);
+    b_5  ~ dnorm(mean=0, sd=100);
+    b_6  ~ dnorm(mean=0, sd=100);
+    b_7  ~ dnorm(mean=0, sd=100);
+    b_8  ~ dnorm(mean=0, sd=100);
+    b_9  ~ dnorm(mean=0, sd=100);
+    b_10 ~ dnorm(mean=0, sd=100);
+    b_11 ~ dnorm(mean=0, sd=100);
+    b_12 ~ dnorm(mean=0, sd=100);
+    b_13 ~ dnorm(mean=0, sd=100);
+    b_14 ~ dnorm(mean=0, sd=100);
+    b_15 ~ dnorm(mean=0, sd=100);
+    b_16 ~ dnorm(mean=0, sd=100);
+    b_17 ~ dnorm(mean=0, sd=100);
+    # target audience random effects
+    u_n_i     <- 0;
+    sigma_n_i ~ dunif(0, 2);
+    u_c_i     <- 0;
+    sigma_c_i ~ dunif(0, 2);
+    # monitoring variables
+    sd_an <- sd(a_n[1:EAS]);
+    sd_ac <- sd(a_c[1:EAS]);
+    })
+
+input_data <- list(neg     = tone_data$neg_count,
+                   cplx    = tone_data$cmplx_count,
+                   Icov    = selection_data$covered)
+str(input_data)
+
+constants <- list(SELMOD_N= length(selection_data$covered),
+                  TONE_N  = length(tone_data$neg_count),
+                  SOURCES = max(tone_data$src_id),
+                  EAS     = max(tone_data$ea_id),
+                  ea      = tone_data$ea_id,
+                  sel_src = selection_data$src_id,
+                  tone_src= tone_data$src_id,
+                  SToneEA = selection_data$SToneEA,
+                  BtoM    = selection_data$BtoM,
+                  logMV   = selection_data$logMV,
+                  RetVol  = selection_data$RetVol,
+                  ESurp   = selection_data$ESurp,
+                  NrAnalyst= selection_data$NrAnalyst,
+                  NrEAs   = selection_data$NrEAs,
+                  PriRet  = selection_data$PriRet,
+                  InstHold=selection_data$InstHold,
+                  wrd_cnt = tone_data$total_words)
+str(constants)
+
+initsFunction <- function(){
+    list(
+          b_0=0, b_1=0, b_2=0, b_3=0, b_4=0, b_5=0,
+          b_6=0, b_7=0, b_8=0, b_9=0, b_10=0, b_11=0,
+          b_12=0, b_13=0, b_14=0, b_15=0, b_16=0, b_17=0,
+
+          sigma_n_i=0.1,
+          theta_n  =rnorm(constants$SOURCES, 0, 1),
+          a_n      =rnorm(constants$EAS, 0, 1),
+          sigma_c_i=0.01,
+          theta_c  =rnorm(constants$SOURCES, 0, 1),
+          a_c      =rnorm(constants$EAS, 0, 1)
+          )
+}
+str(initsFunction())
+str(initsFunction())
+
+Model <- nimbleModel(
+    name = 'gmbh',
+    code = code,
+    data = input_data,
+    constants = constants,
+    inits = initsFunction(),
+    calculate = TRUE
+)
+
+Model$calculate()
+
+# Running Model -----------------------------------------------------------------------------------
+
+#' ## Compile and Run the Model
+# MCMC configuration (choice of samplers)
+model_parameters <- c('sigma_n_i', "sd_an",
+                      'sigma_c_i', "sd_ac",
+                      "b_0", "b_1", "b_2", 'b_3', 'b_4',
+                      'b_5', 'b_6', 'b_7', 'b_8',
+                      'b_9', 'b_10', 'b_11', 'b_12',
+                      'b_13', 'b_14', 'b_15', 'b_16', 'b_17')
+
+monitors <- c(model_parameters, c('theta_n', 'theta_c'))
+monitors
+
+conf <- configureMCMC(Model, monitors  = monitors)
+conf$printMonitors()
+conf$printSamplers()
+
+mcmc_built <- buildMCMC(conf) # MCMC algorithm in R
+
+# Compile model and MCMC.
+cm <- compileNimble(Model, dirName = cpp_dir, resetFunctions = TRUE)
+cm$calculate()
+
+cmcmc <- compileNimble(mcmc_built, dirName = cpp_dir, project = Model, resetFunctions = TRUE)
+
+if (subsample) {
+    nIts <- 150
+    burn <- 50
+} else {
+    nIts <- 15000
+    burn <- 5000
+}
+
+
+# FIXME This freezes on second call.
+samplesList <- runMCMC(cmcmc, niter = nIts, nburnin = burn, nchains = 2, inits = initsFunction, returnCodaMCMC = TRUE)
+
+str(samplesList)
+i <- 2
+dim(samplesList[[i]])
+
+
+                                        # FIXME This freezes on second call.
+samplesList <- profile(
+    runMCMC(
+        cmcmc,
+        niter = nIts,
+        nburnin = burn,
+        nchains = 2,
+        inits = initsFunction,
+        returnCodaMCMC = TRUE
+    ),
+    filename = file.path('temp', 'runMCMC.prof')
+)
+
+
+
+
+## testing autoBlock:
+library(nimble)
+
+code <- nimbleCode({
+    a[1] ~ dnorm(0, 1)
+    a[2] ~ dnorm(a[1]^2, 1)
+    a[3] ~ dnorm(a[1]^3 + a[2]^2, 1)
+    y[1] ~ dnorm(a[1], 1)
+    y[2] ~ dnorm(a[2], 1)
+    y[3] ~ dnorm(a[3], 1)
+})
+constants <- list()
+data <- list(y = 1:3)
+inits <- list(a = (1:3)/10)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+
+conf <- configureMCMC(Rmodel, autoBlock = TRUE)
+
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+##Cmcmc$run(10000)
+##samples <- as.matrix(Cmcmc$mvSamples)
+
+colnames(samples)
+apply(samples, 2, mean)
+
+samplesPlot(samples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+
+
+
+
+## testing compilation of HMC sampler:
+library(nimble)
+##nimbleOptions(experimentalEnableDerivs = TRUE)
+code <- nimbleCode({
+    a[1] ~ dnorm(0, 1)
+    a[2] ~ dnorm(a[1]^2, 1)
+    a[3] ~ dnorm(a[1]^3 + a[2]^2, 1)
+    y[1] ~ dnorm(a[1], 1)
+    y[2] ~ dnorm(a[2], 1)
+    y[3] ~ dnorm(a[3], 1)
+})
+constants <- list()
+data <- list(y = 1:3)
+inits <- list(a = (1:3)/10)
+##
+Rmodel <- nimbleModel(code, constants, data, inits)
+##
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$printSamplers()
+conf$addSampler(c('a'), 'HMC')
+conf$printSamplers()
+##
+Rmcmc <- buildMCMC(conf)
+
+debug(Rmcmc$samplerFunctions$contentsList[[1]]$run)
+set.seed(0); Rmcmc$run(3)
+
+##
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+##
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+niter <- 20
+set.seed(0); Rmcmc$run(niter)
+set.seed(0); Cmcmc$run(niter)
+
+Rsamples <- as.matrix(Rmcmc$mvSamples)
+Csamples <- as.matrix(Cmcmc$mvSamples)
+
+sampleNames <- colnames(Rsamples)
+
+Rsamples[, sampleNames] - Csamples[, sampleNames]
+
+colnames(samples)
+apply(samples, 2, mean)
+
+
+
+## making github issue about step(inprod(..., ...))
+## failing at compilation
+
+library(nimble)
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        a <- rep(1, 5)
+        b <- rep(-12, 5)
+        ##c <- step(inprod(a, b))
+        c1 <- inprod(a, b)
+        c <- step(c1)
+        returnType(double())
+        return(c)
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+
+
+## looks like recursion like this is ok:
+
+library(nimble)
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function(a = double()) {
+        print('in run, a = ', a)
+        m(a)
+        print('back in run, a = ', a)
+        ##if(a > 5) c <- 1 else c <- 0
+        ##print('in run, c = ', c)
+        ##d <- step(a-10)
+        ##print('in run, d = ', d)
+    },
+    methods = list(
+        m = function(a = double()) {
+            print('in m, a = ', a)
+            a <- a + 10
+            print('in m, now a = ', a)
+        }
+    )
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf, showCompilerOutput = TRUE)
+
+a <- 1
+Rnf$run(a)
+Cnf$run(a)
+
+
+## test of WAIC:
+{
+    library(nimble)
+    code <- nimbleCode({
+        x ~ dgamma(1, 1)       # should satisfy 'gamma' conjugacy class
+        a  ~ dnorm(0, x)     # should satisfy 'norm' conjugacy class
+        a2 ~ dnorm(0, tau = 3*x+0)
+        b  ~ dpois(0+5*x)
+        b2 ~ dpois(1*x*1)
+        c ~ dgamma(1, 7*x*5)
+        ##for(i in 1:3) {
+        ##    xa[i] ~ dnorm(0, 1)
+        ##    ya[i] ~ dnorm(xa[i], 1)
+        ##}
+        for(i in 2:3) {
+            jTau[i] <- 1
+            jNorm[i] ~ dnorm(c * (a+3) - i, var = jTau[i])
+            kTauSd[i] <- 2
+            kLogNorm[i] ~ dlnorm(0 - a - 6*i, kTauSd[i])
+        }
+        z[1:3] ~ dmnorm(mu0[1:3], prec = ident[1:3,1:3])
+        mu_y2[1:2] <- asCol(A[1:2]) + B[1:2,1:3] %*% asCol(z[1:3])
+        mu_y3[1:3] <- asCol(A[1:3]) + B[1:3,1:3] %*% asCol(z[1:3])
+        mu_y5[1:5] <- asCol(A[1:5]) + B[1:5,1:3] %*% asCol(z[1:3])
+        y2[1:2] ~ dmnorm(mu_y2[1:2], prec = prec_y[1:2,1:2])
+        y3[1:3] ~ dmnorm(mu_y3[1:3], prec = prec_y[1:3,1:3])
+        y5[1:5] ~ dmnorm(mu_y5[1:5], prec = prec_y[1:5,1:5])
+    })
+    mu0 <- rep(0,3)
+    ident <- diag(3)
+    A <- 11:15
+    B <- matrix(1:15, nrow=5, ncol=3, byrow=TRUE)
+    prec_y <- diag(1:5)
+    constants <- list(mu0=mu0, ident=ident, A=A, B=B, prec_y=prec_y)
+    data <- list(y2=1:2, y3=1:3, y5=1:5)##, ya = 1:3)
+    inits <- list(a = 0, z=rep(0,3))
+    Rmodel <- nimbleModel(code, constants, data, inits)
+    conf <- configureMCMC(Rmodel)
+    Rmcmc <- buildMCMC(conf)
+    Cmodel <- compileNimble(Rmodel)
+    Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+    ##niter <- 20
+    ##Rmcmc$run(niter)
+    ##as.matrix(Rmcmc$mvSamples)
+    ##Rmcmc$calculateWAIC()
+    niter <- 10000
+    set.seed(0)
+    Cmcmc$run(niter)
+    waic <- Cmcmc$calculateWAIC(burnIn = 2000)
+    print(waic)
+    ## 20.46023
+}
+
+
+
+## making a nimble package "test" for dcar_proper:
+
+library(nimble)
+source(system.file(file.path('tests', 'test_utils.R'), package = 'nimble'))
+context("Testing of default MCMC")
+pRwarnLevel <- options('warn')$warn
+options(warn = -1)
+nimbleVerboseSetting <- nimbleOptions('verbose')
+
+code <- nimbleCode({
+    tau ~ dgamma(0.001, 0.001)
+    gamma ~ dunif(gMin, gMax)
+    x[1:N] ~ dcar_proper(mu[1:N], C[1:L], adj[1:L], num[1:N], M[1:N], tau, gamma)
+    for(i in 1:N) {
+        y[1] ~ dnorm(x[1], 1)
+        y[2] ~ dnorm(3*x[2] + 5, 10)
+        y[3] ~ dnorm(x[3]^2, 1)
+        y[4] ~ dnorm(x[4]^2, 10)
+    }
+})
+
+mu <- 1:4
+adj <- c(2, 1, 3, 2, 4, 3)
+num <- c(1, 2, 2, 1)
+M <- 1:4
+C <- CAR_calcC(adj, num, M)
+bounds <- CAR_calcBounds(C, adj, num, M)
+tau <- 1
+gamma <- as.numeric(quantile(bounds, 0.8))
+constants <- list(mu = mu, C = C, adj = adj, num = num, M = M, N = 4, L = 6, gMin = bounds[1], gMax = bounds[2])
+data <- list(y = c(3, 6, 8, 10))
+inits <- list(tau = tau, gamma = gamma, x = rep(0, 4))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Cmodel <- compileNimble(Rmodel)
+
+expect_equal(calculate(Rmodel), -557.7978,    ## CHANGE
+             tol = 1E-5,
+             info = 'calculate for dcar_proper()')
+
+expect_equal(calculate(Cmodel), -557.7978,    ## CHANGE
+             tol = 1E-5,
+             info = 'calculate for dcar_proper(), compiled')
+
+conf <- configureMCMC(Rmodel)
+conf$addMonitors('x')
+Rmcmc <- buildMCMC(conf)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 20
+set.seed(0); Rmcmc$run(niter)
+set.seed(0); Cmcmc$run(niter)
+
+Rsamples <- as.matrix(Rmcmc$mvSamples)
+Csamples <- as.matrix(Cmcmc$mvSamples)
+
+sampleNames <- colnames(Rsamples)
+
+expect_true(all(Rsamples[, sampleNames] - Csamples[, sampleNames] == 0),
+            info = 'agreement between R and C sampling of dcar_proper')
+
+expect_equal(as.numeric(Csamples[20, sampleNames]),   ## CHANGE
+             c(0.3957632, 0.4388424, 1.5625223, 0.2071691, 2.6513380, -3.1753125),
+             tolerance = 1e-6,
+             info = 'exact sample values for dcar_proper')
+
+
+## now with the correct eigen values!!!!
+
+Rmodel$calculate()
+Cmodel$calculate()
+
+Rmodel$lifted_CAR_calcEVs_oPC_oB1to6_cB_comma_adj_oB1to6_cB_comma_num_oB1to4_cB_cP
+Cmodel$lifted_CAR_calcEVs_oPC_oB1to6_cB_comma_adj_oB1to6_cB_comma_num_oB1to4_cB_cP
+
+Cmatrix <- CAR_calcCmatrix(C, adj, num)
+Cmatrix
+##evs <- Rmodel$lifted_CAR_calcEVs_oPC_oB1to6_cB_comma_adj_oB1to6_cB_comma_num_oB1to4_cB_cP
+evs <- eigen(Cmatrix)$values
+evs
+
+Rmodel$lifted_CAR_calcEVs_oPC_oB1to6_cB_comma_adj_oB1to6_cB_comma_num_oB1to4_cB_cP <- evs
+Cmodel$lifted_CAR_calcEVs_oPC_oB1to6_cB_comma_adj_oB1to6_cB_comma_num_oB1to4_cB_cP <- evs
+Rmodel$lifted_CAR_calcEVs_oPC_oB1to6_cB_comma_adj_oB1to6_cB_comma_num_oB1to4_cB_cP
+Cmodel$lifted_CAR_calcEVs_oPC_oB1to6_cB_comma_adj_oB1to6_cB_comma_num_oB1to4_cB_cP
+
+Rmodel$calculate()
+Cmodel$calculate()
+Rmodel$calculate()
+Cmodel$calculate()
+
+evs
+gamma
+gamma*evs
+1 - gamma*evs
+log(1 - gamma*evs)
+sum(log(1 - gamma*evs))
+
+
+## making the "Example" for dcar_proper for the User Manual:
+
+
+library(nimble)
+
+code <- nimbleCode({
+    mu0 ~ dnorm(0, 0.0001)
+    tau ~ dgamma(0.001, 0.001)
+    gamma ~ dunif(gMin, gMax)
+    s[1:N] ~ dcar_proper(mu[1:N], C[1:L], adj[1:L], num[1:N], M[1:N], tau, gamma)
+    for(i in 1:N) {
+        mu[i] <- mu0
+        logit(p[i]) <- s[i]
+        y[i] ~ dbern(p[i])
+    }
+})
+
+adj <- c(2, 1, 3, 2, 4, 3)
+num <- c(1, 2, 2, 1)
+M <- rep(1, 4)
+C <- CAR_calcC(adj, num, M)
+bounds <- CAR_calcBounds(C, adj, num, M)
+
+constants <- list(C = C, adj = adj, num = num, M = M, N = 4, L = 6,
+                  gMin = bounds[1], gMax = bounds[2])
+
+data <- list(y = c(1, 0, 1, 1))
+
+inits <- list(mu0 = 0, tau = 1, gamma = mean(bounds), s = rep(0, 4))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$addMonitors('s')
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0); samples <- runMCMC(Cmcmc, 10000)
+##Cmcmc$run(10000)
+##samples <- as.matrix(Cmcmc$mvSamples)
+
+colnames(samples)
+apply(samples, 2, mean)
+
+b <- 5000
+samplesPlot(samples, 1, burnin=b)
+samplesPlot(samples, 2, burnin=b)
+samplesPlot(samples, 3:6, burnin=b)
+samplesPlot(samples, 7, burnin=b)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+
+
+
+
+## my first example using dcar_proper:
+
+mu <- 1:4
+C <- c(1, .5,.5, .5,.5, 1)
+adj <- c(2, 1,3, 2,4, 3)
+num <- c(1, 2, 2, 1)
+M <- c(2, 1, 1, 2)  ## satifies symmetry constraint on C and M
+N <- length(num)
+L <- length(adj)
+x <- c(1, 2, 3, 4)
+tau <- 0.3
+gamma <- quantile(CAR_calcBounds(C, adj, num, M), 0.75)
+CAR_calcBounds(C, adj, num, M)
+gamma
+##constants <- list(mu=mu, C=C, adj=adj, num=num, M=M, tau=tau, gamma=gamma, N=N, L=L)
+constants <- list(mu=mu, adj=adj, num=num, M=M, tau=tau, gamma=gamma, N=N, L=L)
+data <- list(y = 1:4)
+inits <- list(x = x)
+Rmodel <- nimbleModel(code, constants, data, inits)##, calculate=FALSE)
+
+
+
 ## testing how inprod() works (or doesn't work?) in a model
 
 library(nimble)
@@ -287,7 +2083,7 @@ model$x
 model$calculate('x')
 
 Sigma <- solve(diag(4) - gamma*Cmatrix) %*% diag(M) / tau
-x <- model$x
+x <- Rmodel$x
 x
 log(det(2*pi*Sigma)^(-1/2) * exp((-1/2)*((x-mu) %*% solve(Sigma) %*% (x-mu))[1,1]))
 dmnorm_chol(x, mu, chol(Sigma), prec_param = FALSE, log = TRUE)
@@ -1036,21 +2832,20 @@ inits <- list(alpha = 3, prec = 1, gamma = 0.1,
                   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0))
 
 Rmodel <- nimbleModel(code, constants, data, inits)
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
 ## THIS NEXT SECTION,
 ## STORES THE **CORRECT** eigen values of C into Rmodel object
-##all(round(CAR_makeC(adj, num, M) - Rmodel$C, 15) == 0)
-C <- CAR_makeC(adj, num, M)
-Cmatrix <- CAR_makeCmatrix(C, adj, num)
+##all(round(CAR_calcC(adj, num, M) - Rmodel$C, 15) == 0)
+##C <- CAR_calcC(adj, num, M)
+##Cmatrix <- CAR_calcCmatrix(C, adj, num)
 ##Cmatrix - t(Cmatrix)
 ##x <- diag(1/M) %*% Cmatrix;   all(round(x - t(x), 10) == 0)
-evs <- eigen(Cmatrix)$values
-Rmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP <- evs
-evs - Rmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP
-
-## PROBLEM: problem with sqrt(inprod(...))
-Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+##evs <- eigen(Cmatrix)$values
+##Rmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP <- evs
+##round(evs - Rmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP, 10)
 ## CHECK THAT Cmodel now has the **CORRECT** eigen values:
-evs - Cmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP
+##round(evs - Cmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP, 10)
 
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
@@ -1061,15 +2856,15 @@ Rmcmc <- buildMCMC(conf)
 
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
-set.seed(0); samples <- runMCMC(Cmcmc, 10000)
+set.seed(0); samples <- runMCMC(Cmcmc, 20000)
 
 ## the following is all a workaround, to get the right eigen values in:
-set.seed(0); samples <- runMCMC(Cmcmc, 1)
-Cmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP <- evs
-evs - Cmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP
-set.seed(0)
-Cmcmc$run(10000, reset = FALSE)
-samples <- as.matrix(Cmcmc$mvSamples)
+##set.seed(0); samples <- runMCMC(Cmcmc, 1)
+##Cmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP <- evs
+##evs - Cmodel$lifted_CAR_calcEVs_oPC_oB1to234_cB_comma_adj_oB1to234_cB_comma_num_oB1to56_cB_cP
+##set.seed(0)
+##Cmcmc$run(10000, reset = FALSE)
+##samples <- as.matrix(Cmcmc$mvSamples)
 
 CAR_calcBounds(Rmodel$C, adj, num, 1/E)
 samplesPlot(samples, 'gamma')
@@ -1088,67 +2883,67 @@ q025 <- apply(samples, 2, function(x) quantile(x, 0.025, na.rm=TRUE))
 q975 <- apply(samples, 2, function(x) quantile(x, 0.975, na.rm=TRUE))
 res <- cbind(means, sds, q025, medians, q975)
 res
+
 ##             means        sds        q025     medians        q975
-## alpha -0.13148966 0.16507217 -0.44244665 -0.13032767  0.17534164
-## gamma  0.16274440 0.01900846  0.10961392  0.16794795  0.18246423
-## prec   0.32591798 0.08919909  0.18826501  0.31301786  0.52576942
-##             means        sds        q025     medians        q975
-## S[1]   1.73954948 0.34406855  1.00189900  1.75816921  2.34799605
-## S[2]   1.40177355 0.16753040  1.07046900  1.40900291  1.70452625
-## S[3]   1.13536123 0.31343458  0.47803380  1.14935430  1.69658392
-## S[4]   1.11467921 0.34653876  0.36142202  1.14148784  1.73249911
-## S[5]   1.13516241 0.26226488  0.58246612  1.13782387  1.62297885
-## S[6]   1.12936876 0.37852561  0.31798287  1.15742606  1.80690977
-## S[7]   1.08425574 0.19797213  0.67505544  1.09142375  1.45151593
-## S[8]   1.02379207 0.40843573  0.15608886  1.05406971  1.73866266
-## S[9]   0.97013562 0.41530924  0.06818188  0.98914026  1.72255107
-## S[10]  1.03514847 0.22679666  0.58682991  1.04485665  1.46112006
-## S[11]  1.03994839 0.27721508  0.48660054  1.04608659  1.55349030
-## S[12]  0.86853563 0.44978680 -0.08834381  0.89294292  1.66359451
-## S[13]  0.83334612 0.58758683 -0.47190412  0.88928380  1.83163169
-## S[14]  0.71177829 0.35775668 -0.06104436  0.73149844  1.34968889
-## S[15]  0.64763697 0.24397291  0.16193591  0.65788135  1.09472807
-## S[16]  0.63819710 0.31196699 -0.01000096  0.64632619  1.21368954
-## S[17]  0.54102435 0.66443676 -0.91063318  0.61493545  1.65158122
-## S[18]  0.33528631 0.37675884 -0.44393505  0.36221886  1.00506029
-## S[19]  0.44948510 0.31160898 -0.19957336  0.46649643  1.02246874
-## S[20]  0.33338947 0.35670560 -0.41984652  0.35405385  0.99533661
-## S[21]  0.30182741 0.24131970 -0.17260565  0.29809753  0.77172220
-## S[22]  0.24493954 0.16801878 -0.09884777  0.24643291  0.56136118
-## S[23]  0.12961569 0.28402772 -0.44651676  0.13997630  0.63976403
-## S[24] -0.09099408 0.38393462 -0.90063074 -0.06965779  0.60652037
-## S[25]  0.14416233 0.21097611 -0.27200641  0.15022032  0.55685321
-## S[26]  0.10170158 0.22781449 -0.35567025  0.10247370  0.53949452
-## S[27]  0.03667873 0.34669116 -0.67185318  0.05191120  0.66984267
-## S[28]  0.02193653 0.29855276 -0.58823318  0.02869938  0.58444960
-## S[29]  0.08659415 0.22574251 -0.37522167  0.09537153  0.50740713
-## S[30] -0.15441533 0.29963958 -0.76659154 -0.14489699  0.40414692
-## S[31] -0.11268121 0.41567443 -1.02346677 -0.09848474  0.65739206
-## S[32] -0.07210436 0.52082605 -1.17525575 -0.03923197  0.84501166
-## S[33] -0.15015366 0.34718404 -0.88820036 -0.12976240  0.46174981
-## S[34] -0.26922531 0.33809767 -0.96328098 -0.25744957  0.35623670
-## S[35] -0.15352977 0.26448997 -0.70960089 -0.14257371  0.32631878
-## S[36] -0.17971885 0.29302563 -0.77062315 -0.17228200  0.38263009
-## S[37] -0.22912070 0.27303595 -0.79317837 -0.22962562  0.28804223
-## S[38] -0.44798629 0.33719212 -1.13907642 -0.43194172  0.18819989
-## S[39] -0.22268625 0.36156287 -0.97105499 -0.19604114  0.42237924
-## S[40] -0.52279399 0.44938185 -1.46491188 -0.50317787  0.31522605
-## S[41] -0.63677503 0.26060616 -1.16971263 -0.62589378 -0.14788883
-## S[42] -0.57001371 0.27285475 -1.12453576 -0.56727782 -0.05668446
-## S[43] -0.61778691 0.51943629 -1.71476719 -0.58456416  0.30363131
-## S[44] -0.78918282 0.31391547 -1.43094312 -0.77110556 -0.20043968
-## S[45] -0.65881965 0.17073509 -1.00602599 -0.65906628 -0.34006384
-## S[46] -0.87574440 0.41190364 -1.75730814 -0.84250952 -0.12237765
-## S[47] -1.16336071 0.57309352 -2.38315048 -1.11674616 -0.13893469
-## S[48] -0.99295963 0.39987449 -1.86295835 -0.96870142 -0.27613760
-## S[49] -0.85186213 0.14779184 -1.14301345 -0.84895905 -0.57538558
-## S[50] -0.70445918 0.26783506 -1.23191596 -0.69862233 -0.20691497
-## S[51] -1.09327368 0.66442118 -2.53848727 -1.03098886  0.07265969
-## S[52] -1.30737273 0.69521627 -2.81726219 -1.26223037 -0.06997764
-## S[53] -1.42915175 0.58343389 -2.67982932 -1.39080151 -0.37429705
-## S[54] -1.35951280 0.51076894 -2.46456787 -1.33364602 -0.44150210
-## S[55] -1.41625435 0.65798890 -2.86210780 -1.36155662 -0.25627540
-## S[56] -1.34976829 0.98406501 -3.52018773 -1.24730793  0.31972586
+## S[1]   1.75493676 0.34342751  1.024601288  1.77039978  2.36615014
+## S[2]   1.39890145 0.16632175  1.061053578  1.40343367  1.71338038
+## S[3]   1.14701201 0.31250172  0.487667361  1.16445300  1.71113958
+## S[4]   1.11700013 0.34162724  0.411839323  1.12458625  1.74588824
+## S[5]   1.13622797 0.25984895  0.591375949  1.14512671  1.60404030
+## S[6]   1.13415135 0.37126434  0.348697964  1.15056410  1.79173367
+## S[7]   1.08705787 0.19449271  0.694209794  1.09410516  1.45074529
+## S[8]   1.03942043 0.39966486  0.193168929  1.06751229  1.74383512
+## S[9]   0.97350948 0.41881332  0.067542394  1.01200711  1.71828129
+## S[10]  1.03849485 0.22194162  0.579655270  1.04721199  1.45334232
+## S[11]  1.04054729 0.28259977  0.443637875  1.05002508  1.56132010
+## S[12]  0.87149658 0.45151410 -0.115975034  0.89438911  1.66650008
+## S[13]  0.83817061 0.59274100 -0.478019939  0.89025567  1.86208606
+## S[14]  0.69181412 0.36470352 -0.082867808  0.71318563  1.35351318
+## S[15]  0.64522473 0.23819097  0.144534740  0.65532540  1.08228495
+## S[16]  0.63586275 0.31114771 -0.001912805  0.64825055  1.20756523
+## S[17]  0.54608699 0.65214752 -0.884088682  0.60890176  1.63704788
+## S[18]  0.33272515 0.36971298 -0.439850934  0.34992452  1.01214873
+## S[19]  0.45322252 0.30697060 -0.182971174  0.46926152  1.01415474
+## S[20]  0.32405555 0.36615845 -0.429347639  0.33732852  0.98984847
+## S[21]  0.30111451 0.23714435 -0.167479242  0.30145966  0.76593078
+## S[22]  0.24277321 0.16818570 -0.085405975  0.24240486  0.56613004
+## S[23]  0.14499322 0.28119584 -0.417706382  0.14822224  0.66563561
+## S[24] -0.08733732 0.39309596 -0.918089425 -0.07073871  0.62959535
+## S[25]  0.15620228 0.20897600 -0.267339669  0.15862280  0.55292078
+## S[26]  0.09943259 0.23608084 -0.386309627  0.10693610  0.53861629
+## S[27]  0.01967325 0.35177955 -0.720140962  0.03523577  0.66066625
+## S[28]  0.01315140 0.28998260 -0.588888010  0.02492488  0.55274685
+## S[29]  0.09036654 0.22388423 -0.370480241  0.09443472  0.50672752
+## S[30] -0.14997938 0.29735255 -0.743832634 -0.14638852  0.40300592
+## S[31] -0.11527532 0.41243309 -1.001631219 -0.09981057  0.63417016
+## S[32] -0.06240479 0.52051960 -1.162524873 -0.02836957  0.86499059
+## S[33] -0.14952682 0.34380647 -0.853967102 -0.13109259  0.48357134
+## S[34] -0.26377317 0.33419603 -0.964054323 -0.24786752  0.35906533
+## S[35] -0.15485900 0.26887185 -0.699412734 -0.14824859  0.35847774
+## S[36] -0.18737771 0.28953971 -0.778187460 -0.17642867  0.35783083
+## S[37] -0.22626069 0.26999705 -0.773456797 -0.21913017  0.27740911
+## S[38] -0.44545140 0.33877285 -1.138708984 -0.43082068  0.18127785
+## S[39] -0.21184008 0.34854906 -0.932598988 -0.19178301  0.41993799
+## S[40] -0.51806086 0.44361464 -1.439029392 -0.50117301  0.31513366
+## S[41] -0.63534429 0.25153127 -1.164381427 -0.62772535 -0.17646564
+## S[42] -0.56897303 0.26956953 -1.120537638 -0.55861123 -0.06627916
+## S[43] -0.62155023 0.52414360 -1.743611023 -0.58213480  0.31525455
+## S[44] -0.78345332 0.30245086 -1.417641888 -0.77364889 -0.22031700
+## S[45] -0.65623965 0.17260491 -1.015151093 -0.65238620 -0.33498160
+## S[46] -0.86212917 0.41445118 -1.745558112 -0.83476189 -0.12252798
+## S[47] -1.14548549 0.53517934 -2.272348122 -1.12683895 -0.14877358
+## S[48] -0.99531628 0.39933620 -1.822129459 -0.97827311 -0.27811643
+## S[49] -0.84492481 0.14089094 -1.128293770 -0.84155455 -0.57919194
+## S[50] -0.69660971 0.27065294 -1.266225375 -0.67769308 -0.20952026
+## S[51] -1.08638527 0.66308099 -2.483981599 -1.04288791  0.12372150
+## S[52] -1.32127519 0.69025495 -2.790522712 -1.26893593 -0.10808565
+## S[53] -1.39970611 0.57084948 -2.599841791 -1.36696201 -0.37133067
+## S[54] -1.35986177 0.51624768 -2.471914269 -1.32893035 -0.42441920
+## S[55] -1.40015562 0.66860904 -2.831489740 -1.36431399 -0.22494411
+## S[56] -1.34306587 0.98092867 -3.549954286 -1.25738287  0.29745151
+## alpha -0.12882011 0.16293022 -0.447856360 -0.12834769  0.18486099
+## gamma  0.16288608 0.01978254  0.108110129  0.16861104  0.18233285
+## prec   0.33202411 0.09350970  0.184821714  0.31975385  0.55034834
 
 
 
@@ -1190,7 +2985,7 @@ res
 ##Rmodel$getVarNames()
 ##Rmodel$C
 ##Rmodel$M
-##Cmatrix <- CAR_makeCmatrix(Rmodel$C, Rmodel$adj, Rmodel$num)
+##Cmatrix <- CAR_calcCmatrix(Rmodel$C, Rmodel$adj, Rmodel$num)
 ##Mmatrix <- diag(M)
 ##MmatrixInv <- diag(1/M)
 ##MinvC <- MmatrixInv %*% Cmatrix
