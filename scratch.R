@@ -30,7 +30,7 @@ nparams <- 10
 nparamnames <- 20
 for(i in 1:nchains) {
     samples <- matrix(rnorm(100*nparams), ncol=nparams)
-    colnames(samples) <- sample(c(paste0('b[', 1:nparamnames, ']'), 'beta', letters), nparams)
+    colnames(samples) <- sort(sample(c(paste0('b[', 1:nparamnames, ']'), 'beta', letters), nparams))
     s[[i]] <- samples
 }
 names(s) <- paste0('chain', 1:nchains)
@@ -41,7 +41,8 @@ nrows=3; width=7; height=min(1+3*nrows, 10); legend=!is.null(names(samplesList))
 
 chainsPlot(samplesList, buffer.right = 0.7, nrows=1)
 chainsPlot(samplesList, buffer.right = 2, nrows=1, cex=0.8, jitter=3)
-chainsPlot(samplesList, buffer.right = 0.7, nrows=2)
+chainsPlot(samplesList, buffer.right = 1, height=5, nrows=2, cex = 0.7, var=c('b',letters))
+chainsPlot(samplesList, buffer.right = 1, height=5, nrows=2, cex = 0.7)
 chainsPlot(samplesList, buffer.right = 0.7, nrows=3)
 
 samplesPlot(samplesList[[1]])
