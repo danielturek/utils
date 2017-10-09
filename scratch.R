@@ -1,4 +1,28 @@
 
+
+
+## testing expansion of vars / node names for use in samplesPlot() and/or chainsPlot()
+
+target <- 'a'
+target <- 'b'
+target <- 'sigm'
+nodeNames <- c(letters, paste0('b[', 1:5, ']'), 'bbb', 'b.sigma', 'aaa', 'a.tau.')
+l <- length(nodeNames)
+
+samples <- array(1, dim=c(2,l))
+colnames(samples) <- nodeNames
+samples
+
+var <- c('a', 'b', 'd', 'dfdfd')
+
+unlist(lapply(var, function(n) grep(paste0('^', n,'(\\[.+\\])?$'), colnames(samples), value=TRUE)))
+
+
+grep(paste0('^', target,'(\\[.+\\])?$'), nodeNames, value=TRUE)
+
+
+## testing new chainsPlot() function
+
 set.seed(0)
 s <- list()
 nchains <- 3
@@ -6,7 +30,7 @@ nparams <- 10
 nparamnames <- 20
 for(i in 1:nchains) {
     samples <- matrix(rnorm(100*nparams), ncol=nparams)
-    colnames(samples) <- paste0('beta[', sort(sample(1:nparamnames, nparams)), ']')
+    colnames(samples) <- sample(c(paste0('b[', 1:nparamnames, ']'), 'beta', letters), nparams)
     s[[i]] <- samples
 }
 names(s) <- paste0('chain', 1:nchains)
@@ -15,55 +39,6 @@ samplesList <- s
 nrows=3; width=7; height=min(1+3*nrows, 10); legend=!is.null(names(samplesList)); legend.location='topright'; jitter.factor=1; buffer.right=0; buffer.left=0
 
 
-chainsPlot <- function(samplesList, nrows=3, width=7, height=min(1+3*nrows,7), legend=!is.null(names(samplesList)), legend.location='topright', jitter=1, buffer.right=0, buffer.left=0, cex=1, file=NULL) {
-    if(!is.null(file)) pdf(file, width=width, height=height) else
-    if(inherits(try(knitr::opts_chunk$get('dev'), silent=TRUE), 'try-error') || is.null(knitr::opts_chunk$get('dev')))   ## if called from Rmarkdown/knitr
-        dev.new(height=height, width=width)
-    par.save <- par(no.readonly = TRUE)
-    par(mfrow=c(nrows,1), oma=c(3,1,1,1), mar=c(4,1,0,1), mgp=c(3,0.5,0))
-    if(class(samplesList) != 'list') samplesList <- list(samplesList)
-    chainParamNamesList <- lapply(samplesList, function(s) colnames(s))
-    nChains <- length(samplesList)
-    paramNamesAll <- unique(as.character(sapply(samplesList, function(s) colnames(s))))
-    nParamsAll <- length(paramNamesAll)
-    cols <- rainbow(nChains)
-    ## construct 3D summary array:
-    summary <- array(as.numeric(NA), dim = c(nChains, 3, nParamsAll))
-    if(!is.null(names(samplesList))) dimnames(summary)[[1]] <- names(samplesList)
-    dimnames(summary)[[2]] <- c('mean','low','upp')
-    dimnames(summary)[[3]] <- paramNamesAll
-    for(iChain in 1:nChains) {
-        theseSamples <- samplesList[[iChain]]
-        thisSummary <- rbind(mean = apply(theseSamples, 2, mean),
-                             low  = apply(theseSamples, 2, function(x) quantile(x, 0.025)),
-                             upp  = apply(theseSamples, 2, function(x) quantile(x, 0.975)))
-        summary[iChain,c('mean','low','upp'),colnames(thisSummary)] <- thisSummary
-    }
-    nParamsPerRow <- ceiling(nParamsAll/nrows)
-    sq <- if(nChains==1) 0 else seq(-1,1,length=nChains)
-    scale <- width/nParamsPerRow * jitter * 0.1  ## adjust jitter scale factor at end
-    for(iRow in 1:nrows) {
-        rowParamInd <- (1+(iRow-1)*nParamsPerRow) : ifelse(iRow==nrows,nParamsAll,iRow*nParamsPerRow)
-        nRowParams <- length(rowParamInd)
-        rowParamNames <- paramNamesAll[rowParamInd]
-        xs <- 1:nRowParams
-        names(xs) <- rowParamNames
-        ylim <- range(summary[,c('low','upp'),rowParamNames], na.rm=TRUE)
-        plot(x=-100, y=0, xlim=c(1-buffer.left,nParamsPerRow+buffer.right), ylim=ylim, xaxt='n', ylab='', xlab='', tcl=-0.3, cex.axis=cex)
-        axis(1, at=1:nRowParams, labels=FALSE, tcl=-0.3)
-        text(x=1:nRowParams, y=par()$usr[3]-0.1*(par()$usr[4]-par()$usr[3]), labels=rowParamNames, srt=45, adj=1, xpd=TRUE, cex=0.9*cex)
-        for(iChain in 1:nChains) {
-            ps <- intersect(rowParamNames, chainParamNamesList[[iChain]])
-            xsJittered <- xs + sq[iChain]*scale
-            points(x=xsJittered[ps], y=summary[iChain,'mean',ps], pch=16, col=cols[iChain])
-            segments(x0=xsJittered[ps], y0=summary[iChain,'low',ps], y1=summary[iChain,'upp',ps], lwd=1, col=cols[iChain])
-        }
-        if(legend) legend(legend.location, legend=names(samplesList), pch=16, col=cols, cex=cex)
-    }
-    if(!is.null(file)) dev.off()
-    invisible(par(par.save))
-}
-
 chainsPlot(samplesList, buffer.right = 0.7, nrows=1)
 chainsPlot(samplesList, buffer.right = 2, nrows=1, cex=0.8, jitter=3)
 chainsPlot(samplesList, buffer.right = 0.7, nrows=2)
@@ -71,6 +46,7 @@ chainsPlot(samplesList, buffer.right = 0.7, nrows=3)
 
 samplesPlot(samplesList[[1]])
 samplesPlot(samplesList[[1]], file = '~/temp/FILEX.pdf')
+samplesPlot(samplesList[[1]], c('b', 'beta'))
 
 1
 
@@ -81,12 +57,6 @@ samplesPlot(samplesList[[1]], file = '~/temp/FILEX.pdf')
 ##    mean = apply(s, 2, mean),
 ##    low  = apply(s, 2, function(x) quantile(x, 0.025)),
 ##    upp  = apply(s, 2, function(x) quantile(x, 0.975))))
-
-
-
-
-
-
 
 
 pdf.f(f, file=file.path(save.dir, "../figures/allparams.pdf"), height=10, width=8.5)
