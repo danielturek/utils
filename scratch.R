@@ -1,6 +1,738 @@
 
 
 
+
+## testing HMC (NUTS) sampler
+## one dimension at a time
+## R execution (un-compiled) only!
+## build and run on branch hmcAD
+library(nimble)
+library(numDeriv)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+## model option #1
+code <- nimbleCode({
+    a1 ~ dnorm(0, 1)
+    y1 ~ dnorm(a1, 1)
+    a2 ~ dnorm(0, 1)
+    y2 ~ dnorm(a2, 1)
+})
+constants <- list()
+data <- list(y1 = 2, y2 = 2)
+inits <- list(a1 = 0, a2 = 0)
+
+## model option #2
+code <- nimbleCode({
+    a1 ~ dnorm(0, 1)
+    y1[1] ~ dnorm(a1, 1)
+    y1[2] ~ dnorm(a1^2, 1)
+    a2 ~ dnorm(0, 1)
+    y2[1] ~ dnorm(a2, 1)
+    y2[2] ~ dnorm(a2^2, 1)
+})
+constants <- list()
+data <- list(y1 = c(2, 4), y2 = c(2, 4))
+inits <- list(a1 = 0, a2 = 0)
+
+## model option #3
+code <- nimbleCode({
+    a1 ~ dnorm(0, sd=10)
+    y1 ~ dnorm(a1^2, sd=1)
+    a2 ~ dnorm(0, sd=10)
+    y2 ~ dnorm(a2^2, sd=1)
+})
+constants <- list()
+data <- list(y1 = 2, y2 = 2)
+inits <- list(a1 = 0, a2 = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('a1', 'HMC')
+##conf$addSampler('a2', 'slice')
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+debug(Rmcmc$samplerFunctions$contentsList[[1]]$run)
+debug(Rmcmc$samplerFunctions$contentsList[[1]]$buildtree)
+##debug(Rmcmc$samplerFunctions$contentsList[[1]]$logH)
+##debug(Rmcmc$samplerFunctions$contentsList[[1]]$gradient)
+##debug(Rmcmc$samplerFunctions$contentsList[[1]]$leapfrog)
+##debug(Rmcmc$samplerFunctions$contentsList[[1]]$initializeEpsilon)
+
+set.seed(0); Rmcmc$run(5)
+
+
+n <- 5000
+set.seed(0)
+system.time(Rmcmc$run(n))
+
+samples <- as.matrix(Rmcmc$mvSamples)
+samples
+
+samplesSummary(samples)
+samplesPlot(samples)
+
+library(coda); apply(samples, 2, effectiveSize)
+
+
+
+## testing langevin sampler performance on litters model
+library(nimble)
+library(numDeriv)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+load('~/github/hybridBlockSamplers/data/model_litters.RData')
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+
+
+
+conf <- configureMCMC(Rmodel, nodes = 'p')
+conf$addSampler(c('a[1]','b[1]'), 'langevin')
+conf$addSampler(c('a[2]','b[2]'), 'langevin')
+
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+n <- 50000
+system.time(Cmcmc$run(n, time = TRUE))
+timing <- Cmcmc$getTimes()
+names(timing) <- lapply(conf$getSamplers(), function(x) x$name)
+timing
+samples <- as.matrix(Cmcmc$mvSamples)
+samplesSummary(samples[, c('a[1]','a[2]','b[1]','b[2]')])
+
+            Mean       Median      St.Dev.  95%CI_low   95%CI_upp
+a[1] 1510.715273 1276.0661682 1047.9102473 91.6910587 4194.675441
+a[2]    3.388279    2.7441406    2.3218974  0.8759159    9.858006
+b[1]  171.251570  147.4867210  113.4322513 10.6720555  457.704183
+b[2]    1.056575    0.8790824    0.6601463  0.3226588    2.842398
+
+
+library(coda); ess <- apply(samples, 2, effectiveSize)
+ess
+
+
+## testing langevin sampler - on two dimensions!
+## R execution (un-compiled) only!
+## build and run on branch hmcAD
+library(nimble)
+library(numDeriv)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+code <- nimbleCode({
+    a1 ~ dnorm(0, 1)
+    b1 ~ dgamma(1, 1)
+    y1 ~ dnorm(a1+b1, 1)
+    a2 ~ dnorm(0, 1)
+    b2 ~ dgamma(1, 1)
+    y2 ~ dnorm(a2+b2, 1)
+})
+constants <- list()
+data <- list(y1 = 2, y2 = 2)
+inits <- list(a1 = 0, b1 = 1, a2 = 0, b2 = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = c('a1', 'b1'))
+conf$addSampler(c('a2','b2'), 'langevin')
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+n <- 50000
+system.time(Cmcmc$run(n, time = TRUE))
+timing <- Cmcmc$getTimes()
+names(timing) <- lapply(conf$getSamplers(), function(x) x$name)
+timing
+samples <- as.matrix(Cmcmc$mvSamples)
+samplesSummary(samples[, c('a1','a2')])
+samplesPlot(samples, c('a1','a2'))
+samplesSummary(samples[, c('b1','b2')])
+samplesPlot(samples, c('b1','b2'))
+library(coda); ess <- apply(samples, 2, effectiveSize)
+ess
+
+
+
+##n <- 2000
+##set.seed(0)
+##system.time(Rmcmc$run(n))
+##samples <- as.matrix(Rmcmc$mvSamples)
+## 
+##Rmcmc$samplerFunctions$contentsList[[2]]$scale
+##Rmcmc$samplerFunctions$contentsList[[3]]$scaleVec
+##Rmcmc$samplerFunctions$contentsList[[3]]$epsilonVec
+
+
+
+
+## testing langevin sampler - one dimension at a time
+## R execution (un-compiled) only!
+## build and run on branch hmcAD
+library(nimble)
+library(numDeriv)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+## model option #1
+code <- nimbleCode({
+    a1 ~ dnorm(0, 1)
+    y1 ~ dnorm(a1, 1)
+    a2 ~ dnorm(0, 1)
+    y2 ~ dnorm(a2, 1)
+})
+constants <- list()
+data <- list(y1 = 2, y2 = 2)
+inits <- list(a1 = 0, a2 = 0)
+
+## model option #2
+code <- nimbleCode({
+    a1 ~ dnorm(0, 1)
+    y1[1] ~ dnorm(a1, 1)
+    y1[2] ~ dnorm(a1^2, 1)
+    a2 ~ dnorm(0, 1)
+    y2[1] ~ dnorm(a2, 1)
+    y2[2] ~ dnorm(a2^2, 1)
+})
+constants <- list()
+data <- list(y1 = c(2, 4), y2 = c(2, 4))
+inits <- list(a1 = 0, a2 = 0)
+
+## model option #3
+code <- nimbleCode({
+    a1 ~ dnorm(0, sd=10)
+    y1 ~ dnorm(a1^2, sd=1)
+    a2 ~ dnorm(0, sd=10)
+    y2 ~ dnorm(a2^2, sd=1)
+})
+constants <- list()
+data <- list(y1 = 2, y2 = 2)
+inits <- list(a1 = 0, a2 = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('a1', 'slice')
+conf$addSampler('a2', 'langevin')
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+
+##options(error = recover)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+n <- 50000
+system.time(Cmcmc$run(n, time = TRUE))
+timing <- Cmcmc$getTimes()
+names(timing) <- lapply(conf$getSamplers(), function(x) x$name)
+timing
+samples <- as.matrix(Cmcmc$mvSamples)
+samplesSummary(samples)
+samplesPlot(samples)
+library(coda); ess <- apply(samples, 2, effectiveSize)
+ess
+eff <- ess / timing; names(eff) <- names(timing)
+eff
+
+
+##n <- 5000
+##set.seed(0)
+##system.time(Rmcmc$run(n))
+##samples <- as.matrix(Rmcmc$mvSamples)
+##Rmcmc$samplerFunctions$contentsList[[1]]$scale
+##Rmcmc$samplerFunctions$contentsList[[2]]$scaleVec
+##Rmcmc$samplerFunctions$contentsList[[2]]$epsilonVec
+
+## minimally reproducible example of error with dexp() distribution
+library(nimble)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+code <- nimbleCode({
+    a ~ dgamma(1, 1)
+})
+Rmodel <- nimbleModel(code, inits = list(a = 1))
+Rmodel$calculate()
+
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+
+
+## minimally reproducible example of error when compiling langevin sampler:
+
+library(nimble)
+library(numDeriv)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    y ~ dnorm(a, 1)
+})
+constants <- list()
+data <- list(y = 2)
+inits <- list(a = 0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('a', 'langevin')
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+##compiling... this may take a minute. On some systems there may be some compiler warnings that can be safely ignored.
+##Error in as.vector(x, "character") : 
+##  cannot coerce type 'environment' to vector of type 'character'
+
+
+## testing derivatives
+
+library(nimble)
+library(numDeriv)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    y[1] ~ dnorm(a, 1)
+    y[2] ~ dnorm(a^2, 1)
+})
+constants <- list()
+data <- list(y = c(2, 4))
+inits <- list(a = 0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+xs <- seq(-4, 4, by=0.01)
+ys <- numeric()
+for(i in seq_along(xs)) {
+    Rmodel$a <- xs[i]
+    ys[i] <- Rmodel$calculate()
+}
+plot(xs, ys, type = 'l')
+
+Rmodel$a <- 2
+Rmodel$calculate()
+
+nodes <- Rmodel$getDependencies('a')
+nodes
+
+f <- function(x) {
+    Rmodel$a <- x
+    dOut <- nimDerivs(Rmodel$calculate(), order=1, wrt='a')
+    ##dOut <- nimDerivs(Rmodel$calculate(nodes), order=1, wrt='a')
+    d <- dOut$gradient[1,1]
+    return(d)
+}
+
+ds <- numeric()
+for(i in seq_along(xs)) {
+    x <- xs[i]
+    ds[i] <- f(x)
+}
+
+plot(xs, ys, type = 'l', ylim = range(c(ys,ds)))
+lines(xs, ds, col = 'blue')
+
+nfDef <- nimbleFunction(
+    setup = function(model, node) {
+        ##calcNodes <- model$getDependencies(node)
+    },
+    run = function(x = double()) {
+        model[[node]] <<- x
+        derivsOutput <- derivs(model$calculate(), order = 1, wrt = node)
+        ##derivsOutput <- derivs(model$calculate(calcNodes), order = 1, wrt = node)
+        d <- derivsOutput$gradient[1,1]
+        returnType(double(0))
+        return(d)
+    }
+)
+
+Rnf <- nfDef(Rmodel, 'a')
+
+Rnf$run(-3)
+Rnf$run(-1)
+Rnf$run(0)
+Rnf$run(1)
+Rnf$run(2)
+
+ds <- numeric()
+for(i in seq_along(xs)) {
+    x <- xs[i]
+    ##ds[i] <- f(x)
+    ds[i] <- Rnf$run(x)
+}
+
+plot(xs, ys, type = 'l', ylim = range(c(ys,ds)))
+lines(xs, ds, col = 'blue')
+
+
+
+## solving problem from Micah:
+## x^7 - 7 roots
+roots <- 7^(1/7) * exp((0:6)/7 * 2*pi*1i)
+
+out <- numeric()
+c <- 1
+for(i in 1:7) {
+    for(j in i:7) {
+        out[c] <- roots[i] + roots[j]
+        c <- c + 1
+    }
+}
+
+p <- prod(out)
+p/7^1
+p/7^2
+p/7^3
+p/7^4
+p/7^4/2^7
+2^7 * 7^4
+p
+
+
+
+
+## Mark Risser's code, problem running on LBNL supercomputer??
+
+library(nimble)
+library(methods)
+M <- 237 # Sample size
+
+nim_code <- nimbleCode({
+    ## likelihood
+    for(i in 1:M){
+        z[i] ~ dbinom(size = N, prob = expit(tau*logit_p[i] + mu))
+        logit_p[i] ~ dnorm( mean = 0, sd = 1 )
+    }
+    ## hyperparameters
+    mu ~ dnorm(0, sd = 100)
+    tau ~ dunif(0, 100)
+})
+
+nim_model <- nimbleModel(
+    code = nim_code, constants = list(M = M),
+    inits = list(mu = 0, tau = 1, logit_p = rep(0,M) ), 
+    data = list(z = rbinom(M, 100, 0.1), N = 100)
+)
+
+Rmodel <- nim_model
+
+calculate(Rmodel)
+Rmodel$mu
+Rmodel$tau
+Rmodel$logit_p
+Rmodel$z
+
+Cmodel <- compileNimble(Rmodel)
+
+calculate(Cmodel)
+Cmodel$mu
+Cmodel$tau
+Cmodel$logit_p
+Cmodel$z
+
+
+
+## birthdays problem for STAT101
+
+## 2 students, probability of different birthdays:
+364/365 * 100
+
+## 3 students, probability of having different birthdays:
+364/365 * 363/365 * 100
+
+## 4 students, probability of having different birthdays:
+364/365 * 363/365 * 362/365 * 100
+
+## n students, probability of having different birthdays:
+n <- 50
+prod(seq(364, by = -1, length = n-1)) / 365^(n-1) * 100
+
+## complement: at least 2 students have the same birthday:
+100 - prod(seq(364, by = -1, length = n-1)) / 365^(n-1) * 100
+
+
+
+
+
+
+
+
+## running through all tests of runMCMC() and nimbleMCMC()
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10)
+        x[i] ~ dnorm(mu, sd = sigma)
+})
+data <- list(x = c(2, 5, 3, 4, 1, 0, 1, 3, 5, 3))
+initsFunction <- function() list(mu = rnorm(1,0,1), sigma = runif(1,0,10))
+
+## execute one MCMC chain, monitoring the "mu" and "sigma" variables,
+## with thinning interval 10.  fix the random number seed for reproducible
+## results.  by default, only returns posterior samples.
+mcmc.out <- nimbleMCMC(code = code, data = data, inits = initsFunction,
+                       monitors = c("mu", "sigma"), thin = 10,
+                       niter = 20000, nchains = 1, setSeed = TRUE)
+
+class(mcmc.out)
+str(mcmc.out)
+head(mcmc.out)
+
+## note that the inits argument to nimbleModel must be a list of
+## initial values, whereas nimbleMCMC can accept inits as a function
+## for generating new initial values for each chain.
+initsList <- initsFunction()
+Rmodel <- nimbleModel(code, data = data, inits = initsList)
+
+## using the existing Rmodel object, execute three MCMC chains with 
+## specified burn-in.  return samples, summary statistics, and WAIC.
+mcmc.out <- nimbleMCMC(model = Rmodel,
+                       niter = 20000, nchains = 3, nburnin = 2000,
+                       summary = TRUE, WAIC = TRUE)
+
+class(mcmc.out)
+names(mcmc.out)
+str(mcmc.out)
+mcmc.out$summary
+mcmc.out$WAIC
+
+## run ten chains, generating random initial values for each
+## chain using the inits function specified above.
+## only return summary statistics from each chain; not all the samples.
+mcmc.out <- nimbleMCMC(model = Rmodel, nchains = 10, inits = initsFunction,
+                       samples = FALSE, summary = TRUE)
+
+class(mcmc.out)
+names(mcmc.out)
+mcmc.out
+
+
+Rmodel$calculate()
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+## run a single chain, and return a matrix of samples
+mcmc.out <- runMCMC(Cmcmc)
+
+class(mcmc.out)
+head(mcmc.out)
+
+
+mcmc.out <- runMCMC(Cmcmc, WAIC = TRUE)
+
+class(mcmc.out)
+names(mcmc.out)
+head(mcmc.out$samples)
+mcmc.out$WAIC
+
+
+## run three chains of 10,000 samples, discard a burn-in of 1,000,
+## and return of list of sample matrices
+mcmc.out <- runMCMC(Cmcmc, niter = 10000, nburnin = 1000, nchains = 3)
+
+class(mcmc.out)
+names(mcmc.out)
+lapply(mcmc.out, head)
+
+
+
+## run three chains, returning posterior samples, summary statistics,
+## and the WAIC value for each chain
+mcmc.out <- runMCMC(Cmcmc, nchains = 3, summary = TRUE, WAIC = TRUE)
+
+class(mcmc.out)
+names(mcmc.out)
+lapply(mcmc.out$samples, head)
+mcmc.out$summary
+mcmc.out$WAIC
+
+
+## run two chains, and specify the initial values for each
+initsList <- list(list(mu = 1, sigma = 1),
+                  list(mu = 2, sigma = 10))
+mcmc.out <- runMCMC(Cmcmc, nchains = 2, inits = initsList)
+
+class(mcmc.out)
+names(mcmc.out)
+lapply(mcmc.out, head)
+
+
+## run ten chains of 100,000 iterations each, using a function to 
+## generate initial values and a fixed random number seed for each chain.
+## only return summary statistics from each chain; not all the samples.
+initsFunction <- function()
+    list(mu = rnorm(1,0,1), sigma = runif(1,0,100))
+
+mcmc.out <- runMCMC(Cmcmc, niter = 100000, nchains = 10,
+                    inits = initsFunction, setSeed = TRUE,
+                    samples = FALSE, summary = TRUE)
+
+mcmc.out
+
+mcmc.out <- runMCMC(Cmcmc, niter = 100000, nchains = 10,
+                    inits = initsFunction, setSeed = TRUE,
+                    samples = FALSE, WAIC = TRUE)
+
+mcmc.out
+
+
+## nimble-dev error message email from Luiz F Carvalho
+
+##The following code is carbon copy of the example ZIP code.
+
+set.seed(666)
+library(nimble)
+
+Clustercode <- nimbleCode({
+    R0 ~ dbeta(2, 2)
+    omega ~ dunif(0.1, 10)
+    for(i in 1:N)
+        y[i] ~ dR0(r = R0, w = omega) ## Note NIMBLE allows R-like named-parameter syntax
+})
+
+dR0 <- nimbleFunction(
+    run = function(x = integer(), r = double(), w = double(), log = logical(0, default = 0)) {
+        returnType(double())
+        c1 = lgamma(w*x + x-1)
+        c2 = lgamma(w*x)
+        c3 = lgamma(x+1)
+        c4 = (x-1) * (log(r) - log(w))
+        c5 = (w*x + x -1) * log(1 + r/w)
+        dens = c1 - (c2+c3) + (c4-c5)
+        if(log) {
+            ans <- dens
+        } else ans <- exp(dens)
+        return(ans)
+    })
+
+rR0 <- nimbleFunction(
+    run = function(n = integer(), r = double(), w = double()){
+        returnType(integer())
+        ##UpperBound = 1e4
+        ys <- numeric(1e4)
+        for(i in 1:1e4) ys[i] <- i
+        ##ys <- 1:UpperBound
+        c1 <- lgamma(w*ys  + ys -1)
+        c2 <- lgamma(w*ys )
+        c3 <- lgamma(ys +1)
+        c4 <- (ys -1) * (log(r) - log(w))
+        c5 <- (w*ys  + ys  -1) * log(1 + r/w)
+        Ps <- exp( c1 - (c2+c3) + (c4-c5) )
+        return(sample(ys, 1, prob = Ps))
+        ##return(1)
+    })
+
+registerDistributions(list(
+    dR0 = list(
+        BUGSdist = "dR0(r, w)",
+        discrete = TRUE,
+        range = c(1, Inf),
+        types = c('value = integer()', 'r = double()', 'w = double()')
+    )))
+
+Clustermodel <- nimbleModel(Clustercode, constants = list(N = 100), check = FALSE, inits = list(omega=0.5, R0=0.8))
+Clustermodel <- nimbleModel(Clustercode, constants = list(N = 100), inits = list(omega=0.5, R0=0.8))
+
+Clustermodel$y
+
+##Then doing
+
+Clustermodel$omega <- .5  ## Choose values of R0 and omega
+Clustermodel$R0 <- .8
+Clustermodel$simulate('y')       ## Simulate values of y[1]...y[100]
+simulatedData <- Clustermodel$y
+simulatedData
+calculate(Clustermodel)
+
+##produces nice output
+##[49]  1 69  1  1  1  3  1  2  1  8  1  1  3  4  1  2 12  1  1 10  1 11  1  1  2  7  1  3  1  1 45 11  3  3  1  5  1  3 30  1  2  7  1  1  1  1  1  1
+##[97]  3  1  2  3
+##But then
+
+Clustermodel$setData(list(y = simulatedData))  ## Set those values as data in the model
+cClustermodel <- compileNimble(Clustermodel, showCompilerOutput = TRUE)       ## Compile the model
+
+##compiling... this may take a minute. On some systems there may be some compiler warnings that can be safely ignored.
+##Error in code$args[[1]]$type == "nimbleList" : 
+##  comparison (1) is possible only for atomic and list types
+##I cant rule out the possibility of there being a silly typo somewhere, but I think the error message is also not very helpful.
+## 
+##session info
+## 
+##R version 3.4.2 (2017-09-28)
+##Platform: x86_64-pc-linux-gnu (64-bit)
+##Running under: Ubuntu 16.04.3 LTS
+## 
+##Matrix products: default
+##BLAS: /usr/lib/libblas/libblas.so.3.6.0
+##LAPACK: /usr/lib/lapack/liblapack.so.3.6.0
+## 
+##locale:
+## [1] LC_CTYPE=en_GB.UTF-8       LC_NUMERIC=C               LC_TIME=en_GB.UTF-8        LC_COLLATE=en_GB.UTF-8     LC_MONETARY=en_GB.UTF-8   
+## [6] LC_MESSAGES=en_GB.UTF-8    LC_PAPER=en_GB.UTF-8       LC_NAME=C                  LC_ADDRESS=C               LC_TELEPHONE=C            
+##[11] LC_MEASUREMENT=en_GB.UTF-8 LC_IDENTIFICATION=C       
+## 
+##attached base packages:
+##[1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+##other attached packages:
+##[1] nimble_0.6-6
+## 
+##loaded via a namespace (and not attached):
+##[1] compiler_3.4.2   magrittr_1.5     tools_3.4.2      igraph_1.1.0     coda_0.19-1      codetools_0.2-15 grid_3.4.2       pkgconfig_2.0.1 
+##[9] lattice_0.20-35 
+##Thanks
+
+
+## test case of dcar_proper()
+
+
+library(nimble)
+
+code <- nimbleCode({
+    mu0 ~ dnorm(0, 0.0001)
+    tau ~ dgamma(0.001, 0.001)
+    gamma ~ dunif(-1, 1)
+    s[1:N] ~ dcar_proper(mu[1:N], adj=adj[1:L], num=num[1:N], tau=tau, gamma=gamma)
+    for(i in 1:N) {
+        mu[i] <- mu0
+        logit(p[i]) <- s[i]
+        y[i] ~ dbern(p[i])
+    }
+})
+
+adj <- c(2, 1, 3, 2, 4, 3)
+num <- c(1, 2, 2, 1)
+constants <- list(adj = adj, num = num, N = 4, L = 6)
+data <- list(y = c(1, 0, 1, 1))
+inits <- list(mu0 = 0, tau = 1, gamma = 0, s = rep(0, 4))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+
 ## testing expansion of vars / node names for use in samplesPlot() and/or chainsPlot()
 
 target <- 'a'
@@ -82,6 +814,7 @@ data <- list(y = 1:2)
 inits <- list(x = diag(3))
 
 Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$getDistribution('x[1:3, 1:3]')
 Rmodel$calculate()
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
@@ -529,7 +1262,7 @@ df$GDP.in.billions.of..US
 library(nimble)
 
 code <- nimbleCode({
-    x[1:N] ~ dcar_proper(mu[1:N], C[1:L], adj[1:L], num[1:N], M[1:N], tau, gamma)
+    ##x[1:N] ~ dcar_proper(mu[1:N], C[1:L], adj[1:L], num[1:N], M[1:N], tau, gamma)
     for(i in 1:N) {
         y[1] ~ dnorm(x[1], 1)
         y[2] ~ dexp(x[2])
@@ -613,10 +1346,26 @@ gender <- survey$Gender
 chocolate <- survey$Chocolate
 table(gender, chocolate)
 
+x <- survey$Friends
+x
+mean(x)
+sd(x)
+length(x)
+
+sd(x) / sqrt(96)
+
+
+
+p <- 82/96
+p
+se <- sqrt(p*(1-p)/96)
+se
+p + c(-1,1)*3*se
 
 survey$Phone
 
 table(survey$Phone)
+
 
 barplot(table(survey$Phone), col=3:5)
 
@@ -1424,8 +2173,13 @@ Cnf$run()
 
 
 ## testing compilation of HMC sampler:
+## also can do testing of langevin sampler
 library(nimble)
-##nimbleOptions(experimentalEnableDerivs = TRUE)
+nimbleOptions('experimentalEnableDerivs')
+
+nimbleOptions(experimentalEnableDerivs = TRUE)
+nimbleOptions('experimentalEnableDerivs')
+
 code <- nimbleCode({
     a[1] ~ dnorm(0, 1)
     a[2] ~ dnorm(a[1]^2, 1)
@@ -1442,7 +2196,10 @@ Rmodel <- nimbleModel(code, constants, data, inits)
 ##
 conf <- configureMCMC(Rmodel, nodes = NULL)
 conf$printSamplers()
+
+conf$addSampler(c('a'), 'langevin')
 conf$addSampler(c('a'), 'HMC')
+
 conf$printSamplers()
 ##
 Rmcmc <- buildMCMC(conf)
@@ -6045,32 +6802,12 @@ lines(predict(value.sp)$y, predict(depth.sp)$y)
 
 ## demo of coin flips and LLN
 
-set.seed(0)
-n <- 15
-flips <- rbinom(n, 1, 0.5)
-flips
-
+set.seed(0); n <- 15; flips <- rbinom(n, 1, 0.5); flips
 cumsum(flips)
-
-cumsum(flips) / 1:n
-
-running_avg <- cumsum(flips) / 1:n
-running_avg
-
-par(mfrow=c(1,1))
-plot(running_avg, type='l')
-abline(h=0.5, col='red', lty=3)
-
-ks <- 2:4
-par(mfrow=c(length(ks),1), mar=c(2,2,2,2))
-for(i in ks) {
-    set.seed(0)
-    n <- 10^i
-    flips <- rbinom(n, 1, 0.5)
-    running_avg <- cumsum(flips) / seq_along(flips)
-    plot(running_avg, type='l')
-    abline(h=0.5, col='red', lty=3)
-}
+running_avg <- cumsum(flips) / 1:n; running_avg
+par(mfrow=c(1,1)); plot(running_avg, type='l'); abline(h=0.5, col='red', lty=3)
+set.seed(0); n <- 100; flips <- rbinom(n, 1, 0.5); running_avg <- cumsum(flips) / seq_along(flips); plot(running_avg, type='l'); abline(h=0.5, col='red', lty=3)
+ks <- 2:4; par(mfrow=c(length(ks),1), mar=c(2,2,2,2)); for(i in ks) { set.seed(0); n <- 10^i; flips <- rbinom(n, 1, 0.5); running_avg <- cumsum(flips) / seq_along(flips); plot(running_avg, type='l'); abline(h=0.5, col='red', lty=3) }
 
 
 
