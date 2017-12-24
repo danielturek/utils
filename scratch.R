@@ -1,4 +1,89 @@
 
+## trying out the 'rats' model with hmc sampler
+
+library(nimble)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+Rmodel <- readBUGSmodel('rats', dir = getBUGSexampleDir('rats'))
+##conf <- configureMCMC(Rmodel)
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$printSamplers()
+##conf$addSampler('alpha.c', 'langevin')
+nn <- Rmodel$getNodeNames(stochOnly = TRUE, includeData = FALSE)
+for(node in nn) conf$addSampler(node, 'langevin')
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+niter <- 5000
+set.seed(0); Cmcmc$run(niter)
+
+library(nimble)
+modelInfo <- readBUGSmodel('rats', dir = getBUGSexampleDir('rats'), returnComponents = TRUE)
+
+out <- compareMCMCs(modelInfo = modelInfo,
+                    ##monitors = monitors,
+                    niter = 10000,
+                    MCMCs = c('nimble', 'noConj'),
+                    MCMCdefs = list(noConj = quote({
+                        conf <- configureMCMC(Rmodel, useCOnjugacy = FALSE);
+                        conf$printSamplers();
+                        conf})))
+
+make_MCMC_comparison_pages(out, dir = '~/temp/pages', pageComponents = list(timing = TRUE, efficiencySummary = FALSE, efficiencySummaryAllParams = TRUE, paceSummaryAllParams = TRUE, efficiencyDetails = TRUE, posteriorSummary = TRUE)); system('open ~/temp/pages/model1.html')
+
+
+
+
+
+## David Pleydell's problem with using rinvgamma()
+
+remove.packages('nimble')
+install.packages('nimble')
+
+library(nimble)
+
+test4 <- nimbleCode({
+    hyperSh <- hyperShape
+    hyperSc <- hyperScale
+    Shp ~ dinvgamma(shape=hyperSh, scale=hyperSc)
+})
+
+Inits <- list(hyperShape=1.0, hyperScale=1.0, Shp=1.0)
+
+mod4 <- nimbleModel(test4, inits=Inits)
+
+mod4$Shp
+
+simNodes <- mod4$getDependencies(c("hyperShape","hyperScale"), downstream=TRUE, self=FALSE)
+simNodes
+
+mod4$simulate(nodes=simNodes)
+
+mod4$Shp
+
+## testing use of log=TRUE in using dexp() in a nimbleFunction
+
+library(nimble)
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function(x = double(), lambda = double()) {
+        lp <- dexp(x, lambda, log=TRUE)
+        returnType(double())
+        return(lp)
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+x <- 4
+lambda = 1/3
+Rnf$run(x=x, lambda=lambda)
+Cnf$run(x=x, lambda=lambda)
+
+dexp(x, rate=lambda, log=TRUE)
+
 
 
 
