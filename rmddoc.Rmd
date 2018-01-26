@@ -1,18 +1,29 @@
 ---
 title: TITLE
 author: Daniel Turek
+date: DD MONTH YYYY
 output: html_document
 ---
 
 <!---
 danielturek.github.io/public/folder/fileName.html
+[TEXT](URL)
+<a href="URL_GOES_HERE" target="_blank">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>
 -->
+
+Back to [NIMBLE Vignettes](https://danielturek.github.io/public/nimble_vignettes.html)
+
+\    
 
 ```{r, message = FALSE}
 library(nimble)
 ```
 
-[TEXT](URL)
+```{r cache = TRUE, cache.path = "PATH"}
+set.seed(0)
+samples <- runMCMC(Cmcmc, niter)
+```
 
-<a href="URL_GOES_HERE" target="_blank">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>
+
+
 

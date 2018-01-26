@@ -1,4 +1,219 @@
 
+
+## github issue: copy() doesn't work from compiled model to compiled MCMC
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+Cmcmc$mvSaved
+## CmodelValues object with variables: a, logProb_a.
+
+nimCopy(from = Rmodel, to = Rmcmc$mvSaved, row = 1)  ## works
+
+nimCopy(from = Cmodel, to = Cmcmc$mvSaved, row = 1)  ## FAILS
+
+
+
+
+## saving samples from restarting NIMBLE MCMC vignette
+
+save(samples, modelVariables, samplerStates, file = '~/temp/restart.Rmd')
+load('~/temp/restart.Rmd')
+
+samplerStates
+modelVariables
+tail(samples)
+
+
+Cmodel$beta
+modelVariables$beta
+Cmodel$beta <- modelVariables$beta
+
+head(samples_continued)
+
+Cmodel$mu <- modelVariables$mu
+Cmodel$sigma <- modelVariables$sigma
+Cmodel$epsilon <- modelVariables$epsilon
+
+
+
+qqq
+
+library(nimble)
+load('~/temp/restart.Rmd')
+
+code <- nimbleCode({
+    mu ~ dnorm(0, 0.0001)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:2) {
+        beta[i] ~ dnorm(0, 0.0001)
+    }
+    for(i in 1:N) {
+        epsilon[i] ~ dnorm(mu, sd = sigma)
+        log(lambda[i]) <- beta[1] + beta[2] * x[i] + epsilon[i]
+        y[i] ~ dpois(lambda[i])
+    }
+})
+set.seed(0)
+N <- 5
+x <- rnorm(N, 0, 2)
+lambda <- exp(4 + .3*x)
+y <- rpois(N, lambda)
+constants <- list(N = N, x = x)
+data <- list(y = y)
+inits <- list(mu = 0, sigma = 1, beta = rep(0,2), epsilon = rep(0, N))
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+conf <- configureMCMC(Rmodel)
+conf$removeSamplers("sigma")
+conf$addSampler("sigma", "slice")
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+Rmodel$beta
+modelVariables$beta
+Rmodel$beta <- modelVariables$beta
+Rmodel$beta
+Rmodel$mu <- modelVariables$mu
+Rmodel$sigma <- modelVariables$sigma
+Rmodel$beta <- modelVariables$beta
+Rmodel$epsilon <- modelVariables$epsilon
+Rmodel$calculate()
+for(i in 2:8) {
+    Rmcmc$samplerFunctions[[i]]$scale <- samplerStates[[i]]$scale
+    Rmcmc$samplerFunctions[[i]]$timesRan <- samplerStates[[i]]$timesRan
+    Rmcmc$samplerFunctions[[i]]$timesAccepted <- samplerStates[[i]]$timesAccepted
+    Rmcmc$samplerFunctions[[i]]$timesAdapted <- samplerStates[[i]]$timesAdapted
+    Rmcmc$samplerFunctions[[i]]$gamma1 <- samplerStates[[i]]$gamma1
+}
+Rmcmc$samplerFunctions[[9]]$width <- samplerStates[[9]]$width
+Rmcmc$samplerFunctions[[9]]$timesRan <- samplerStates[[9]]$timesRan
+Rmcmc$samplerFunctions[[9]]$timesAdapted <- samplerStates[[9]]$timesAdapted
+Rmcmc$samplerFunctions[[9]]$sumJumps <- samplerStates[[9]]$sumJumps
+
+## new line!
+nimCopy(from = Rmodel, to = Rmcmc$mvSaved, row = 1, logProb = TRUE)
+Rmcmc$mvSaved$mu
+Rmcmc$mvSaved$epsilon
+
+Cmcmc$mvSaved, row = 1, logProb = TRUE)
+Cmcmc$mvSaved[['mu']]
+Cmcmc$mvSaved[['logProb_epsilon']]
+Cmcmc$mvSaved
+nimCopy(from = Cmodel, to = Cmcmc$mvSaved, row = 1, logProb = TRUE)
+Rmcmc$mvSaved$mu
+Rmcmc$mvSaved$epsilon
+
+
+load('~/temp/restartMCMC.RData')
+
+for(name in names(Cmcmc$mvSaved$sizes)) {
+print(name)
+Cmcmc$mvSaved[[name]] <- Cmodel[[name]]
+}
+
+Cmodel[['beta']]
+Cmodel[['logProb_beta']]
+Cmodel$calculate()
+
+Cmcmc$mvSaved[['beta']]
+Cmcmc$mvSaved[['logProb_beta']]
+Cmcmc$mvSaved[['logProb_beta']] <- Cmodel[['logProb_beta']]
+Cmcmc$mvSaved[['logProb_beta']]
+
+
+getsize(Rmcmc$mvSamples)
+resize(Rmcmc$mvSamples, 0)
+getsize(Rmcmc$mvSamples)
+
+Rmodel$beta
+conf$printSamplers()
+
+##undebug(Rmcmc$samplerFunctions$contentsList[[2]]$run)
+##debug(Rmcmc$samplerFunctions$contentsList[[2]]$run)
+debug(Rmcmc$samplerFunctions$contentsList[[2]]$run)
+debug(Rmcmc$samplerFunctions$contentsList[[3]]$run)
+
+set.seed(0)
+Rmcmc$run(2, reset = FALSE)
+
+set.seed(0)
+Rmcmc$run(20, reset = FALSE)
+samples_continued <- as.matrix(Rmcmc$mvSamples)
+
+head(samples_continued)
+
+Rmodel$mu
+Rmodel$beta
+Rmodel$epsilon
+Rmodel$y
+
+Rmodel$getNodeNames()
+Rmodel$nodes[['beta[1]']]
+ls(Rmodel$nodes)
+Rmodel$nodes$beta_L4_UID_6$calculate
+ls(Rmodel$nodesFunctions)
+
+conf$printSamplers()
+i <- 3
+
+Rmcmc$samplerFunctions$contentsList[[i]]$target
+Rmcmc$samplerFunctions$contentsList[[i]]$scale
+Rmcmc$samplerFunctions$contentsList[[i]]$gamma1
+Rmcmc$samplerFunctions$contentsList[[i]]$timesAdapted
+Rmcmc$samplerFunctions$contentsList[[i]]$run
+
+## example of extracting MCMC summaries for Ben Letcher
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    for(i in 1:10)
+        lengthExp[i] ~ dnorm(0, 1)
+    for(i in 1:2)
+        for(j in 1:3)
+            for(k in 1:4)
+                A[i,j,k] <- i + 10*j + 100*k
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0, lengthExp = rep(0, 10))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+samples <- nimbleMCMC(model = Rmodel, nchains = 3, summary = TRUE, monitors = c('a', 'lengthExp', 'A'))
+
+## extract the posterior median for all parameters from the summary array
+posteriorMedian <- samples$summary$all.chains[, 'Median']
+
+## extract just those parameters beginning with 'lengthExp'
+lengthExp <- unname(posteriorMedian[grep('lengthExp', names(posteriorMedian), value = TRUE)])
+lengthExp
+
+A <- array(posteriorMedian[grep('A', names(posteriorMedian), value = TRUE)], c(2,3,4))
+A
+
+
+
+
+
+
 ## trying out the 'rats' model with hmc sampler
 
 library(nimble)
@@ -31,6 +246,78 @@ out <- compareMCMCs(modelInfo = modelInfo,
 
 make_MCMC_comparison_pages(out, dir = '~/temp/pages', pageComponents = list(timing = TRUE, efficiencySummary = FALSE, efficiencySummaryAllParams = TRUE, paceSummaryAllParams = TRUE, efficiencyDetails = TRUE, posteriorSummary = TRUE)); system('open ~/temp/pages/model1.html')
 
+
+
+
+## working on "linear reproductive function" in NIMBLE,
+## for Floraine Plard's revision of the IPM manuscript
+
+old: log(Rlambda[1:Ndatarec]) <- Rp[1] + Rp[2]*RX[1:Ndatarec] + Rp[3]*RCOV[1:Ndatarec] + Rp[4]*RX[1:Ndatarec]*RCOV[1:Ndatarec]
+new:     Rlambda[1:Ndatarec]  <- Rp[1] + Rp[2]*RX[1:Ndatarec] + Rp[3]*RCOV[1:Ndatarec] + Rp[4]*RX[1:Ndatarec]*RCOV[1:Ndatarec]
+
+old: Rdata[1:Ndatarec] ~  dRdataPois(Rlambda[1:Ndatarec], RdataLength)
+new: Rdata[1:Ndatarec] ~ T(ddatanorm(Rlambda[1:Ndatarec], Tau_R, RdataLength), 0, 100)
+
+
+ddataNorm <- nimbleFunction(
+    run = function(x = double(1), mean = double(1), tau = double(), length = integer(), log.p = double()) {
+        sd <- 1/sqrt(tau)
+        ll <- 0
+        for(i in 1:length) {
+            if(mean[i] < 0) {
+                if(log.p) return(-Inf) else return(0)
+            }
+            ll <- ll + dnorm(x[i], mean[i], sd=sd, log=TRUE)
+        }
+        returnType(double())
+        if(log.p) return(ll) else return(exp(ll))
+    }
+)
+
+rdataNorm <- nimbleFunction(
+    run = function(n = integer(), mean = double(1), tau = double(), length = integer()) {
+        print('this should never run')
+        ##x <- numeric(length)
+        declare(x, double(1, length))
+        returnType(double(1))
+        return(x)
+    }
+)
+
+registerDistributions(list(
+    ddataNorm = list(
+        BUGSdist = 'ddataNorm(mean, tau, length)',
+        types    = c('value = double(1)', 'mean = double(1)', 'tau = double()', 'length = integer()')
+    )
+))
+
+##pdataNorm <- nimbleFunction(
+##    run = function(q = double(), mean = double(1), tau = double(), length = integer(), lower.tail = integer(0, default = 1), log.p = integer(0, default = 0)) {
+##        returnType(double())
+##        sd <- 1/sqrt(tau)
+##        lp <- 0
+##        for(i in 1:length) {
+##            lp <- lp + pnorm(x[i], mean[i], sd=sd, log=TRUE)
+##        }
+##        
+##        if(!lower.tail) {
+##            logp <- -rate * q
+##            if(log.p) return(logp) else return(exp(logp))
+##        } else {
+##            p <- 1 - exp(-rate * q)
+##            if(!log.p) return(p) else return(log(p))
+##        }
+##    }
+##)
+## 
+##qdataNorm <- nimbleFunction(
+##    run = function(p = double(), mean = double(1), tau = double(), length = integer(), lower.tail = integer(0, default = 1), log.p = integer(0, default = 0)) {
+##        if(log.p) p <- exp(p)
+##        if(!lower.tail) p <- 1 - p
+##        returnType(double())
+##        return(-log(1 - p) / rate)
+##    }
+##)
 
 
 
@@ -312,6 +599,7 @@ inits <- list(a1 = 0, a2 = 0)
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmodel$calculate()
 
+conf <- configureMCMC(Rmodel)
 conf <- configureMCMC(Rmodel, nodes = NULL)
 conf$addSampler('a1', 'slice')
 conf$addSampler('a2', 'langevin')
@@ -337,6 +625,11 @@ ess
 eff <- ess / timing; names(eff) <- names(timing)
 eff
 
+samples <- runMCMC(Cmcmc, 10000, nchains = 1)
+samplesPlot(samples)
+
+samplesList <- runMCMC(Cmcmc, 10000, nchains = 3)
+chainsPlot(samplesList)
 
 ##n <- 5000
 ##set.seed(0)
