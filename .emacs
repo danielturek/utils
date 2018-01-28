@@ -22,10 +22,10 @@
   (require 'poly-markdown)
   (poly-markdown+r-mode))
 
-(defun rmarkdown-new-chunk (name)
+(defun rmarkdown-new-chunk ()
   "Insert a new R chunk."
-  (interactive "sChunk name: ")
-  (insert "\n```{r " name "}\n")
+  (interactive)
+  (insert "\n```{r }\n")
   (save-excursion
     (newline)
     (insert "```\n")
@@ -38,6 +38,15 @@
   (save-excursion
     (newline)
     (insert "-->\n")
+    (previous-line)))
+
+(defun rmarkdown-break-code-chunk ()
+  "Insert a break into an Rmarkdown code chunk."
+  (interactive)
+  (insert "\n```\n")
+  (save-excursion
+    (newline)
+    (insert "```{r }\n")
     (previous-line)))
 
 (defun rmarkdown-weave-file ()
@@ -73,6 +82,7 @@
 
 (global-set-key (kbd "C-c n") (quote rmarkdown-new-chunk))
 (global-set-key (kbd "C-c c") (quote rmarkdown-new-comment))
+(global-set-key (kbd "C-c b") (quote rmarkdown-break-code-chunk))
 (global-set-key (kbd "C-c w") (quote rmarkdown-weave-file))
 (global-set-key (kbd "C-c p") (quote rmarkdown-preview-file))
 (global-set-key (kbd "C-c t") (quote rmarkdown-tangle-file))

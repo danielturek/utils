@@ -1,5 +1,128 @@
 
 
+## github issue about accesing non-scalar nodes in NFs, as model[['nodeName']]
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    for(i in 1:5) {
+        b[i] ~ dnorm(0, 1)
+        for(j in 1:3)
+            c[i,j] ~ dnorm(0, 1)
+    }
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0, b=rep(1,5), c = array(2, c(5,3)))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+nfDef <- nimbleFunction(
+    setup = function(model) {
+        aNode <- 'a'
+        bNode <- 'b'
+        cNode <- 'c'
+    },
+    run = function() {
+        a <- model[[aNode]]
+        b <- model[[bNode]]
+        c <- model[[cNode]]
+        print('a = ', a)
+        print('b = ', b)
+        print('c = ', c)
+    }
+)
+
+Rnf <- nfDef(Rmodel)
+
+Cmodel <- compileNimble(Rmodel)
+Cnf <- compileNimble(Rnf, project = Rmodel)
+
+Rnf$run()
+
+## a = 0
+## b = 1 1 1 1 1
+## c =      [,1] [,2] [,3]
+## [1,]    2    2    2
+## [2,]    2    2    2
+## [3,]    2    2    2
+## [4,]    2    2    2
+## [5,]    2    2    2
+
+Cnf$run()
+
+## a = 0
+## b = 1
+## 1
+## 1
+## 1
+## 1
+## c = 2 2 2
+## 2 2 2
+## 2 2 2
+## 2 2 2
+## 2 2 2
+## NULL
+
+
+
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    for(i in 1:5) {
+        b[i] ~ dnorm(0, 1)
+        for(j in 1:3)
+            c[i,j] ~ dnorm(0, 1)
+    }
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0, b=rep(1,5), c = array(2, c(5,3)))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+nfDef <- nimbleFunction(
+    setup = function(model) { },
+    run = function() {
+        a <- model[['a']] 
+        b <- model[['b']] 
+        c <- model[['c']] 
+        print('a = ', a)
+        print('b = ', b)
+        print('c = ', c)
+    }
+)
+
+Rnf <- nfDef(Rmodel)
+
+Cmodel <- compileNimble(Rmodel)
+Cnf <- compileNimble(Rnf, project = Rmodel)
+
+Rnf$run()
+
+## a = 0
+## b = 1 1 1 1 1
+## c =      [,1] [,2] [,3]
+## [1,]    2    2    2
+## [2,]    2    2    2
+## [3,]    2    2    2
+## [4,]    2    2    2
+## [5,]    2    2    2
+
+Cnf$run()
+
+## a = 0
+## b = 1
+## c = 2
+## NULL
+
+
+
+
+
 ## github issue: copy() doesn't work from compiled model to compiled MCMC
 
 library(nimble)
