@@ -23,9 +23,12 @@
   (poly-markdown+r-mode))
 
 (defun rmarkdown-new-chunk ()
+;;(defun rmarkdown-new-chunk (name)
   "Insert a new R chunk."
   (interactive)
   (insert "\n```{r }\n")
+;;  (interactive "sChunk name: ")
+;;  (insert "\n```{r " name "}\n")
   (save-excursion
     (newline)
     (insert "```\n")
@@ -64,10 +67,13 @@
    (format "/Users/dturek/github/utils/knit.sh -t %s"
        (shell-quote-argument (buffer-file-name)))))
 
-(defun rmarkdown-commit ()
-  "Commit ~/github/courses repo"
+(defun rmarkdown-commit ()  ;;(message)
+  "Commit current buffer's repo"
   (interactive)
-  (shell-command "cd ~/github/courses; ~/github/utils/commit.sh"))
+;;  (interactive "commit message: ")
+  (shell-command
+   (format "cd $(dirname %s); ~/github/utils/commit.sh "
+	   (shell-quote-argument (buffer-file-name)))))
 
 (defun rmarkdown-preview-file ()
   "Run knitr on the current file and display output in a browser."

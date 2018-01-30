@@ -1,5 +1,7 @@
 
 
+
+
 ## github issue about accesing non-scalar nodes in NFs, as model[['nodeName']]
 
 library(nimble)
