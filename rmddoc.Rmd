@@ -9,6 +9,10 @@ output: html_document
 danielturek.github.io/public/folder/fileName.html
 [TEXT](URL)
 <a href="URL_GOES_HERE" target="_blank">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>
+![](IMAGE.png)
+```{r, out.width = "400px"}
+knitr::include_graphics("IMAGE.png")
+```
 -->
 
 Back to [NIMBLE Vignettes](https://danielturek.github.io/public/nimble_vignettes.html)

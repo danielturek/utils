@@ -1,6 +1,14 @@
 
 
 
+cd $(dirname /Users/dturek/scratch.R); ~/github/utils/commit.sh 
+
+cd $(dirname /Users/dturek/scratch.R); ~/github/utils/commit.sh; git add /Users/dturek/scratch.R.*
+
+cd $(dirname /Users/dturek/scratch.R); ~/github/utils/commit.sh; git add $(basename /Users/dturek/scratch.R .Rmd).*
+
+cd $(dirname /Users/dturek/scratch.R); ~/github/utils/commit.sh; git add $(basename /Users/dturek/scratch.R .Rmd).*; git commit -m'.'; git push        
+
 
 ## github issue about accesing non-scalar nodes in NFs, as model[['nodeName']]
 

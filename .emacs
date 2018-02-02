@@ -72,8 +72,11 @@
   (interactive)
 ;;  (interactive "commit message: ")
   (shell-command
-   (format "cd $(dirname %s); ~/github/utils/commit.sh "
-	   (shell-quote-argument (buffer-file-name)))))
+   ;(format "cd $(dirname %s); ~/github/utils/commit.sh "
+   (format "cd $(dirname %s); FILEBASE=$(basename %s | cut -d. -f1);  git add $FILEBASE.*; git commit -m'.'; git push"
+	   (shell-quote-argument (buffer-file-name))
+	   (shell-quote-argument (buffer-file-name))
+     )))
 
 (defun rmarkdown-preview-file ()
   "Run knitr on the current file and display output in a browser."
