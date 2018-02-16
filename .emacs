@@ -70,6 +70,11 @@
     (insert "```{r eval = FALSE}\n")
     (previous-line)))
 
+(defun rmarkdown-external-html-link ()
+  "Insert template for external HTML link."
+  (interactive)
+  (insert "<a href=\"URL_GOES_HERE\" target=\"_blank\">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>"))
+
 (defun rmarkdown-weave-file ()
   "Run knitr on the current file and weave it as MD and HTML."
   (save-buffer)
@@ -112,6 +117,7 @@
 (global-set-key (kbd "C-c c") (quote rmarkdown-new-comment))
 (global-set-key (kbd "C-c b") (quote rmarkdown-break-code-chunk))
 (global-set-key (kbd "C-c B") (quote rmarkdown-break-code-chunk-noeval))
+(global-set-key (kbd "C-c l") (quote rmarkdown-external-html-link))
 (global-set-key (kbd "C-c w") (quote rmarkdown-weave-file))
 (global-set-key (kbd "C-c p") (quote rmarkdown-preview-file))
 (global-set-key (kbd "C-c t") (quote rmarkdown-tangle-file))
