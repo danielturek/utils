@@ -1,3 +1,25 @@
+
+## TEMPORARY
+## (for STAT359 projects)
+files <- c(
+    '~/github/courses/stat359/projects/trading/trading_code.R'
+)
+for(f in files) source(f)
+##
+
+
+## packages to install
+## ===================
+## knitr
+## 
+## 
+## 
+## 
+## 
+## tidyverse
+## 
+
+
 options(device = 'quartz')
 options(repos  = 'http://cran.cnr.berkeley.edu')
 

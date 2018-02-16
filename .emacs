@@ -34,6 +34,15 @@
     (insert "```\n")
     (previous-line)))
 
+(defun rmarkdown-new-chunk-noeval ()
+  "Insert a new R chunk with eval = FALSE."
+  (interactive)
+  (insert "\n```{r eval = FALSE}\n")
+  (save-excursion
+    (newline)
+    (insert "```\n")
+    (previous-line)))
+
 (defun rmarkdown-new-comment ()
   "Insert a new Rmarkdown comment."
   (interactive)
@@ -50,6 +59,15 @@
   (save-excursion
     (newline)
     (insert "```{r }\n")
+    (previous-line)))
+
+(defun rmarkdown-break-code-chunk-noeval ()
+  "Insert a break into an Rmarkdown code chunk with eval = FALSE."
+  (interactive)
+  (insert "\n```\n")
+  (save-excursion
+    (newline)
+    (insert "```{r eval = FALSE}\n")
     (previous-line)))
 
 (defun rmarkdown-weave-file ()
@@ -90,8 +108,10 @@
 (global-set-key (kbd "C-c m") (quote rmd-mode))
 
 (global-set-key (kbd "C-c n") (quote rmarkdown-new-chunk))
+(global-set-key (kbd "C-c N") (quote rmarkdown-new-chunk-noeval))
 (global-set-key (kbd "C-c c") (quote rmarkdown-new-comment))
 (global-set-key (kbd "C-c b") (quote rmarkdown-break-code-chunk))
+(global-set-key (kbd "C-c B") (quote rmarkdown-break-code-chunk-noeval))
 (global-set-key (kbd "C-c w") (quote rmarkdown-weave-file))
 (global-set-key (kbd "C-c p") (quote rmarkdown-preview-file))
 (global-set-key (kbd "C-c t") (quote rmarkdown-tangle-file))

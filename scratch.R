@@ -1,13 +1,51 @@
 
 
+library(gapminder)
+data(gapminder)
 
-cd $(dirname /Users/dturek/scratch.R); ~/github/utils/commit.sh 
+g <- gapminder
 
-cd $(dirname /Users/dturek/scratch.R); ~/github/utils/commit.sh; git add /Users/dturek/scratch.R.*
+c <- unique(as.character(gapminder$country))
+c <- tolower(unique(as.character(gapminder$country)))
 
-cd $(dirname /Users/dturek/scratch.R); ~/github/utils/commit.sh; git add $(basename /Users/dturek/scratch.R .Rmd).*
+c <- "Canada"
+c <- "morocco"
+c <- "maaa"
+c <- "zorocco"
+c <- "Morocco"
+c <- "orocco"
 
-cd $(dirname /Users/dturek/scratch.R); ~/github/utils/commit.sh; git add $(basename /Users/dturek/scratch.R .Rmd).*; git commit -m'.'; git push        
+c <- c("Morocco", "morocco")
+c <- c("Moro", "moro")
+
+grep("([a-z]).*\\1", c("Moro", "moro"), value=TRUE)
+grep("([a-z]).*\\1", c("Moro", "moro"), value=TRUE, perl=TRUE)
+
+grep("([[:lower:]]).*\\1", c("Moro", "moro"), value=TRUE)
+
+c <- c("Moro", "moro", "aMoro", "AxMoro")
+
+grep("([a-z]).*\\1", c, value=TRUE)
+
+
+grep("([[:lower:]]).*\\1", c, value=TRUE)
+
+
+grep("([a-z]).*\\1.*\\1+", c, value=TRUE)
+grep("([[:lower:]]).*\\1.*\\1+", c, value=TRUE)
+
+grep("([[:lower:]]).*\\1", c("$^$^", "qrer"), value=TRUE)
+
+grep("([[:lower:]]).*\\1.*\\1", c("$^$^", "Rodfdodfdo", "Morocco", "morocco"), value=TRUE)
+
+
+gsub("([a-z]).*\\1.*\\1+", "X", c)
+
+
+grep("[a-z]", c("", "a", "A", "$%"), value = TRUE)
+
+
+
 
 
 ## github issue about accesing non-scalar nodes in NFs, as model[['nodeName']]
