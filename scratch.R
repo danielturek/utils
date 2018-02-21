@@ -1,4 +1,39 @@
 
+## factorization() function for STAT359 problem set pset1
+
+factorization <- function(x) {
+    if(x == 1) return(1)
+    factors <- numeric()
+    d <- 2
+    while(x > 1) {
+        while(x%%d == 0) {
+            x <- x/d
+            factors <- c(factors, d)
+        }
+        d <- d + 1
+    }
+    return(factors)
+}
+
+factorization(1)
+factorization(2)
+factorization(3)
+factorization(4)
+factorization(5)
+factorization(6)
+factorization(7)
+factorization(8)
+factorization(9)
+factorization(10)
+factorization(20)
+factorization(60)
+factorization(100)
+factorization(13431)   
+factorization(1343113431)   
+factorization(134311343113431)   
+
+
+
 
 library(gapminder)
 data(gapminder)

@@ -5,6 +5,11 @@
 
 # download and install f.lux program, for night shift softening of colours.
 
+# download and install Jumpcut program, for better copy/paste options
+
+# install gsed (GNU sed):
+# $ brew install gnu-sed
+
 # stop creation of .DS_Store files by Finder everywhere
 # $ defaults write com.apple.desktopservices DSDontWriteNetworkStores true
 
