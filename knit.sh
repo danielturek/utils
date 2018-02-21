@@ -73,7 +73,9 @@ if [ -r "$1" ]; then
     fi
     if [[ $tangle = 1 ]]; then
 	(
-	        Rscript -e "require(knitr); purl('${mdfile}.rmd')"
+	    rm -f ${mdfile}.R       ## remove existing .R file, if one exists
+	    Rscript -e "require(knitr); purl('${mdfile}.rmd', documentation = 0)"
+	    gsed -i "s/^## //" ${mdfile}.R     ## uncomment any R lines (generated from eval = FALSE code blocks)
 ) > /dev/null 2>&1
     fi
 else
