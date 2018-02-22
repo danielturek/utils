@@ -7,6 +7,9 @@
 
 # download and install Jumpcut program, for better copy/paste options
 
+# install homebrew:
+# $ /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+
 # install gsed (GNU sed):
 # $ brew install gnu-sed
 
