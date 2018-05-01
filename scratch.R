@@ -1,4 +1,5 @@
 
+## testing with different character encodings for spam classification project
 
 filenames <- list.files(dirs[4], full.names = TRUE)
 
@@ -173,9 +174,14 @@ data <- list()
 inits <- list(a = 0)
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmodel$calculate()
+
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
 
 
 samples <- runMCMC(Rmcmc, niter = 100); dim(samples)   ## 100

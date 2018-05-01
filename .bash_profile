@@ -40,8 +40,8 @@
 # then release them at the same time,
 # then turn computer on using power key.
 # (3) shut down computer,
-# turn on computer using power key, then *immediately*:
-# hold down (left side) command+option+P+R,
+# hold down (left side) command+option+P+R, then
+# turn on computer using power key,
 # continue holding them down until computer starts up,
 # then release.
 
