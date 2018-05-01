@@ -32,11 +32,14 @@
 # force immediate shutdown: shit+control+option+power
 #
 # built-in keyboard and trackpad not working whatsoever:
-# (1) shut down computer,
+# (1) with computer on and screen open,
+# "pinch" the middle-right-side of the computer,
+# to reconnect loose pins....
+# (2) shut down computer,
 # press (left side) shift+control+option+power for a while,
 # then release them at the same time,
 # then turn computer on using power key.
-# (2) shut down computer,
+# (3) shut down computer,
 # turn on computer using power key, then *immediately*:
 # hold down (left side) command+option+P+R,
 # continue holding them down until computer starts up,
