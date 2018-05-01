@@ -27,6 +27,21 @@
 # TeXShop, LaTeXiT, BibDesk, TeX Live Utility, to /Library/TeX/texbin
 # see: https://tug.org/mactex/UpdatingForElCapitan.pdf
 
+# Macbook FIXES
+#
+# force immediate shutdown: shit+control+option+power
+#
+# built-in keyboard and trackpad not working whatsoever:
+# (1) shut down computer,
+# press (left side) shift+control+option+power for a while,
+# then release them at the same time,
+# then turn computer on using power key.
+# (2) shut down computer,
+# turn on computer using power key, then *immediately*:
+# hold down (left side) command+option+P+R,
+# continue holding them down until computer starts up,
+# then release.
+
 # in PS1 variable to define prompt:
 # see: http://www.funtoo.org/Prompt_Magic
 # "\a" makes a little bell noise
