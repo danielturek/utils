@@ -28,6 +28,9 @@
 # see: https://tug.org/mactex/UpdatingForElCapitan.pdf
 
 # Macbook FIXES
+# 
+# Apple Technical Support (Education): 1-800-800-2775, option 3
+# 5/1/2018 case # 100523958608
 #
 # force immediate shutdown: shit+control+option+power
 #
