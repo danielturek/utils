@@ -16,8 +16,10 @@ R CMD INSTALL \
   --no-docs \
   --no-html \
   --no-data \
-  --no-help \
   --no-demo \
   --no-multiarch \
   --no-byte-compile \
   nimble_*.tar.gz
+
+##  --no-help \   remove this, to include ?xxx help in R
+

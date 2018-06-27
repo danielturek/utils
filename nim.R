@@ -25,6 +25,7 @@ samples <- runMCMC(Cmcmc, 10000)
 colnames(samples)
 apply(samples, 2, mean)
 
+samplesSummary(samples)
 samplesPlot(samples)
 
 library(coda)
@@ -34,7 +35,7 @@ apply(samples, 2, effectiveSize)
 nfDef <- nimbleFunction(
     setup = function() {},
     run = function() {
-        
+        returnType()
     }
 )
 
@@ -43,4 +44,16 @@ Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
 
 Rnf$run()
 Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
 

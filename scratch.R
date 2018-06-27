@@ -1,7 +1,863 @@
 
+
+## testing whether removing posterior_predictive samplers
+## changes the posterior..... (for work w/ Ben Letcher)
+
+library(nimble)
+
+
+code <- nimbleCode({
+    a ~ dexp(2)
+    b ~ dexp(3)
+    x ~ dnorm(a, sd = b)
+    y ~ dnorm(a+4, sd = b)
+    z ~ dnorm(a, sd = b+1)
+})
+
+constants <- list()
+data <- list(x = 4, y = 7)
+inits <- list(a = 1, b = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate('z')
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 20000)
+##Cmcmc$run(10000)
+##samples <- as.matrix(Cmcmc$mvSamples)
+
+colnames(samples)
+apply(samples, 2, mean)
+
+samplesSummary(samples)
+
+samplesPlot(samples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        returnType()
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
+
+
+
+
+## drafting a conjugate invgamma - dmnorm conjugate sampler for Zach Horton
+
+library(nimble)
+
+conjugate_invgamma_dmnorm <- nimbleFunction(
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        calcNodes <- model$getDependencies(target)
+        depNode <- model$getDependencies(target, self = FALSE, stochOnly = TRUE)
+        n <- length(model$expandNodeNames(depNode, returnScalarComponents = TRUE))
+        if(model$getDistribution(target) != 'dinvgamma')   stop('this sampler only for dinvgamma nodes')
+        if(length(depNode) > 1) stop('currently only written for one dependent node')
+        if(model$getDistribution(depNode) != 'dmnorm')   stop('dependent node must be dmnorm')
+        paramExpr <- model$getParamExpr(depNode, 'cov')
+        paramExprExpanded <- nimble:::cc_expandDetermNodesInExpr(model, paramExpr)
+        linearityCheck <- nimble:::cc_checkLinearity(paramExprExpanded, target)
+        if(linearityCheck$offset != 0) stop('not multiplicative')
+        coeffExpr <- linearityCheck$scale
+        coeffNodeName <- deparse(coeffExpr)
+    },
+    run = function() {
+        priorShape <- model$getParam(target, 'shape')
+        posteriorShape <- priorShape + n/2
+        priorRate <- model$getParam(target, 'rate')
+        coeffMatrixValue <- model[[coeffNodeName]]
+        depNodeValue <- model[[depNode]]
+        depNodeMean <- model$getParam(depNode, 'mean')
+        ## write the next line, defining posteriorRate, something involving:
+        ## -- solve(coeffMatrixValue), or perhaps coeffMatrixValue
+        ## -- depNodeValue
+        ## -- depNodeMean
+        ## NOTE: when you do matrix multiplication, you'll then have to "demote" the 1x1 matrix into a scalar, e.g.:
+        ##       (t(vector) %*% matrix %*% vector)[1,1]     ## see [1,1] indexing at the end
+        posteriorRate <- 1  #### CHANGE THIS
+        newValue <- rinvgamma(1, shape = posteriorShape, rate = posteriorRate)
+        model[[target]] <<- newValue
+        model$calculate(calcNodes)
+        nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+    },
+    ## every sampler needs a reset method.
+    ## for conjugate samplers, it doesn't need to do anything.
+    methods = list(
+        reset = function() {}
+    )
+)
+
+
+library(nimble)
+
+code <- nimbleCode({
+    sig2 ~ dinvgamma(shape = a, rate = b)
+    C[1:N,1:N] <- sig2*P[1:N,1:N]
+    y[1:N] ~ dmnorm(mean = mu[1:N], cov = C[1:N,1:N])
+})
+N <- 5
+set.seed(0)
+mu <- 1:N
+m <- array(rnorm(N*N), c(N,N))
+P <- m %*% t(m)
+y <- rnorm(5, mu, 1)
+constants <- list(N = N, a = 2, b = 3, mu = mu, P = P)
+data <- list(y = y)
+inits <- list(sig2 = 0.5)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+##conf$removeSamplers('sig2')
+##conf$addSampler('sig2', 'conjugate_invgamma_dmnorm', print = TRUE)
+Rmcmc <- buildMCMC(conf)
+
+model <- Rmodel
+target <- 'sig2'
+control <- list()
+control$dep_dmnorm <- Rmodel$getDependencies(target, stochOnly = TRUE, self = FALSE)
+determineNodeIndexSizes <- nimble:::determineNodeIndexSizes
+iDep <- 1
+
+conf$getSamplerDefinition(1)
+
+calcNodes <- model$getDependencies(target)
+calcNodesDeterm <- model$getDependencies(target, determOnly = TRUE)
+dep_dmnorm_nodeNames <- control$dep_dmnorm
+N_dep_dmnorm <- length(control$dep_dmnorm)
+dep_dmnorm_nodeSizes <- sapply(dep_dmnorm_nodeNames, function(node) max(determineNodeIndexSizes(node)), USE.NAMES = FALSE)
+if (length(dep_dmnorm_nodeSizes) == 1) 
+    dep_dmnorm_nodeSizes <- c(dep_dmnorm_nodeSizes, -1)
+dep_dmnorm_nodeSizeMax <- max(dep_dmnorm_nodeSizes)
+dep_dmnorm_values <- array(0, dim = c(N_dep_dmnorm, dep_dmnorm_nodeSizeMax))
+dep_dmnorm_k <- array(0, dim = N_dep_dmnorm)
+dep_dmnorm_offset <- array(0, dim = N_dep_dmnorm)
+dep_dmnorm_coeff <- array(0, dim = N_dep_dmnorm)
+contribution_shape <- 0
+contribution_scale <- 0
+
+prior_shape <- model$getParam(target[1], "shape")
+prior_scale <- model$getParam(target[1], "scale")
+for (iDep in 1:N_dep_dmnorm) {
+    thisNodeSize <- dep_dmnorm_nodeSizes[iDep]
+    dep_dmnorm_values[iDep, 1:thisNodeSize] <- model$getParam(dep_dmnorm_nodeNames[iDep], "value")
+    dep_dmnorm_k[iDep] <- model$getParam(dep_dmnorm_nodeNames[iDep], "k")
+}
+model[[target]] <- 0
+model$calculate(calcNodesDeterm)
+for (iDep in 1:N_dep_dmnorm) dep_dmnorm_offset[iDep] <- model$getParam(dep_dmnorm_nodeNames[iDep], "cov")
+model[[target]] <- 1
+model$calculate(calcNodesDeterm)
+for (iDep in 1:N_dep_dmnorm) dep_dmnorm_coeff[iDep] <- model$getParam(dep_dmnorm_nodeNames[iDep], "cov") - dep_dmnorm_offset[iDep]
+contribution_shape <<- 0
+contribution_scale <<- 0
+for (iDep in 1:N_dep_dmnorm) {
+    contribution_shape <<- contribution_shape + (1/2 + dep_dmnorm_k[iDep])
+    contribution_scale <<- contribution_scale + 1
+}
+newValue <- rinvgamma(1, shape = prior_shape + contribution_shape, 
+                      rate = 1/(prior_scale + contribution_scale))
+model[[target]] <<- newValue
+calculate(model, calcNodes)
+nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 100)
+head(samples)
+
+
+## experimenting with thin rates for Ben Letcher
+
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dexp(a*a+4)
+    c ~ dgamma(abs(a)+1, abs(b))
+})
+constants <- list()
+data <- list(c = 1)
+inits <- list(a = 0, b=5)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+thin <- 5
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$setThin(thin)
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+samples <- runMCMC(Cmcmc, 100, summary = FALSE)
+
+dim(samples)
+
+
+## trying to fix samplerExecutionOrder:
+## removing the default value (-1) for a dimension-1 runtime argument
+
+library(nimble)
+
+nfDef1 <- nimbleFunction(
+    setup = function() {
+        b <- c(7,7,7)
+    },
+    run = function(a = double(default=1)) {
+        print(a)
+        print(b)
+    },
+    methods = list(
+        setB = function(newB = integer(1)) {
+            b <<- c(newB, 99, 100)
+        }
+    )
+)
+
+Rnf1 <- nfDef1()
+Rnf1$run()
+
+Cnf1 <- compileNimble(Rnf1)
+Cnf1$run()
+
+th <- numeric()
+Rnf1$setB(th)
+Cnf1$setB(th)
+
+Rnf1$run()
+Cnf1$run()
+
+
+
+nfDef2 <- nimbleFunction(
+    setup = function() {
+        nf1 <- nfDef1()
+    },
+    run = function() {
+        nf1$run()
+        ##nf1$run(a = 100)
+    }
+)
+
+Rnf2 <- nfDef2()
+Rnf2$run()
+Cnf2 <- compileNimble(Rnf2, showCompilerOutput = TRUE)
+Cnf2$run()
+
+
+## testing using mcmc$run inside another nimbleFunction
+
+library(nimble)
+
+nfDef <- nimbleFunction(
+    setup = function(model) { mcmc <- buildMCMC(model) },
+    run = function() { mcmc$run(10) }
+)
+
+code <- nimbleCode({ a ~ dnorm(0, 1) })
+Rmodel <- nimbleModel(code, inits = list(a = 0))
+
+Rnf <- nfDef(Rmodel)
+
+Cmodel <- compileNimble(Rmodel)
+Cnf <- compileNimble(Rnf, project = Rmodel, showCompilerOutput = TRUE)
+
+
+
+
+
+
+## testing implied priors from re-parameterization of d and theta
+## from SCR movement models
+
+library(nimble)
+
+rSS <- nimbleFunction(
+    run = function(n = integer(), lam = double()) {
+        returnType(double(1))
+        return(c(0,0))
+    }
+)
+ 
+dSS <- nimbleFunction(
+    run = function(x = double(1), lam = double(), log = double()) {
+        dist <- sqrt(sum(x^2))
+        lp <- dexp(dist, rate = lam, log = TRUE) - log(dist)  ## change of variables
+        returnType(double())
+        if(log) return(lp) else return(exp(lp))
+    }
+)
+ 
+registerDistributions(list(
+    dSS = list(BUGSdist = 'dSS(lam)', types = c('value = double(1)', 'lam = double()'))))
+
+code <- nimbleCode({
+    theta ~ dunif(0, 2*3.141592653589793116)
+    d ~ dexp(rate = lam)
+    y[1] <- d * cos(theta)
+    y[2] <- d * sin(theta)
+    z[1:2] ~ dSS(lam)
+})
+
+constants <- list(lam = 3)
+data <- list()
+inits <- list(theta = 3, d = 1, z = c(.1,.1))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$addMonitors('y','z')
+conf$removeSamplers('z')
+conf$addSampler('z', 'RW_block')
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 50000)
+samplesSummary(samples[,c('y[1]','z[1]')])
+samplesSummary(samples[,c('y[1]','y[2]', 'z[1]','z[2]')])
+
+
+sy <- samples[,c('y[1]','y[2]')]
+dist <- apply(sy, 1, function(x) sqrt(sum(x^2)))
+
+hist(dist, breaks=300, prob=TRUE)
+mean(dist)
+xs <- seq(0,6, by=0.0001)
+ys <- dexp(xs, 3)
+lines(xs, ys, col = 'red')
+
+apply(samples, 2, mean)
+
+samplesPlot(samples, 'theta')
+samplesPlot(samples, 'd')
+samplesPlot(samples, 'x')
+samplesPlot(samples, 'y')
+samplesPlot(samples, c('x','y'))
+samplesPlot(samples, c('y','z'))
+samplesPlot(samples, c('y[1]','z[1]'))
+
+colnames(samples)
+samplesSummary(samples[,c('y[1]','z[1]')])
+##         Mean   Median  St.Dev. 95%CI_low 95%CI_upp
+##y[1] 0.495931 0.504629 0.576998 -0.682585   1.66814
+##y[2] 0.500805 0.501296 0.581499 -0.684521   1.68344
+
+
+
+##> HDInterval:::hdiVector
+
+function (object, credMass = 0.95, ...) 
+{
+    result <- c(NA_real_, NA_real_)
+    if (is.numeric(object)) {
+        attributes(object) <- NULL
+        x <- sort.int(object, method = "quick")
+        n <- length(x)
+        if (n > 0) {
+            exclude <- n - floor(n * credMass)
+            low.poss <- x[1:exclude]
+            upp.poss <- x[(n - exclude + 1):n]
+            best <- which.min(upp.poss - low.poss)
+            result <- c(low.poss[best], upp.poss[best])
+        }
+    }
+    names(result) <- c("lower", "upper")
+    return(result)
+}
+
+
+
+## simulating random walk flat prior of 1...k candidate models
+    
+k <- 10
+cur <- 1
+N <- 5000000
+hist <- numeric(N)
+hist[1] <- cur
+for(i in 2:N) {
+    if(cur == 1) {
+        ##cur <- 2
+        cur <- 1 + rbinom(1, 1, .5)
+    } else if(cur == k) {
+        ##cur <- k-1
+        cur <- cur - rbinom(1, 1, .5)
+    } else {
+        cur <- cur + 2*rbinom(1, 1, .5) - 1
+    }
+    hist[i] <- cur
+}
+
+table(hist) / N
+1/k
+
+## prep for STAT359 class
+
+plotErrorRates()
+
+plotErrorRates(xlim = c(-55, -40), ylim = c(0, 0.05))
+
+
+
+boxplot(BF ~ spam, data = df, ylab = 'Bayes Factor')
+
+boxplot(BF ~ spam, data = df, ylim = c(-400,400), ylab = 'Bayes Factor')
+
+
+emails <- readEmailDirectory("data/messages/spam")
+
+emails[[529]]
+
+length(emails[[529]])
+
+head(emails[[529]], 30)
+
+split <- splitMessage(emails[[529]])
+
+split$header
+
+head(split$body, 15)
+
+
+
+
+plotErrorRates()
+
+
+emailsAll[[6031]]
+
+
+emails <- readEmailDirectory("data/messages/spam_2")
+
+length(emails)
+
+emails[[1380]]
+
+bodyText <- lapply(emails, extractBodyText)
+bodyText[[1380]]
+
+words <- lapply(bodyText, extractWords)
+
+words[[1380]]
+
+lst <- nsgp_model(likelihood = "NNGP", constants = constants, z = z,
+                  k = k, nID = nID,
+                  tau_model 3= "logLinReg", sigma_model = "logLinReg", 
+                  Sigma_model = "covReg", mu_model = "linReg",
+                  Sigma_HP1 = 10, Sigma_HP2 = 5,
+                  returnModelComponents = TRUE)
+
+lst$code
+
+
+
+## testing new enableWAIC as a property of the MCMC configuration
+
+
+library(nimble)
+
+tst <- function(conf, mcmc) print(c(conf$enableWAIC, mcmc$enableWAIC))
+tst1 <- function(mcmc) print(mcmc$enableWAIC)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dnorm(a*a, 1)
+    c ~ dnorm(a^3, 1)
+    d ~ dnorm(b + c, 2)
+})
+constants <- list()
+data <- list(d = 1)
+inits <- list(a = 0, b = 0, c = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+tst(conf, Rmcmc)
+
+nimbleOptions(enableWAIC = TRUE)
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+tst(conf, Rmcmc)
+nimbleOptions(enableWAIC = FALSE)
+
+conf <- configureMCMC(Rmodel, enableWAIC = TRUE)
+Rmcmc <- buildMCMC(conf)
+tst(conf, Rmcmc)
+
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf, enableWAIC = TRUE)
+tst(conf, Rmcmc)
+
+conf <- configureMCMC(Rmodel)
+conf$setEnableWAIC(TRUE)
+Rmcmc <- buildMCMC(conf)
+tst(conf, Rmcmc)
+
+conf <- configureMCMC(Rmodel)
+conf$setEnableWAIC(1)
+Rmcmc <- buildMCMC(conf)
+tst(conf, Rmcmc)
+
+conf <- configureMCMC(Rmodel)
+conf$setEnableWAIC()
+Rmcmc <- buildMCMC(conf)
+tst(conf, Rmcmc)
+
+conf <- configureMCMC(Rmodel)
+conf$setEnableWAIC(FALSE)
+Rmcmc <- buildMCMC(conf)
+tst(conf, Rmcmc)
+
+conf <- configureMCMC(Rmodel)
+conf$setEnableWAIC(0)
+Rmcmc <- buildMCMC(conf)
+tst(conf, Rmcmc)
+
+Rmcmc <- buildMCMC(Rmodel)
+tst1(Rmcmc)
+
+nimbleOptions(enableWAIC = TRUE)
+Rmcmc <- buildMCMC(Rmodel)
+tst1(Rmcmc)
+nimbleOptions(enableWAIC = FALSE)
+
+Rmcmc <- buildMCMC(Rmodel, enableWAIC = TRUE)
+tst1(Rmcmc)
+
+Rmcmc <- buildMCMC(Rmodel, enableWAIC = 1)
+tst1(Rmcmc)
+
+Rmcmc <- buildMCMC(Rmodel, enableWAIC = FALSE)
+tst1(Rmcmc)
+
+Rmcmc <- buildMCMC(Rmodel, enableWAIC = 0)
+tst1(Rmcmc)
+
+nimbleMCMC(Rmodel, niter = 7)
+
+nimbleMCMC(Rmodel, niter = 7, WAIC = TRUE)
+
+
+
+
+
+
+## testing MCMCs that use monitors2, for updates to runMCMC()
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dnorm(a*a, 1)
+    c ~ dnorm(a^3, 1)
+    d ~ dnorm(b + c, 2)
+})
+constants <- list()
+data <- list(d = 1)
+inits <- list(a = 0, b = 0, c = 0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printMonitors()
+conf$setSamplerExecutionOrder(c(1,2,1,3,1))
+conf$printSamplers()
+conf$printSamplers(executionOrder = TRUE)
+##conf$addMonitors2('b', 'c')
+conf$setThin2(3)
+Rmcmc <- buildMCMC(conf, enableWAIC = TRUE)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+runMCMC(Cmcmc, 7)
+runMCMC(Cmcmc, 7, summary = TRUE)
+runMCMC(Cmcmc, 7, summary = TRUE, samplesAsCodaMCMC = TRUE)
+runMCMC(Cmcmc, 7, WAIC = TRUE)
+runMCMC(Cmcmc, 7, summary = TRUE, WAIC = TRUE)
+runMCMC(Cmcmc, 7, samples = FALSE, summary = TRUE)
+runMCMC(Cmcmc, 7, samples = FALSE, WAIC = TRUE)
+runMCMC(Cmcmc, 7, samples = FALSE, summary = TRUE, WAIC = TRUE)
+
+runMCMC(Cmcmc, 7, nchains = 2)
+runMCMC(Cmcmc, 7, nchains = 2, summary = TRUE)
+runMCMC(Cmcmc, 7, nchains = 2, summary = TRUE, samplesAsCodaMCMC = TRUE)
+runMCMC(Cmcmc, 7, nchains = 2, WAIC = TRUE)
+runMCMC(Cmcmc, 7, nchains = 2, summary = TRUE, WAIC = TRUE)
+runMCMC(Cmcmc, 7, nchains = 2, samples = FALSE, summary = TRUE)
+runMCMC(Cmcmc, 7, nchains = 2, samples = FALSE, WAIC = TRUE)
+runMCMC(Cmcmc, 7, nchains = 2, samples = FALSE, summary = TRUE, WAIC = TRUE)
+
+Rmcmc$samplerExecutionOrderFromConfPlusTwoZeros
+Cmcmc$samplerExecutionOrderFromConfPlusTwoZeros
+
+## testing runtime samplerExecutionOrder argument to runMCMC():
+## THIS IS NO LONGER SUPPORTED, UNTIL WE
+## SUPPORT NON-SCALAR DEFAULT RUNTIME ARGUMENTS:
+
+runMCMC(Cmcmc, 2)
+x <- runMCMC(Cmcmc, 2, samplerExecutionOrder = c(1,1,1))
+x <- runMCMC(Cmcmc, 2, samplerExecutionOrder = 3)
+x <- runMCMC(Cmcmc, 2, samplerExecutionOrder = numeric(0))
+x <- runMCMC(Cmcmc, 2)
+
+Rmcmc$run(7)
+Cmcmc$run(7)
+
+
+
+a <- c(0,0)
+a[-c(length(a)-1, length(a))]
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 1000)
+dim(samples)
+dim(as.matrix(Cmcmc$mvSamples2))
+Cmcmc$mvSamples2
+
+Rmcmc$monitors
+Rmcmc$monitors2
+
+Cmcmc$monitors
+Cmcmc$monitors2
+
+Cmcmc$Robject$monitors
+Cmcmc$Robject$monitors2
+
+mcmc <- Rmcmc
+mcmc <- Cmcmc
+
+length(if(is.Cnf(mcmc)) mcmc$Robject$monitors2 else mcmc$monitors2) > 0
+
+as.matrix(Rmcmc$mvSamples)
+as.matrix(Rmcmc$mvSamples2)
+as.matrix(Cmcmc$mvSamples)
+as.matrix(Cmcmc$mvSamples2)
+
+
+
+## testing risk difference model with Bernhard
+
+library(nimble)
+?buildMCMC
+
+x <- matrix(c(0, 432 ,   0,  142, 
+1, 375 ,   0,  125, 
+0, 80  ,   0,  40 , 
+0, 248 ,   1,  84 , 
+0, 50  ,   0,  24 , 
+2, 251 ,   0,  85 , 
+5, 605 ,   1,  209, 
+1, 466 ,   2,  231, 
+4, 525 ,   0,  175, 
+1, 80  ,   0,  40 , 
+1, 375 ,   0,  124, 
+0, 189 ,   0,  59 , 
+0, 55  ,   0,  27 , 
+0, 110 ,   0,  56 , 
+0, 85  ,   0,  85 , 
+0, 170 ,   0,  85 , 
+4, 1030,   1,  350 ), ncol = 4, byrow = TRUE)
+## y1 n1    y2 n2
+colnames(x) <- c('y1', 'n1',    'y2', 'n2')
+x <- as.data.frame(x)
+n <- cbind(x$n1, x$n2)
+y <- cbind(x$y1, x$y2)
+K <- dim(x)[1]
+
+code <- nimbleCode({
+    for(j in 1:2) {
+        alpha[j] ~ dgamma(shape = 0.01, scale = 0.01)
+        beta[j] ~ dgamma(shape = 10, scale = 0.01)
+        for(i in 1:K) {
+            p[i,j] ~ dbeta(shape1 = alpha[j], shape2 = beta[j])
+            y[i,j] ~ dbinom(size = n[i,j], prob = p[i,j])
+        }
+    }
+    delta <- alpha[1]/(alpha[1]+beta[1]) - alpha[2]/(alpha[2]+beta[2])
+})
+
+constants <- list(K = K)
+data <- list(y = y)
+inits <- list(n = n, alpha = c(0.0001, 0.0001), beta = c(0.1, 0.1), p = (y+1)/(n+2))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$calculate()
+
+box <- list( list(c('alpha','beta'), c(0, Inf)))
+
+MCEM <- buildMCEM(Rmodel, 'p', boxConstraints = box)
+
+MLEs <- MCEM$run(initM = 1000)
+## Iteration Number: 57.
+## Current number of MCMC iterations: 3032.
+## Parameter Estimates: 
+##   alpha[1]   alpha[2]    beta[1]    beta[2] 
+##   2.420032   1.166802 663.450866 436.657505 
+## Convergence Criterion: 0.003097695.
+## |-------------|-------------|-------------|-------------|
+## |-------------------------------------------------------|
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+conf <- configureMCMC(Rmodel, control = list(logScale = TRUE))
+conf$printSamplers()
+conf$addMonitors('delta')
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+set.seed(0)
+out <- runMCMC(Cmcmc, 500000, summary = TRUE, samples = TRUE)
+str(out)
+##                Mean     Median     St.Dev.   95%CI_low  95%CI_upp
+## alpha[1] 0.02659941 0.02520186 0.010162037 0.010768589 0.05027605
+## alpha[2] 0.01306957 0.01174824 0.007026915 0.003889054 0.02918123
+## beta[1]  0.13008978 0.12698964 0.034063940 0.071855816 0.20450840
+## beta[2]  0.11812389 0.11514613 0.033170417 0.063142584 0.19148567
+
+library(coda)
+samples <- out$samples
+codamcmc <- coda::as.mcmc(out$samples)
+class(codamcmc)
+str(codamcmc)
+samplesSummary(codamcmc)
+##               Mean     Median     St.Dev.    95%CI_low  95%CI_upp
+##alpha[1] 0.02676965 0.02545632 0.010068985  0.011020752 0.05016782
+##alpha[2] 0.01302527 0.01174159 0.006685269  0.003971777 0.02941060
+##beta[1]  0.13011633 0.12695276 0.034108937  0.072633702 0.20565336
+##beta[2]  0.11755000 0.11437664 0.033024751  0.062356236 0.19101432
+##delta    0.07158604 0.07127036 0.074219690 -0.074787529 0.21973711
+
+samplesPlot(codamcmc)   ## looks good
+
+
+install.packages('HDInterval')
+library(HDInterval)
+HDInterval::hdi
+?HDInterval::hdi
+
+?HDInterval::hdi
+
+head(samples)
+dim(samples)
+
+HDInterval::hdi(samples)
+
+
+HDInterval:::hdi.list
+HDInterval:::hdi.bugs
+HDInterval:::hdi.function
+HDInterval:::hdi.matrix
+HDInterval:::checkCredMass
+HDInterval:::hdiVector
+
+
+## testing the HDInterval:::hdiVector() function:
+
+n <- 1000000
+##x <- rnorm(n)      ### modify
+##density <- dnorm   ### modify
+##xlim <- c(-4, 4)
+x <- rbeta(n, 2, 60)      ### modify
+density <- function(x) dbeta(x, 2, 60)   ### modify
+xlim <- c(0, 1)
+##x <- rgamma(n, 10, 1)      ### modify
+##density <- function(x) dgamma(x, .2, .2)   ### modify
+##xlim <- c(0, 20)
+plot(density, col = 'red', xlim = xlim)
+int <- hdi(as.matrix(x))
+hist(x, add = TRUE, freq = FALSE, breaks = 100)
+lu <- as.numeric(int)
+abline(v = lu, col = 'blue')
+height <- density(lu[1])
+abline(h = height, col = 'green')
+equaltailed <- quantile(x, probs = c(0.025, 0.975))
+abline(v = lu, col = 'purple')
+
+equaltailed
+lu
+#> equaltailed
+#       2.5%       97.5% 
+#0.003958617 0.087976130 
+#> lu
+#[1] 0.0009586269 0.0760303896
+
+
+## makes 2D plots of HPD region:
+?emdbook::HPDregionplot
+emdbook::HPDregionplot(codamcmc)    ## new
+a <- emdbook::HPDregionplot(codamcmc)    ## new
+class(a)
+names(a)
+length(a)
+names(a[[1]])
+names(a[[1]])
+class(a[[1]]$level)
+a[[1]]$level
+##[1] 115.7915
+a[[1]]$x
+
+
+a <- emdbook::HPDregionplot(codamcmc, vars = 3:4)    ## new
+head(codamcmc,2)
+##         alpha[1] alpha[2] beta[1]   beta[2]       delta
+##[1,] 0.0003535852   0.0001     0.1 0.1513828 0.002863253
+a <- emdbook::HPDregionplot(codamcmc, vars = 3:4)    ## new
+a <- emdbook::HPDregionplot(codamcmc, vars = 1)    ## new
+
+
+
+
 ## testing with different character encodings for spam classification project
 
 filenames <- list.files(dirs[4], full.names = TRUE)
+
 
 i <- 753
 

@@ -1,12 +1,12 @@
 
 ## TEMPORARY
 ## (for STAT359 projects)
-files <- c(
-    '~/github/courses/stat359/projects/trading/trading_code.R',
-    '~/github/courses/stat359/projects/global_demographics/global_code.R',
-    '~/github/courses/stat359/projects/spam_classification/spam_code.R'
-)
-for(f in files) source(f)
+##files <- c(
+##    '~/github/courses/stat359/projects/trading/trading_code.R',
+##    '~/github/courses/stat359/projects/global_demographics/global_code.R',
+##    '~/github/courses/stat359/projects/spam_classification/spam_code.R'
+##)
+##for(f in files) source(f)
 ##
 
 
