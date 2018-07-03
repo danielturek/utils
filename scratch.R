@@ -1,35 +1,61 @@
 
 
-## testing whether removing posterior_predictive samplers
-## changes the posterior..... (for work w/ Ben Letcher)
+## testing new method: conf$printSamplers(type = ...)
 
 library(nimble)
 
-
 code <- nimbleCode({
-    a ~ dexp(2)
-    b ~ dexp(3)
-    x ~ dnorm(a, sd = b)
-    y ~ dnorm(a+4, sd = b)
-    z ~ dnorm(a, sd = b+1)
+    for(i in 1:3) {
+        a[i] ~ dnorm(0, 1)
+        b[i] ~ dnorm(0, 1)
+    }
 })
-
 constants <- list()
-data <- list(x = 4, y = 7)
-inits <- list(a = 1, b = 1)
+data <- list()
+inits <- list(a = rep(0,5), b = rep(0, 5))
 
 Rmodel <- nimbleModel(code, constants, data, inits)
-Rmodel$calculate('z')
+Rmodel$calculate()
 
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
+conf$removeSamplers(c('a[2]', 'a[3]', 'b[2]', 'b[3]'))
+conf$printSamplers()
+conf$addSampler('a[2]', 'RW')
+conf$addSampler('b[2]', 'RW')
+conf$addSampler('a[3]', 'slice')
+conf$addSampler('b[3]', 'slice')
+conf$printSamplers()
+
+conf$printSamplers('a')
+conf$printSamplers('b')
+conf$printSamplers(c('a', 'b'))
+
+conf$printSamplers(type = 'slice')
+conf$printSamplers(type = 'R')
+conf$printSamplers(type = c('post', 'W'))
+conf$printSamplers(type = c('post', 'W', 'slice'))
+
+conf$printSamplers('a', type = c('post', 'W', 'slice'))
+conf$printSamplers('b', type = c('post', 'W', 'slice'))
+
+conf$printSamplers('a[1]', type = c('post', 'W', 'slice'))
+conf$printSamplers('a[2]', type = c('post', 'W', 'slice'))
+
+conf$printSamplers(c('a', 'b[3]'), type = c('post', 'W', 'slice'))
+conf$printSamplers(c('a', 'b[3]'), type = c('post', 'slice'))
+conf$printSamplers(c('a', 'b[3]'), type = c('slice'))
+
+conf$printSamplers(c('a', 'b[3]'), type = c('zzz'))
+
+
 Rmcmc <- buildMCMC(conf)
 
 Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 set.seed(0)
-samples <- runMCMC(Cmcmc, 20000)
+samples <- runMCMC(Cmcmc, 10000)
 ##Cmcmc$run(10000)
 ##samples <- as.matrix(Cmcmc$mvSamples)
 
@@ -37,7 +63,6 @@ colnames(samples)
 apply(samples, 2, mean)
 
 samplesSummary(samples)
-
 samplesPlot(samples)
 
 library(coda)
@@ -69,6 +94,73 @@ Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
 Rnf()
 Cnf()
 
+
+
+## testing whether removing posterior_predictive samplers
+## changes the posterior..... (for work w/ Ben Letcher)
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dexp(2)
+    b ~ dexp(3)
+    x ~ dnorm(a, sd = b)
+    y ~ dnorm(a+4, sd = b)
+    z ~ dnorm(a, sd = b+1)
+})
+
+code <- nimbleCode({
+    a ~ dexp(2)
+    b ~ dexp(3)
+    x ~ dnorm(a, sd = b)
+    y ~ dnorm(a+4, sd = b)
+})
+
+constants <- list()
+data <- list(x = 4, y = 7)
+inits <- list(a = 1, b = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+Rmodel$calculate('z')
+
+conf <- configureMCMC(Rmodel)
+
+conf$printSamplers()
+conf$removeSamplers('z')
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Cmodel$z
+Cmodel$getNodeNames(dataOnly = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 1000000, nburnin = 50000)
+
+Cmodel$z
+Cmodel$getNodeNames(dataOnly = TRUE)
+
+samplesSummary(samples)
+
+## with posterior_predictive sampler on 'z'
+Mean    Median   St.Dev. 95%CI_low 95%CI_upp
+a 2.5232518 2.8237549 1.0181654 0.2266626  3.878514
+b 0.9605417 0.8150415 0.5391889 0.3079454  2.270492
+
+## not including 'z' in the model at all
+       Mean    Median   St.Dev. 95%CI_low 95%CI_upp
+a 2.5601519 2.8582259 1.0005812 0.2350451  3.884631
+b 0.9405567 0.7927426 0.5319256 0.3047788  2.255075
+
+
+## removing the posterior_predictive sampler on 'z'
+       Mean    Median   St.Dev. 95%CI_low 95%CI_upp
+a 2.8759682 3.0911494 0.7992810 0.6274089  3.906653
+b 0.7742836 0.6484452 0.4378095 0.2843118  1.944413
 
 
 
