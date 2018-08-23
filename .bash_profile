@@ -83,7 +83,8 @@ alias checkout='git checkout'
 alias branch='git branch'
 alias log='git log'
 alias commit=~/github/utils/commit.sh
-
+alias s202='cd ~/github/courses/stat202'
+alias s365='cd ~/github/courses/stat365'
 
 set -o noclobber
 

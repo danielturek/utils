@@ -15,12 +15,12 @@ conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
 
 Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+##compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+##Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
 
 set.seed(0)
 samples <- runMCMC(Cmcmc, 10000)
-##Cmcmc$run(10000)
-##samples <- as.matrix(Cmcmc$mvSamples)
 
 colnames(samples)
 apply(samples, 2, mean)
