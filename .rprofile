@@ -37,7 +37,7 @@ makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('roundS
 
 
 ## until basicMCMCplots package is on CRAN, keep this here:
-source('~/github/basicMCMCplots/basicMCMCplots/R/plots.R')
+## source('~/github/basicMCMCplots/basicMCMCplots/R/plots.R')
 
 ####
 #### 17 August 2018

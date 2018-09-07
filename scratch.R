@@ -1,5 +1,112 @@
 
 
+## testing removing extra logH() calculations from HMC sampler
+
+library(nimble)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+{
+    set.seed(0)
+    ##load('~/github/public/HMCcomparisons/election88_clean/data_setup_from_stan_github/data_setup_from_stan_github.RData')
+    ##election.inits <- list(b.0=rnorm(1), b.female=rnorm(1), b.black=rnorm(1),
+    ##                       b.female.black=rnorm(1),
+    ##                       b.age=rnorm(n.age), b.edu=rnorm(n.edu),
+    ##                       b.age.edu=array(rnorm(n.age*n.edu),
+    ##                           c(n.age,n.edu)), b.state=rnorm(n.state), b.v.prev=rnorm(1), 
+    ##                       b.region=rnorm(n.region), sigma.age=runif(1),
+    ##                       sigma.edu=runif(1), sigma.age.edu=runif(1),
+    ##                       sigma.state=runif(1), sigma.region=runif(1))
+    ##election88_BUGS <- readBUGSmodel("17.4_Bugs_codes.bug", dir = '~/github/public/HMCcomparisons/election88_clean/models', returnComponents = TRUE)
+    ##BUGSdataList.1 <- dataList.1
+    ##names(BUGSdataList.1) <- tolower( gsub("_",".",names(BUGSdataList.1)))
+    ##election88_BUGS$data <- BUGSdataList.1
+    ##election88_BUGS$inits <- election.inits
+    ##code <- election88_BUGS$code
+    ##yInd <- which(names(election88_BUGS$data) == 'y')
+    ##constants <- election88_BUGS$data[-yInd]
+    ##data <- election88_BUGS$data[yInd]
+    ##inits <- election88_BUGS$inits
+    ##
+    Rmodel <- nimbleModel(code, constants, data, inits)
+    params <- Rmodel$getNodeNames(topOnly = TRUE, stochOnly = TRUE)
+    params
+    conf <- configureMCMC(Rmodel)
+    conf$removeSamplers(params)
+    conf$addSampler(params, 'HMCexp', control = list(printTimesRan = TRUE, printJ = TRUE))
+    conf$addSampler(params, 'HMCexp', control = list(printTimesRan = TRUE, printJacobian = TRUE))
+    conf$addSampler(params, 'HMCexp')
+    conf$printSamplers()
+    ##
+    Rmcmc <- buildMCMC(conf)
+    ##Cmodel <- compileNimble(Rmodel)
+    ##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)##, showCompilerOutput = TRUE)
+    compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+    Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+    ##
+    ##niter <- 6
+    ##set.seed(0)
+    ##samples <- runMCMC(Cmcmc, niter)
+    ##
+    niter <- 50
+    set.seed(0)
+    samples <- runMCMC(Cmcmc, niter)
+    correct <- all(round(as.numeric(samples[niter,]),8) - c(1.77494912, -1.73251839, -0.20268596, -0.07397942, -1.53999753, 1.82689544, 1.14479358, 1.01806362, 0.36902964, 0.40369282) == 0)
+    if(correct)  message('looks good')
+    if(!correct) message('WRONG')
+}
+
+
+## testing basicMCMCplots package on CRAN (!)
+
+library(basicMCMCplots)
+
+remove.packages('basicMCMCplots')
+
+install.packages('basicMCMCplots')
+
+samplesPlot
+chainsPlot
+
+?samplesPlot
+?chainsPlot
+
+samples <- cbind(rnorm(1000), rgamma(1000, 1))
+colnames(samples) <- c('alpha', 'beta')
+samplesPlot(samples)
+
+
+samples1 <- cbind(rnorm(1000, 1), rgamma(1000, 1), rpois(1000, 1))
+colnames(samples1) <- c('alpha', 'beta', 'gamma')
+samples2 <- cbind(rnorm(1000, 2), rgamma(1000, 2), rpois(1000, 2))
+colnames(samples2) <- c('alpha', 'beta', 'gamma')
+samplesList <- list(chain1 = samples1, chain2 = samples2)
+chainsPlot(samplesList, nrow = 1, jitter = .3, buffer.left = .5, buffer.right = .5)
+
+
+## testing rev() reversing a vector via indexing in NIMBLE
+
+
+library(nimble)
+
+Rnf <- nimbleFunction(
+    run = function(a = double(1)) {
+        L <- dim(a)[1]
+        print('length = ', L)
+        index <- numeric(L)
+        for(i in 1:L) {
+            index[i] <- L + 1 - i
+        }
+        b <- a[index]
+        print('reversed vector: ', b)
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+f <- 1:5
+Rnf(f)
+Cnf(f)
+
 
 
 ## discrepancy in grad calculations between R and C ???
@@ -854,7 +961,8 @@ library(nimble)
 library(testthat)
 nimbleOptions(experimentalEnableDerivs = TRUE)
 ##
-setwd('~/Downloads/election88_clean')
+## OLD: setwd('~/Downloads/election88_clean')
+setwd('~/github/public/HMCcomparisons/election88_clean')
 load(file.path('data_setup_from_stan_github', 'data_setup_from_stan_github.RData'))
 election.inits <- list(b.0=rnorm(1), b.female=rnorm(1), b.black=rnorm(1),
                        b.female.black=rnorm(1),

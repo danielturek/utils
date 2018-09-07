@@ -10,7 +10,7 @@ danielturek.github.io/public/folder/fileName.html
 [TEXT](URL)
 <a href="URL_GOES_HERE" target="_blank">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>
 ![](IMAGE.png)
-```{r, out.width = "400px"}
+```{r }
 knitr::include_graphics("IMAGE.png")
 ```
 -->
@@ -28,6 +28,10 @@ set.seed(0)
 samples <- runMCMC(Cmcmc, niter)
 ```
 
+```{r, out.width = "1000px"}
+samplesPlot(samples)
+chainsPlot(samplesList)
+```
 
 
 
