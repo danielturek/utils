@@ -1,4 +1,6 @@
 library(nimble)
+library(basicMCMCplots)
+library(coda)
 
 code <- nimbleCode({
     a ~ dnorm(0, 1)
@@ -14,21 +16,17 @@ conf <- configureMCMC(Rmodel)
 conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
 
-Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
-##compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
-##Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
 
 set.seed(0)
 samples <- runMCMC(Cmcmc, 10000)
 
 colnames(samples)
-apply(samples, 2, mean)
-
 samplesSummary(samples)
 samplesPlot(samples)
-
-library(coda)
 apply(samples, 2, effectiveSize)
 
 

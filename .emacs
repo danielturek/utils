@@ -73,7 +73,7 @@
 (defun rmarkdown-external-html-link ()
   "Insert template for external HTML link."
   (interactive)
-  (insert "<a href=\"URL_GOES_HERE\" target=\"_blank\">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>"))
+  (insert "<a href=\"URL\" target=\"_blank\">LINK_TEXT</a>"))
 
 (defun rmarkdown-weave-file ()
   "Run knitr on the current file and weave it as MD and HTML."
@@ -187,4 +187,6 @@ If there is still something left do do start the next latex-command."
          (set-process-sentinel proc 'TeX-texify-sentinel))))))
 
 (add-hook 'LaTeX-mode-hook '(lambda () (local-set-key (kbd "C-c C-c") 'TeX-texify))) 
+
+
 

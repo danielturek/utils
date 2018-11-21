@@ -1,5 +1,2314 @@
 
 
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 10000)
+    log(sigma) ~ dnorm(0, 0.0001)
+    sigma2 <- sigma^2
+    for(i in 1:4) {
+        y[i] ~ dnorm(mu, var = sigma2)
+    }
+    p[1:4] ~ ddirch(a[1:4])
+})
+
+inits <- list(mu = 0, log_sigma = 0, y = 1:4, a = 11:14, p = rep(1/4,4))
+Rmodel <- nimbleModel(code, inits = inits)
+Rmodel$calculate()
+
+Rmodel$getNodeNames()
+Rmodel$getVarNames(includeLogProb = TRUE)
+
+(allVarsIncludingLogProb <- Rmodel$getVarNames(includeLogProb = TRUE))
+(vals <- values(Rmodel, allVarsIncludingLogProb))
+
+Rmodel$y <- 11:14
+Rmodel$mu <- 5
+Rmodel$log_sigma <- 10
+Rmodel$a <- 101:104
+Rmodel$p <- c(0.7, 0.1, 0.1, 0.1)
+Rmodel$calculate()
+
+values(Rmodel, allVarsIncludingLogProb)
+values(Rmodel, allVarsIncludingLogProb) <- vals
+values(Rmodel, allVarsIncludingLogProb) - vals
+
+
+args(Rmodel$getNodeNames)
+args(Rmodel$getVarNames)
+
+values(Rmodel)
+
+
+df <- read.csv('~/Downloads/FrenchCuisine.csv')
+df
+m <- lm(Rating ~ City, data = df)
+summary(m)
+anova(m)
+
+
+df <- read.csv('~/Downloads/AnorexiaLong.csv')
+df
+m <- lm(change ~ therapy, data = df)
+summary(m)
+anova(m)
+
+
+
+-3 Please include indexing for the mathematical models, to make them entirely precise and formal (e.g., .... for i = 1,.... 34).  It is actually really important to get these right, because that's how you communicate to others the structure of your model.
+
+-2 Problem 1 (c) much more specifically it's because it's a *conjugate* sampler.'
+
+Good understanding of the a[] parameters to the dirichlet, and the analogy to the beta(a, b) parameters.
+
+cars <- read.csv('~/github/courses/stat202/data/UsedCars.csv')
+head(cars)
+## multiple regression using Age and (categorical) Type
+m <- lm(Price ~ Age + Type, data = cars)
+summary(m)
+## multiple regression using Age and (categorical) Type
+## including interaction term:
+
+
+
+
+## multiple linear regression,
+## matrix algebra for exact beta_hat coefficients
+
+df <- read.csv('~/github/courses/stat365/data/UsedCars.csv')
+head(df)
+price <- df$Price
+age <- df$Age
+hp <- df$HP
+type <- df$Type
+
+m <- lm(price ~ age + hp + type)
+summary(m)
+## Coefficients:
+##             Estimate Std. Error t value Pr(>|t|)    
+## (Intercept) 18531.38    3788.51   4.891 0.000196 ***
+## age         -1108.50     336.26  -3.297 0.004894 ** 
+## hp             15.23      21.45   0.710 0.488751    
+## type        -2171.16    1151.05  -1.886 0.078776 .  
+
+X <- cbind(1, age, hp, type)
+Y <- cbind(price)
+(beta <- solve(t(X)%*%X) %*% t(X) %*% Y)
+
+
+
+## testing autoBlock ??
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 10000)
+    sigma ~ dunif(0, 10000)
+    for(i in 1:4) {
+        y[i] ~ dnorm(mu, sd = sigma)
+    }
+})
+
+constants <- list()
+data <- list(y = c(100, 110, 112, 118))
+inits <- list(mu = 0, sigma = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmcmc <- buildMCMC(Rmodel, autoBlock = TRUE)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Cmodel)
+
+set.seed(0)
+out <- runMCMC(Cmcmc, 10000)
+
+
+
+## writing MMD maximum-minimum distance coordinate ordering
+## for NNGP work with Mark Risser
+
+
+## data generation
+set.seed(0)
+N <- 100
+s <- cbind(runif(N), runif(N))
+
+require(FNN)
+
+orderCoordinatesMMD <- function(s, exact = FALSE) {
+    ## input s: an Nx2 array of spatial coordinates
+    ## data generation, for testing
+    ## N <- 10
+    ## set.seed(0)
+    ## s <- cbind(runif(N), runif(N))
+    N <- dim(s)[1]
+    if(N < 3) return(s)
+    if(!exact) {       ## approximate MMD ordering
+        initialOrdering <- sample(1:N)
+        orderedIndices <- c(initialOrdering, rep(NA, 3*N))
+        indexLookupVector <- order(initialOrdering)
+        maxNeighbors <- floor(sqrt(N))
+        NN <- FNN::get.knn(s, k = maxNeighbors)$nn.index
+        nextSpot <- N+1
+        cycleCheckIndex <- -1
+        for(i in 2:(3*N)) {
+            (targetIndex <- orderedIndices[i])
+            if(cycleCheckIndex == targetIndex) break
+            if(cycleCheckIndex == -1) cycleCheckIndex <- targetIndex
+            targetNeighbors <- NN[targetIndex, 1:min(maxNeighbors, round(N/(i+N-nextSpot)))]
+            targetNeighborLocs <- indexLookupVector[targetNeighbors]
+            if(min(targetNeighborLocs) < i) {   ## relocate this index to the back
+                orderedIndices[nextSpot] <- targetIndex
+                orderedIndices[i] <- NA
+                indexLookupVector[targetIndex] <- nextSpot
+                nextSpot <- nextSpot + 1
+            } else cycleCheckIndex <- -1
+        }
+        orderedIndicesNoNA <- orderedIndices[!is.na(orderedIndices)]
+        orderedS <- s[orderedIndicesNoNA,]
+    } else {           ## exact MMD ordering
+        availableIndices <- 1:N
+        orderedS <- array(NA, c(N,2))
+        sbar <- apply(s, 2, mean)   ## group centroid
+        iNext <- which.min(sapply(1:N, function(i) sum((s[i,] - sbar)^2)))
+        orderedS[1,] <- s[iNext,]
+        availableIndices <- setdiff(availableIndices, iNext)
+        for(i in 2:N) {
+            aIndNext <- which.max(    ## this indexes the availableIndices vector
+                sapply(1:(N-i+1), function(j) {
+                    min(sapply(1:(i-1), function(k) sum((s[availableIndices[j],] - orderedS[k,])^2)))
+                }))
+            iNext <- availableIndices[aIndNext]   ## this indexes rows of the original s[] array
+            orderedS[i,] <- s[iNext,]
+            availableIndices <- setdiff(availableIndices, iNext)
+        }
+        ##if(length(availableIndices) > 0) stop('something wrong with MMD algorithm')
+        ##if(any(is.na(orderedS)))         stop('something wrong with MMD algorithm')
+    }
+    return(orderedS)
+}
+
+
+orderedS <- orderedIndices[!is.na(orderedIndices)]
+
+
+## data generation
+set.seed(0)
+N <- 1
+s <- cbind(runif(N), runif(N))
+
+s
+
+system.time(os <- order_maxmin(s))
+
+system.time(os <- orderCoordinatesMMD(s))
+os
+
+par(mfrow = c(3,3))
+
+for(i in 1:9) {
+    ind <- 1:(10*i)
+    plot(os[ind,1], os[ind,2], pch='x')
+}
+
+
+determineNeighbors <- function(dst, k) {
+    N <- dim(dst)[1]
+    if(k+2 > N) stop()
+    nID <- array(-1, c(N,k))     ## populate unused values with -1, to prevent a warning from NIMBLE
+    for(i in 2:(k+1))     nID[i, 1:(i-1)] <- as.numeric(1:(i-1))
+    for(i in (k+2):N)     nID[i, 1:k] <- as.numeric(order(dst[i,1:(i-1)])[1:k])
+    return(nID)
+}
+
+system.time(dst <- as.matrix(dist(os)))
+
+system.time(nID <- determineNeighbors(dst, k = 30))
+
+
+require(FNN)
+locs <- s
+n <- nrow(locs)
+
+## m is number of neighbors to search over
+## get the past and future nearest neighbors
+(m <- round(sqrt(n)))
+
+NNall <- FNN::get.knn(locs, k = m)$nn.index
+
+## pick a random ordering
+set.seed(0)
+(index_in_position <- c( sample(n), rep(NA,1*n) ))   ## WHY 1*n ????
+(position_of_index <- order(index_in_position[1:n]))
+
+## loop over the first n/4 locations
+## move an index to the end if it is a
+## near neighbor of a previous location
+curlen <- n
+##curpos <- 1
+nmoved <- 0
+j <- 2
+
+## [10,]    5    7    4
+
+j
+index_in_position[j]
+NNall[index_in_position[j],]
+(nneigh <- round( min(m,n/(j-nmoved+1)) ))
+(neighbors <- NNall[index_in_position[j],1:nneigh])
+index_in_position
+
+min( position_of_index[neighbors], na.rm = TRUE ) < j
+
+(nmoved <- nmoved+1)
+(curlen <- curlen + 1)
+(position_of_index[ index_in_position[j] ] <- curlen)
+(index_in_position[curlen] <- index_in_position[j])
+index_in_position[j] <- NA
+index_in_position
+position_of_index
+
+(j <- j+1)
+
+
+
+order_maxmin <- function(locs) {
+    ##n <- nrow(locs)
+    ##ee <- min(apply( locs, 2, stats::sd ))
+    ##locs <- locs + matrix( ee*1e-4*stats::rnorm(n*ncol(locs)), n, ncol(locs) )    
+    n <- nrow(locs)
+    m <- round(sqrt(n))
+    ## m is number of neighbors to search over
+    ## get the past and future nearest neighbors
+    NNall <- FNN::get.knn( locs, k = m )$nn.index
+    ## pick a random ordering
+    set.seed(0)
+    index_in_position <- c( sample(n), rep(NA,1*n) )
+    position_of_index <- order(index_in_position[1:n])
+    ## loop over the first n/4 locations
+    ## move an index to the end if it is a
+    ## near neighbor of a previous location
+    curlen <- n
+    nmoved <- 0
+    for(j in 2:(2*n) ){
+        nneigh <- round( min(m,n/(j-nmoved+1)) )
+        neighbors <- NNall[index_in_position[j],1:nneigh]
+        if( min( position_of_index[neighbors], na.rm = TRUE ) < j ){
+            nmoved <- nmoved+1
+            curlen <- curlen + 1
+            position_of_index[ index_in_position[j] ] <- curlen
+            index_in_position[curlen] <- index_in_position[j]
+            index_in_position[j] <- NA
+        }
+    }
+    ord <- index_in_position[ !is.na( index_in_position ) ]
+    orderedS <- locs[ord,]
+    return(orderedS)
+    ##return(index_in_position)
+}
+
+order_maxmin(s)
+
+
+
+
+## WAIC
+## STAT 365 lecture fall 2018
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 10000)
+    sigma ~ dunif(0, 10000)
+    for(i in 1:4) {
+        y[i] ~ dnorm(mu, sd = sigma)
+    }
+})
+
+constants <- list()
+data <- list(y = c(100, 110, 112, 118))
+inits <- list(mu = 0, sigma = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()   ## -24307.02
+
+## need to "enable" WAIC calculations!
+## this can be done either in configureMCMC(),
+## or buildMCMC():
+conf <- configureMCMC(Rmodel, enableWAIC = TRUE)      ## enable WAIC here,
+Rmcmc <- buildMCMC(conf, enableWAIC = TRUE)           ## or here
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+## then, specify WAIC = TRUE, to return the WAIC value:
+set.seed(0)
+out <- runMCMC(Cmcmc, 50000, WAIC = TRUE, samples=FALSE)
+
+str(out)
+out$WAIC   ## 32.29415
+
+out
+
+## say we forgot to specify WAIC = TRUE, for a long run.
+## don't worry, there's still a way to calculate it:
+out <- runMCMC(Cmcmc, 50000)
+
+Cmcmc$calculateWAIC()
+
+Cmcmc$run(10000, reset = FALSE)
+
+
+## finally, let's see this using nimbleMCMC() again:
+args(nimbleMCMC)
+
+out <- nimbleMCMC(code, constants, data, inits, niter=10000, nchains=3, WAIC = TRUE, samplesAsCodaMCMC=TRUE )
+
+str(out)
+
+out$samples
+out$WAIC
+
+
+
+## STAT 202
+## example of exponential regression:
+## Moore's Law
+## fall 2018
+
+x <- c(0, 3, 4, 5, 6)      ## years since 1959
+y <- c(1, 7, 19, 29, 64)   ## num. of components on microchip
+
+plot(x, y, pch=19, xlim = c(0,8), ylim = c(0,100))
+
+
+## R^2 for linear regression
+m <- lm(y ~ x)
+abline(m, col = 'red')
+cor(x, y)^2   ## R^2 = 0.7193205
+
+
+## instead, let's plot of log(y) vs. x
+plot(x, log(y), pch=19, xlim=c(0,8), ylim=c(0,6))
+abline(m, col = 'red')
+
+##ytransformed <- log(y)
+
+## fit exponential regression model in R
+m <- lm(log(y) ~ x)
+m
+
+## R^2 for exponential regression
+cor(log(y), x)^2  ## R^2 = 0.9945088
+
+## let's extract the coefficients
+## don't forget, these are: log(a), and log(b)
+coef(m)
+loga <- m$coef[1]
+logb <- m$coef[2]
+loga
+logb
+a <- exp(loga)
+b <- exp(logb)
+a
+b
+
+## y = a*b^x
+## y = 1*2^x = 2^x
+
+plot(1:20, 1:20, pch=1:20)
+
+plot(x, y, pch=19, xlim = c(0,8), ylim = c(0,100))
+
+points(x, a*b^x, pch=20, col = 'red')
+
+exp(m$fitted.values)
+
+a*b^x
+
+xs <- seq(0, 10, by = 0.1)
+xs
+
+lines(xs, a*b^xs, col = 'red')
+
+plot(function(x) 2^x, xlim=c(0,10))
+
+plot(function(x) 2^x, xlim=c(0,10), add=TRUE)
+
+## extracting fitted values
+
+yhat <- m$fitted.values
+
+epsilons <- y - yhat
+
+m$residuals
+
+y - exp(m$fitted.values)
+
+## predict() function
+
+
+
+
+
+
+set.seed(0)
+N <- 10
+s <- cbind(runif(N), runif(N))
+
+##system.time(s2 <- orderCoordinatesMMD(s))
+s2 <- orderCoordinatesMMD(s)
+s2
+
+
+library(GpGp)
+
+ord <- order_maxmin(s)
+ss <- s[ord,]
+
+
+plot(ss[,1], ss[,2], pch = 19)
+for(i in 1:dim(ss)[1]) {
+    text(x=ss[i,1], y=ss[i,2]+0.02, label=i, cex=0.5)
+}
+
+
+
+nvec <- c(50,50)
+locs <- as.matrix( expand.grid( 1:nvec[1]/nvec[1], 1:nvec[2]/nvec[2] ) )
+ord <- order_maxmin(locs)
+par(mfrow=c(1,3))
+plot( locs[ord[1:100],1], locs[ord[1:100],2], xlim = c(0,1), ylim = c(0,1) )
+plot( locs[ord[1:300],1], locs[ord[1:300],2], xlim = c(0,1), ylim = c(0,1) )
+plot( locs[ord[1:900],1], locs[ord[1:900],2], xlim = c(0,1), ylim = c(0,1) )
+
+
+library(nimble)
+library(basicMCMCplots)
+
+
+N <- dim(df)[1]
+school <- df$School
+private <- ifelse(school=="private", 1, 0)
+public  <- ifelse(school=="public", 1, 0)
+
+df <- read.csv("~/github/courses/stat365/data/school_awards.csv")
+school_awards <- df
+school_awards$private <- ifelse(school_awards$School=="private", 1, 0)
+school_awards$public <- ifelse(school_awards$School=="public"|school_awards$School=="charter", 1, 0)
+
+code <- nimbleCode({
+    b0~dnorm(0,sd=10000)
+    bmath~dnorm(0,sd=10000)
+    bprivate~dnorm(0,sd=10000)
+    bpublic~dnorm(0,sd=10000)
+    for(i in 1:N) {
+        log(lambda[i]) <- b0+bmath*math[i]+bprivate*private[i]+bpublic*public[i]
+        y[i] ~ dpois(lambda[i])
+    }
+})
+
+constants <- list(N=200, math=school_awards$Avg_Math,private=school_awards$private,public=school_awards$public)
+data <- list(y=school_awards$Num_Awards)
+inits <- list(b0 = 0, bmath = 0, bprivate = 0, bpublic = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate("")
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000, nburnin=2000)
+
+colnames(samples)
+samplesSummary(samples)
+
+
+
+Rmodel.school$calculate('')
+Rmodel.school$initializeInfo()
+
+
+
+
+
+
+
+library(nimble)
+df <- read.csv('~/github/courses/stat365/data/seizures.csv')
+age <- df$age
+N <- length(age)
+logbaseline <- df$logbaseline
+treatment <- df$treatment
+y <- array(0, c(N,4))
+y[,1] <- df$s1
+y[,2] <- df$s2
+y[,3] <- df$s3
+y[,4] <- df$s4
+
+##
+code <- nimbleCode({
+    b0    ~ dnorm(0, sd = 10000)
+    bbase ~ dnorm(0, sd = 10000)
+    bage  ~ dnorm(0, sd = 10000)
+    btrt  ~ dnorm(0, sd = 10000)
+    sigma         ~ dunif(0, 10000)
+    sigma_patient ~ dunif(0, 10000)
+    for(i in 1:N) {
+        g[i] ~ dnorm(0, sd = sigma_patient)
+        for(j in 1:4) {
+            eps[i,j] ~ dnorm(0, sd = sigma)
+            log(lambda[i,j]) <- b0 + bbase*logbaseline[i] + bage*age[i] + btrt*treatment[i] + eps[i,j] + g[i]
+            y[i,j] ~ dpois(lambda[i,j])
+        }
+    }
+})
+##
+constants <- list(N=N, logbaseline=logbaseline, age=age, treatment=treatment)
+data <- list(y = y)
+inits <- list(b0=1, bbase=0, bage=0, btrt=0, sigma=1, sigma_patient=1, g=rep(0,N), eps = array(0,c(N,4)))
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+t <- system.time(samples <- runMCMC(Cmcmc, 10000, nburnin=2000))
+t[3]
+colnames(samples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+
+
+library(nimble)
+df <- read.csv('~/github/courses/stat365/data/surgeries.csv')
+N <- dim(df)[1]
+Surgeries <- df$Surgeries
+Mortalities <- df$Mortalities
+
+##
+## part (a)
+##
+code <- nimbleCode({
+    for(i in 1:N) {
+        p[i] ~ dbeta(1, 1)
+        y[i] ~ dbinom(size = n[i], prob = p[i])
+    }
+})
+constants <- list(N = N, n = Surgeries)
+data <- list(y = Mortalities)
+inits <- list(p = rep(0.5, N))
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+library(basicMCMCplots)
+samplesPlot(samples)
+samplesSummary(samples)
+## Hospital 8 has highest mortality rate
+## Hospital 1 has the lowest mortality rate
+cbind(df, rate = Mortalities / Surgeries)
+sum <- samplesSummary(samples)
+sum[,5] - sum[,4]
+
+
+
+
+
+## rats growth data generation for STAT365 final exam
+## Fall 2018
+
+fracT
+
+
+
+
+
+
+
+
+## CI for log(RR) log relative risk
+## for STAT202 Quiz #3, problem #1
+
+x1 <- 12
+(n1 <- x1+6+16)
+x2 <- 4
+(n2 <- x2+11+19)
+(p1 <- x1/n1)
+(p2 <- x2/n2)
+(RR <- p1/p2)
+(logRR <- log(RR))
+(se <- sqrt(1/x1 - 1/n1 + 1/x2 - 1/n2))
+(logCI <- logRR + c(-1,1) * 1.96 * se)
+(CI <- exp(logCI))
+
+## STAT202 Quiz #3, problem #3
+n <- 93
+r <- -0.3
+sx <- 3.1
+sy <- 0.7
+(b <- sy/sx * r)
+(r2 <- r^2)
+r2*100    ## as a percentage
+(SSE <- 100*(1 - r2))
+(s <- sqrt(SSE / (n-2)))
+
+
+
+
+## working on making elections88 problem for STAT365 (large GLM model)
+## below here is creating the **simplified** version of the "elections88"
+## model, and putting that dataset together for STAT365
+## Fall 2018
+rrr
+load('~/github/public/HMCcomparisons/election88_clean/data_setup_from_stan_github/data_setup_from_stan_github.RData')
+library(nimble)
+election88_BUGS <- readBUGSmodel("17.4_Bugs_codes.bug", dir = '~/github/public/HMCcomparisons/election88_clean/models', returnComponents = TRUE)
+code <- election88_BUGS
+code
+BUGSdataList.1 <- dataList.1
+names(BUGSdataList.1) <- tolower( gsub("_",".",names(BUGSdataList.1)))
+election88_BUGS$data <- BUGSdataList.1
+election88_BUGS$inits <- election.inits
+code <- election88_BUGS$code
+yInd <- which(names(election88_BUGS$data) == 'y')
+constants <- election88_BUGS$data[-yInd]
+data <- election88_BUGS$data[yInd]
+inits <- election88_BUGS$inits
+str(constants)
+str(data)
+inits <- list(b.0=rnorm(1), b.female=rnorm(1), b.black=rnorm(1),
+              b.female.black=rnorm(1),
+              b.age=rnorm(n.age), b.edu=rnorm(n.edu),
+              b.age.edu=array(rnorm(n.age*n.edu),
+                  c(n.age,n.edu)), b.state=rnorm(n.state), b.v.prev=rnorm(1), 
+              b.region=rnorm(n.region), sigma.age=runif(1),
+              sigma.edu=runif(1), sigma.age.edu=runif(1),
+              sigma.state=runif(1), sigma.region=runif(1))
+cold <- constants
+dold <- data
+iold <- inits
+
+str(cold)
+str(dold)
+str(iold)
+
+df <- as.data.frame(cbind(vote = dold$y, female = cold$female, married = cold$black, age=cold$age, edu=cold$edu, state = cold$state, vote.prev = cold$v.prev[cold$state]))
+dim(df)
+head(df)
+
+write.csv(df, file = '~/github/courses/stat365/data/elections.csv', row.names=FALSE)
+
+
+
+## Now, loading and fitting that model,
+## as for a HW problem in STAT365 (Fall 2018)
+library(nimble)
+library(basicMCMCplots)
+library(coda)
+df <- read.csv('~/github/courses/stat365/data/elections.csv')
+dim(df)
+head(df)
+N <- dim(df)[1]
+constants <- list(N=N, female=df$female, married=df$married, age=df$age, edu=df$edu, income = df$income, state = df$state)
+data <- list(vote = df$vote)
+inits <- list(b.0=0, b.female=0, b.married=0, b.female.married=0, b.age=rep(0,4), b.edu=rep(0,4), sigma.age=1, sigma.edu=1, b.income=0, sigma.state=1, b.state=rep(0,51))
+
+code <- nimbleCode({
+    b.0 ~ dnorm(0, sd = 10000)
+    b.female ~ dnorm(0, sd = 10000)
+    b.married ~ dnorm(0, sd = 10000)
+    b.female.married ~ dnorm(0, sd = 10000)
+    b.income ~ dnorm(0, sd = 10000)
+    sigma.age ~ dunif(0, 10000)
+    sigma.edu ~ dunif(0, 10000)
+    sigma.state ~ dunif(0, 10000)
+    for(i in 1:4) {
+        b.age[i] ~ dnorm(0, sd = sigma.age)
+        b.edu[i] ~ dnorm(0, sd = sigma.edu)
+    }
+    for(i in 1:51) {
+        b.state[i] ~ dnorm(0, sd = sigma.state)
+    }
+    for(i in 1:N) {
+        vote[i] ~ dbern(p[i])
+        logit(p[i]) <- b.0 + b.female * female[i] + b.married * married[i] + 
+            b.female.married * female[i] * married[i] + b.age[age[i]] +
+                b.edu[edu[i]] + b.state[state[i]] + b.income * income[i]
+    }
+})
+
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()  ## -1529.186
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()   ## 67 nodes being sampled (8 top-level, 59 latent states)
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+samplesSummary(samples)[,c(1,4,5)]
+##                            Mean        95%CI_low       95%CI_upp
+## b.0               0.70832547912 -0.2711797124498  3.013624804998
+## b.female         -0.09316467376 -0.2895890028345  0.103016510616
+## b.female.married -0.23113105207 -1.0874219665944  0.586217683648
+## b.income          0.00000292566 -0.0000001080459  0.000007129485
+## b.married        -1.61797873240 -2.3100376637121 -0.948194249314
+## sigma.age         0.87519231167  0.0255492939338  5.330009804043
+## sigma.edu         0.46513523945  0.0542670635124  2.384110880547
+## sigma.state       0.46008131925  0.2950763506548  0.666614312897
+samplesPlot(samples)
+apply(samples, 2, effectiveSize)
+##             b.0         b.female b.female.married         b.income 
+##        5.877285       725.854427       539.409725        72.046173 
+##       b.married        sigma.age        sigma.edu      sigma.state 
+##      590.946470        20.004868        59.080406       285.335308 
+
+
+
+
+
+## deriving iat auto correlation plots acf
+## and integrated correlation time
+
+acfplot(as.mcmc(samples[,1]), lag.max = 300)
+
+m <- 1000
+xs <- 0:m
+acfs <- numeric(m+1)
+acfs[1] <- 1
+for(i in 1:m) {
+    acfs[i+1] <- cor(x[1:(N-i)], x[(i+1):N])
+}
+
+dev.new(); plot(xs, acfs, type = 'l')
+
+ess <- effectiveSize(x)
+ess
+
+iat <- sum(acfs)
+iat
+N / iat
+
+
+## STAT 365 lecture, lecture demo 15 2018
+## on ess effective sample size, and auto-correlation
+
+library(nimble)
+
+df <- read.csv('~/github/courses/stat365/data/UsedCars.csv')
+
+code <- nimbleCode({
+    b0    ~ dnorm(0, sd = 10000)
+    bage  ~ dnorm(0, sd = 10000)
+    bhp   ~ dnorm(0, sd = 10000)
+    btype ~ dnorm(0, sd = 10000)
+    sigma ~ dunif(0, 10000)
+    for(i in 1:N) {
+        mu[i] <- b0 + bage*age[i] + bhp*hp[i] + btype*type[i]
+        y[i] ~ dnorm(mu[i], sd = sigma)
+    }
+})
+
+
+constants <- list(N = dim(df)[1], age=df$Age, hp=df$HP, type=df$Type)
+data <- list(y = df$Price)
+inits <- list(b0=0, bage=0, bhp=0, btype=0, sigma = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()  ## -851490867
+
+conf <- configureMCMC(Rmodel, thin = 2)
+conf$printSamplers()
+conf$printMonitors()
+Rmcmc <- buildMCMC(Rmodel)
+
+## one compilation call:
+compiledList <- compileNimble(list(Rmodel, Rmcmc))
+Cmcmc <- compiledList[[2]]
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000, thin=10)
+dim(samples)
+
+## samplesPlot(), samplesSummary():
+library(basicMCMCplots)
+
+samplesSummary(samples)
+samplesPlot(samples)
+
+## using summary = TRUE from runMCMC():
+
+out <- runMCMC(Cmcmc, 10000, samples=FALSE, summary=TRUE)
+out
+
+out <- runMCMC(Cmcmc, 10000, summary=TRUE)
+str(out)
+out$samples
+out$summary
+
+## alternative:
+## nimbleMCMC()  !
+## let's quickly look at NIMBLE User Manual...
+
+out <- nimbleMCMC(code, constants, data, inits)
+head(out)
+
+args(runMCMC)
+args(nimbleMCMC)
+
+## library: coda
+
+library(coda)
+
+## auto-correlation function, p(h), that's rho(h)
+## from coda: acfplot()
+## requires coda mcmc object!
+## lag.max, thin
+
+acfplot(as.mcmc(samples))
+acfplot(as.mcmc(samples), lag.max = 100)
+acfplot(as.mcmc(samples), lag.max = 100, thin=10)
+
+
+## integrated auto-correlation time
+
+## effective sample size (ESS)
+## from coda: effectiveSize()
+
+dim(samples)
+
+effectiveSize(samples[,1])
+
+apply(samples, 2, effectiveSize)
+
+##       b0      bage       bhp     btype     sigma 
+## 70.98230  96.24737 222.42808 507.34821  19.34069 
+
+
+
+## doing used cars linear regression MCMC
+
+library(nimble)
+library(basicMCMCplots)
+
+df <- read.csv('~/github/courses/stat202/data/UsedCars.csv')
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+##compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+##Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+apply(samples, 2, mean)
+
+samplesSummary(samples)
+samplesPlot(samples)
+
+library(coda)
+apply(samples, 2, effectiveSize)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        returnType()
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
+
+
+
+## CI for log(RR) log relative risk
+
+x1 <- 914
+(n1 <- x1+581)
+x2 <- 46
+(n2 <- x2+735)
+(p1 <- x1/n1)
+(p2 <- x2/n2)
+(RR <- p1/p2)
+(logRR <- log(RR))
+(se <- sqrt(1/x1 - 1/n1 + 1/x2 - 1/n2))
+(logCI <- logRR + c(-1,1) * 1.96 * se)
+(CI <- exp(logCI))
+
+
+
+
+df <- read.csv('~/github/courses/stat202/data/CO2-and-DIJA.csv')
+head(df)
+
+
+df <- read.csv('~/github/courses/stat202/data/Kentucky_Derby.csv')
+head(df)
+
+
+df <- read.csv('~/github/courses/stat202/data/not_used_yet/sat2010.csv')
+head(df)
+dim(df)
+df
+
+survey <- read.csv('~/github/courses/stat202/data/STAT202.csv')
+head(survey)
+minutes <- survey$Minutes
+friends <- survey$Friends
+cor(minutes, friends)
+m <- lm(friends ~ minutes)
+summary(m)
+coefficients(m)
+plot(minutes, friends)
+resid <- residuals(m)
+plot(minutes, resid)
+r <- cor(minutes, friends)
+r^2
+m
+summary(m)
+382.2 / sqrt(sum((minutes-mean(minutes))^2))
+
+
+data <- matrix(c(10, 40, 20, 30, 20, 40), nrow = 2)
+data
+
+chisq.test(data, correct = FALSE)
+
+pchisq(4.8485, 2)
+
+1 - pchisq(4.8485, 2)
+
+
+df <- read.csv('~/github/courses/stat202/data/trial_verdicts.csv')
+trial <- df
+gender <- df$Gender
+verdict <- df$Verdict
+chisq.test(table(gender, verdict), correct=FALSE)
+
+gender<-trial$Gender
+verdict<-trial$Verdict
+
+table<-table(gender, verdict)
+table
+
+(49+170)/(373) * (49+31)/(373) * 373
+
+(49+170)*(49+31) / 373
+
+
+## confidence interval for the mean of used cars
+
+df <- read.csv('~/github/courses/stat202/data/UsedCars.csv')
+head(df)
+summary(df)
+dim(df)
+hours <- df$Price
+price <- df$Price
+type <- df$Type
+n <- length(hours)
+n
+hist(hours)
+mean(hours)
+se <- sd(hours)/sqrt(n)
+z <- qnorm(0.975)
+ci <- mean(hours) + c(-1,1) * z * se
+ci
+
+iter <- 100000
+means <- numeric(iter)
+for(i in 1:iter) {
+    bootstrapSample <- sample(hours, replace=TRUE)
+    means[i] <- mean(bootstrapSample)
+}
+hist(means, breaks=50)
+abline(v=ci, lwd=2, col='red')
+
+
+bootstrapCI <- quantile(means, c(0.025, 0.975))
+bootstrapCI
+ci
+abline(v=bootstrapCI, lwd=2, col='blue')
+
+iter <- 100000
+means <- numeric(iter)
+for(i in 1:iter) {
+    bootstrapSample <- sample(hours, replace=TRUE)
+    means[i] <- mean(bootstrapSample)
+}
+hist(means, breaks=50)
+abline(v=ci, lwd=2, col='red')
+
+
+bootstrapCI <- quantile(means, c(0.025, 0.975))
+bootstrapCI
+ci
+abline(v=bootstrapCI, lwd=2, col='blue')
+
+
+dom <- price[type==1]
+fr <- price[type==0]
+type
+dom
+fr
+nd <- length(dom)
+nf <- length(fr)
+
+mean(fr) - mean(dom)
+
+N <- 100000
+means <- numeric(N)
+for(i in 1:N) {
+    newD <- sample(dom, replace=TRUE)
+    newF <- sample(fr, replace=TRUE)
+    means[i] <- mean(newD) - mean(newF)
+}
+
+bootstrapCI <- quantile(means, c(0.025, 0.975))
+bootstrapCI
+hist(means, breaks=50)
+abline(v=bootstrapCI, lwd=2, col='red')
+
+
+N <- 100000
+means <- numeric(N)
+for(i in 1:N) {
+    newPrice <- sample(price)
+    newD <- newPrice[1:nd]
+    newF <- newPrice[(nd+1):(nd+nf)]
+    means[i] <- mean(newD) - mean(newF)
+}
+
+bootstrapCI <- quantile(means, c(0.025, 0.975))
+bootstrapCI
+hist(means, breaks=50)
+abline(v=bootstrapCI, lwd=2, col='red')
+
+d <- mean(dom) - mean(fr)
+d
+abline(v=d, col='blue')
+
+
+bootstrapCI <- quantile(means, c(0.025, 0.975))
+bootstrapCI
+hist(means, breaks=50)
+abline(v=bootstrapCI, lwd=2, col='red')
+
+
+## relative risk RR confidence interval
+
+
+x1 <- 616
+n1 <- 839
+x2 <- 693
+n2 <- 1086
+p1 <- x1/n1
+p2 <- x2/n2
+p1
+p2
+
+se <- sqrt(p1*(1-p1)/n1 + p2*(1-p2)/n2)
+se
+ci <- p1-p2 + c(-1,1) * 1.96*se
+ci
+
+pp <- (x1+x2)/(n1+n2)
+pp
+se0 <- sqrt((1/n1+1/n2)*pp*(1-pp))
+se0
+p1-p2
+T <- (p1-p2)/se0
+T
+prop.test(c(x1,x2), c(n1,n2), correct=FALSE)
+sqrt(20.083)
+
+
+data <- matrix(c(10, 40, 20, 30, 20, 40), nrow = 2)
+data
+chisq.test(data)
+pchisq(3.84, 1)
+1 - pchisq(3.84, 1)
+pchisq(4.8485, 2)
+1 - pchisq(4.8485, 2)
+
+
+
+x <- c(480,450,490,440,460,510,460,450,540)
+n <- length(x)
+n
+xbar <- mean(x)
+xbar
+s <- sd(x)
+se <- s/sqrt(n)
+se
+T <- (xbar-500)/se
+T
+pvalue <- pt(T,8) * 2
+pvalue
+t.test(x, mu=500)
+
+
+
+
+
+## demo for STAT365 lecture 14, Fall2018
+
+library(nimble)
+
+df <- read.csv('~/github/courses/stat365/data/UsedCars.csv')
+head(df)
+
+code <- nimbleCode({
+    b0    ~ dnorm(0, sd = 10000)
+    bage  ~ dnorm(0, sd = 10000)
+    bhp   ~ dnorm(0, sd = 10000)
+    btype ~ dnorm(0, sd = 10000)
+    sigma ~ dunif(0, 10000)
+    for(i in 1:N) {
+        mu[i] <- b0 + bage*age[i] + bhp*hp[i] + btype*type[i]
+        y[i] ~ dnorm(mu[i], sd = sigma)
+    }
+})
+
+constants <- list(N = dim(df)[1], age=df$Age, hp=df$HP, type=df$Type)
+data <- list(y = df$Price)
+inits <- list(b0=0, bage=0, bhp=0, btype=0, sigma = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$calculate()  ## -851490867
+
+Rmodel$calculate('y')
+Rmodel$y
+
+Rmodel$calculate('b0')
+Rmodel$calculate('bage')
+Rmodel$calculate('bhp')
+Rmodel$calculate('sigma')
+Rmodel$sigma
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printMonitors()
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(Rmodel, Rmcmc))   ## NEW compilation
+class(compiledList)   # a list
+length(compiledList)  # length 2
+Cmodel <- compiledList[[1]]
+Cmcmc <- compiledList[[2]]
+
+samples <- runMCMC(Cmcmc, 10000)
+head(samples)
+dim(samples)
+
+## 1.
+## thinning (BRIEFLY)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+conf$printMonitors()
+## set thinning interval:
+conf$setThin(10)
+conf$printMonitors()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(Rmodel, Rmcmc))   ## NEW compilation
+Cmcmc <- compiledList[[2]]
+
+samples <- runMCMC(Cmcmc, 10000)
+dim(samples)
+
+## 2.
+## burn-in
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()  ## -851490867
+Rmcmc <- buildMCMC(Rmodel)   ## NEW: skipping MCMC configuration step
+compiledList <- compileNimble(list(Rmodel, Rmcmc))   ## NEW compilation
+Cmcmc <- compiledList[[2]]
+
+## could do:
+dim(samples)
+dim(samples[501:1000, ])    ## manual burn-in first 500
+
+args(runMCMC)
+
+samples <- runMCMC(Cmcmc, 10000, nburnin=1000)   ## NEW: burn-in
+
+samples <- runMCMC(Cmcmc, 10000, nburnin=1000, thin=10)   ## NEW: burn-in
+
+
+dim(samples)
+
+## 3.
+## samplesSummary()
+
+samples <- runMCMC(Cmcmc, 10000)
+dim(samples)
+head(samples)
+
+## mean for sigma
+mean(samples[, 'sigma'])
+
+## samplesSummary() provided with NIMBLE:
+samplesSummary(samples)
+
+apply(samples, 2, mean)
+
+## traceplots
+plot(1:10000, samples[,'sigma'], type='l')
+
+## density plots
+plot(density(samples[3000:10000,'sigma']))
+
+## 4.
+## samplesPlot()
+## from R package: basicMCMCplots (also mine)
+install.packages('basicMCMCplots')
+library(basicMCMCplots)
+
+samplesPlot(samples)
+
+samplesPlot(samples, 'bhp')
+samplesPlot(samples, c('bhp','bage'))
+
+samplesPlot(samples, 'sigma')
+
+samplesPlot(samples, 'sigma', 1:2000)
+samplesPlot(samples, 'sigma', 3001:10000)
+
+samplesPlot(samples, 'sigma', burnin=200)
+
+samplesPlot(samples, 'sigma')
+
+samplesPlot(samples, 'sigma', file = '~/Downloads/plots.pdf')
+
+
+
+args(samplesPlot)
+
+
+## use this example data (from a real project)
+## to show more samplesPlots:
+
+load("~/github/courses/stat365/lectures/samplesPlot_Ex_data.RData")
+
+samplesPlot(samples)
+
+samplesPlot(samples, 'bp')
+
+samplesPlot(samples, 'HR')
+
+## alternative: bayesplots package
+
+
+
+
+
+
+O <- matrix(c(914, 581,46, 735), 2, byrow = TRUE)
+E <- matrix(c(630.58,  864.42,329.42,  451.58), 2, byrow=TRUE)
+O
+E
+X2 <- sum((O-E)^2/E)
+X2
+
+
+library(nimble)
+set.seed(0)
+N <- 10
+## default in R for dnorm is **sd** !!!
+y <- rnorm(N, 40, 10)
+code <- nimbleCode({
+    mu ~ dnorm(0, 0.001)
+    sigma ~ dunif(0, 100000)
+    for(i in 1:N) {
+        y[i] ~ dnorm(mu, sd = sigma)
+    }
+    yp ~ dnorm(mu+10, sd = sigma)
+})
+constants <- list(N = 10)
+data <- list(y = y)
+inits <- list(mu = 0, sigma = 2, yp = -100)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$yp
+Rmodel$initializeInfo()
+Rmodel$plotGraph()
+conf <- configureMCMC(Rmodel)
+conf$printMonitors()
+conf$addMonitors('yp')
+conf$addMonitors('sdfsdf')
+conf$addMonitors('lifted_mu_plus_10')
+conf$printSamplers()
+conf$removeSamplers('sigma')
+conf$printSamplers()
+conf$addSampler('sigma', 'RW')
+conf$printSamplers()
+conf$addSampler('sigma', 'RW', scale = 5)
+conf$addSampler('sigma', 'RW', scale = 5, adaptive = FALSE)
+conf$printSamplers()
+
+
+Rmcmc <- buildMCMC(conf)
+
+Rmcmc
+
+Cmodel <- compileNimble(Rmodel)
+
+Cmcmc <- compileNimble(Rmcmc, project=Rmodel)
+
+
+samples <- runMCMC(Cmcmc, 10000)
+samples <- runMCMC(Cmcmc, 5000000, progressBar = FALSE)
+
+dim(samples)
+
+head(samples)
+
+apply(samples, 2, mean)
+
+
+Rmodel$mu
+set.seed(0)
+samples <- runMCMC(Rmcmc, 10)
+samples
+Rmodel$mu
+
+Cmodel$mu
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10)
+samples
+Cmodel$mu
+
+
+
+
+
+
+
+
+
+
+df <- read.csv('~/github/courses/stat202/data/trial_verdicts.csv')
+gender <- df$Gender
+verdict <- df$Verdict
+table(gender, verdict)
+nmale <- sum(gender == 'Male')
+nfemale <- sum(gender == 'Female')
+r <- (49/nfemale) / (31/nmale)
+logr <- log(r)
+se <- sqrt(1/49 - 1/nfemale + 1/31 - 1/nmale)
+se
+ci <- logr + c(-1,1) * 1.96 * se
+ci
+
+
+survey <- read.csv('~/github/courses/stat202/data/STAT202.csv')
+gender <- survey$Gender
+chocolate <- survey$Chocolate
+table(gender, chocolate)
+n <- dim(survey)[1]
+nmale <- sum(gender == 'male')
+nfemale <- sum(gender == 'female')
+N <- 10000
+difs <- numeric(N)
+for(i in 1:N) {
+    chocolateP <- sample(chocolate)
+    pf <- mean(chocolateP[1:nfemale] == 'dark')
+    pm <- mean(chocolateP[(nfemale+1):n] == 'dark')
+    difs[i] <- pf - pm
+}
+
+ci <- quantile(difs, c(0.025, 0.975))
+ci
+tab <- table(gender, chocolate)
+d <- tab['female','dark']/nfemale - tab['male','dark']/nmale
+d
+hist(difs, breaks = 50)
+abline(v=ci, lwd=2, col = 'blue')
+abline(v=d,  lwd=2, col = 'red')
+pval <- mean(difs < d | difs > -d)
+pval
+
+
+head(scale(samples))
+##install.packages('devtools')
+
+library(devtools)
+has_devel()
+
+## equivalent:
+pkgbuild::has_compiler(TRUE)  ## Mac
+pkgbuild::has_rtools()        ## Windows
+
+
+##install.packages('nimble')
+
+
+
+
+## STAT202 Permutation Distribution
+
+survey <- read.csv('~/github/courses/stat202/data/STAT202.csv')
+head(survey)
+
+gender <- survey$Gender
+friends <- survey$Friends
+
+gender
+friends
+
+
+
+friendsM <- friends[gender == "male"]
+friendsF <- friends[gender == "female"]
+d <- mean(friendsM) - mean(friendsF)
+d
+
+## histogram
+hist(friends, breaks = 10)
+
+## boxplots
+boxplot(friends ~ gender)
+
+## permutation distribution
+N <- 100000
+difs <- numeric(N)
+for(i in 1:N) {
+    ##genderP <- sample(gender)
+    ##friendsM <- friends[genderP == "male"]
+    ##friendsF <- friends[genderP == "female"]
+    #### alternate:
+    ##friendsP <- sample(friends)
+    ##friendsM <- friendsP[gender == "male"]
+    ##friendsF <- friendsP[gender == "female"]
+    ## another alternate:
+    friendsP <- sample(friends)
+    friendsM <- friendsP[1:16]
+    friendsF <- friendsP[17:25]
+    difs[i] <- mean(friendsM) - mean(friendsF)
+}
+
+hist(difs, breaks=100)
+abline(v = 0, lwd=2)
+ci <- quantile(difs, c(0.025, 0.975))
+ci
+abline(v=ci, lwd=2, col = 'blue')
+abline(v=d, lwd=2, col = 'red')
+## permutation p-value
+mean(difs < d | difs > -d)
+sum(difs < d | difs > -d) / N
+
+## two-sample t-test
+
+t.test(friendsM, friendsF)
+
+
+
+## doing MH Metropolis-Hastings live coding
+## example for STAT365
+## Oct 2018
+
+## data:
+y <- 140
+n <- 200
+
+## prior: p ~ Beta(a0, b0)
+a0 <- 20  ## successes
+b0 <- 40
+  ## failures
+
+## likelihood: y ~ Binomial(n, p)
+
+## ===> we know p|y ~ Beta(a0+y, b0+n-y)
+
+
+
+plt <- function() {
+
+    ymax <- 20
+    plot(function(p) dbeta(p, a0, b0), ylim = c(0,ymax), lwd=2)
+
+    xs <- seq(0, 1, by = 0.001)
+    ys <- dbinom(y, n, xs)
+    lines(xs, ys/max(ys)*ymax/2, col = 'blue', lwd=2)   ## rescale
+    abline(v = y/n, col = 'blue', lty = 2)
+
+    ys <- dbeta(xs, y+a0, n-y+b0)
+    lines(xs, ys, col = 'red', lwd=2)
+
+    legend(x = 'topright', legend = c('prior', 'likelihood', 'posterior'), lwd=2, col = c('black', 'blue', 'red'))
+
+}
+
+
+## Metropolis-Hastings!!
+
+N <- 100000
+p <- 0.6
+sp <- 0.1
+
+samples <- numeric(N)
+##samples
+
+for(i in 1:N) {
+    pstar <- rnorm(1, p, sp)  ## Normal around p
+    ##message('proposed: ', pstar)
+    if(pstar < 0 | pstar > 1) {
+        ##message('pstar out of bounds')
+        samples[i] <- p
+        next
+    }
+    loga <- dbeta(pstar,a0,b0,log=TRUE) +
+        dbinom(y, n, pstar, log=TRUE) -
+            dbeta(p, a0, b0, log=TRUE) -
+                dbinom(y, n, p, log=TRUE)
+    if(loga > 0) {
+        ##message('accepted!!')
+        p <- pstar
+        samples[i] <- pstar
+    }
+    if(loga < 0) {
+        if(log(runif(1)) < loga) {
+            ##message('accepted!!')
+            p <- pstar
+            samples[i] <- pstar
+        } else {
+            ##message('rejected =(')
+            samples[i] <- p
+        }
+    }
+}
+
+plt()
+hist(samples, freq=FALSE, add=TRUE, breaks=100)
+
+m <- 10
+m <- 100
+m <- 1000
+m <- 10000
+m <- 100000
+plot(1:m, samples[1:m], type = 'l', ylim=c(0,1))
+
+
+
+
+
+## updated usage of has_devel():
+
+library(devtools)
+has_devel
+has_devel()
+pkgbuild::has_build_tools
+pkgbuild::has_compiler()
+pkgbuild::has_compiler(TRUE)  ## Mac
+pkgbuild::has_rtools()        ## Windows
+
+
+## Tor's data?
+
+load('~/Downloads/samples_firstRun.RData')
+ls()
+library(basicMCMCplots)
+basicMCMCplots::samplesPlot(samples)
+samplesList <- samples
+samples <- samplesList[[1]]
+
+chainsPlot(samplesList)
+samplesPlot(samples)
+samplesPlot(samples, 'bp')
+
+
+## testing NIMBLE output options,
+## specifically the output from model building nimbleModel()
+
+library(nimble)
+nimbleOptions(verbose = FALSE)
+nimbleOptions(verbose = TRUE)
+code <- nimbleCode({ a ~ dnorm(0, 1) })
+Rmodel <- nimbleModel(code, inits = list(a=0))
+Cmodel <- compileNimble(Rmodel)
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    for(i in 1:10) {
+        b[i] <- c[i]
+    }
+    d[1:10] <- c[1:10]
+})
+
+Rmodel <- nimbleModel(code, inits = list(a = 0), constants = list(c=1:10))
+Rmodel <- nimbleModel(code)
+
+
+## Used Cars linear regression problem for STAT365
+
+library(nimble)
+library(basicMCMCplots)
+df <- read.csv('~/github/courses/stat365/data/UsedCars.csv')
+
+code <- nimbleCode({
+    b0 ~ dnorm(0, sd=10000)
+    bage ~ dnorm(0, sd=10000)
+    bhp ~ dnorm(0, sd=10000)
+    btype ~ dnorm(0, sd=10000)
+    sigma ~ dunif(0, 10000)
+    for(i in 1:N) {
+        mu[i] <- b0 + bage*age[i] + bhp*hp[i] + btype*type[i]
+        y[i] ~ dnorm(mu[i], sd = sigma)
+    }
+})
+constants <- list(N = dim(df)[1], age=df$Age, hp=df$HP, type=df$Type)
+data <- list(y = df$Price)
+inits <- list(b0=0, bage=0, bhp=0, btype=0, sigma = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()  ## [1] -851490867
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+cor(samples)
+
+samplesSummary(samples)
+samplesPlot(samples, scale=TRUE)
+
+chainsPlot(list(a=samples, b=samples), nrows=1, jitter=.2, scale=TRUE)
+
+
+cbind(1:40, sapply(1:40, function(x) min(ceiling(x/7), 3)))
+
+samplesBIG <- cbind(samples, samples, samples, samples, samples, samples)
+dim(samplesBIG)
+dimnames(samplesBIG)[[2]] <- paste0('a', 1:dim(samplesBIG)[2])
+dimnames(samplesBIG)
+
+samplesPlot(samplesBIG)
+
+chainsPlot(samplesBIG[,1:6])
+chainsPlot(samplesBIG[,1:13], 'a44')
+
+head(samples)
+samplesPlot(samples, 'b0')
+samplesPlot(samples, 'aa')
+
+## Diamonds problem for STAT202
+
+df <- read.csv('~/Downloads/Diamonds.csv')
+dim(df)
+head(df)
+
+diamonds_table <- table(df)
+prop.table(diamonds_table, 1)
+barplot(t(diamonds_table), beside=TRUE, legend=levels(df$Clarity))
+
+## two-sample internet hours problem for STAT202
+
+df <- read.csv('~/github/courses/stat202/data/Web_Hours.csv')
+head(df)
+summary(df)
+dim(df)
+hours <- df$hours
+n <- length(hours)
+n
+hist(hours)
+mean(hours)
+se <- sd(hours)/sqrt(n)
+z <- qnorm(0.975)
+ci <- mean(hours) + c(-1,1) * z * se
+ci
+
+iter <- 10000
+means <- numeric(iter)
+for(i in 1:iter) {
+    bootstrapSample <- sample(hours, replace=TRUE)
+    means[i] <- mean(bootstrapSample)
+}
+hist(means)
+abline(v=ci, lwd=2, col='red')
+
+
+bootstrapCI <- quantile(means, c(0.025, 0.975))
+bootstrapCI
+ci
+abline(v=bootstrapCI, lwd=2, col='blue')
+
+hours <- df$hours
+gender <- df$gender
+boxplot(hours ~ gender)
+t.test(hours ~ gender)
+
+male <- hours[gender == 'male']
+female <- hours[gender == 'female']
+mean(male)
+mean(female)
+length(male)
+length(female)
+table(gender)
+mean(male)
+mean(female)
+mean(female) - mean(male)
+
+se <- sqrt(sd(female)^2/length(female) + sd(male)^2/length(male))
+se
+ci <- mean(female) - mean(male) + c(-1, 1) * 1.96 * se
+ci
+t.test(hours ~ gender)
+
+N <- 10000
+dif <- numeric(N)
+for(i in 1:N) {
+    dif[i] <- mean(sample(female, replace=TRUE)) - mean(sample(male, replace=TRUE))
+}
+hist(dif)
+bci <- quantile(dif, c(0.025, 0.975))
+bci
+
+prop.test(c(277,461), c(603,730))
+prop.test(c(277,461), c(603,730), correct = FALSE)
+
+## permutation distribution class problem for STAT202
+
+indM <- 1:12
+indF <- 13:33
+
+y <- c(5,7,9,10,12,12,12,13,13,15,15,20,
+       5,7,7,8,10,10,11,12,12,14,14,14,16,18,20,20,20,22,23,25,40)
+
+y[indM]
+y[indF]
+
+N <- 100000
+dif <- numeric(N)
+for(i in 1:N) {
+    newy <- sample(y)
+    dif[i] <- mean(newy[indM]) - mean(newy[indF])
+}
+
+hist(dif)
+obsdif <- mean(y[indM]) - mean(y[indF])
+obsdif
+abline(v = obsdif, col = 'red', lwd = 2)
+mean(dif < obsdif | dif > (-obsdif))
+
+
+
+
+## recreating calculations of WAIC
+
+library(nimble)
+
+set.seed(0)
+N <- 10
+y <- rnorm(N, 30, 4)
+x <- rnorm(N)
+beta <- 0.4
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 10000)
+    beta ~ dnorm(0, sd = 10000)
+    sigma ~ dunif(0, 10000)
+    for(i in 1:N) {
+        y[i] ~ dnorm(mu+beta*x[i], sd = sigma)
+    }
+})
+
+constants <- list(N = N, x = x)
+data <- list(y = y)
+inits <- list(mu = 0, beta = 0, sigma = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, enableWAIC = TRUE)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 2000)
+(waic <- Cmcmc$calculateWAIC())
+
+##library(basicMCMCplots)
+##samplesPlot(samples)
+
+(S <- dim(samples)[1])
+(dataNodes <- Rmodel$getNodeNames(dataOnly = TRUE))
+(paramNames <- colnames(samples))
+(nDataNodes <- length(dataNodes))
+
+lps <- array(0, c(nDataNodes, S))
+for(s in 1:S) {
+    values(Cmodel, paramNames) <- samples[s,]
+    Cmodel$calculate()
+    for(i in 1:nDataNodes) {
+        lps[i,s] <- Cmodel$getLogProb(dataNodes[i])
+    }
+}
+
+ps <- exp(lps)
+(lppd <- sum(log(apply(ps, 1, mean))))
+(pwaic2 <- sum(apply(lps, 1, var)))
+
+-2*(lppd - pwaic2)
+-2*(lppd - pwaic2) - waic   ## agrees!
+
+
+
+
+## grading comments for STAT365 problem set 3 pset3
+
+Nice explanation for Problem 2 part (b).  Just what I was looking for.
+
+-5 Problem 2 part (b), looking for essentially we have a prior belief corresponding to a sample of 5 past observations, and a sum total count of 3 from those 5 observations (e.g. seen data: 0,0,0,1,2)
+
+-3 Problem 2 part (d) looking for a much more detailed exploration of the behavior at different (including log) scales, and associated plots.
+
+Good investigation in Problem 2 part (d)
+
+-2 Problem 5 part (4) Looking for actual posterior density function inside the double-integral
+
+-3 Problem 10.4 prior dist is wrong, should be Gamma(r=9, v=1.5), such that mean=9/1.5=6, and sd=sqrt(var)=sqrt(18/1.5)=sqrt(4)=2
+
+
+
+## helping NIMBLE user re-use compiled MCMC
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    y ~ dnorm(a, sd = sigma)
+})
+
+nReps <- 10 
+
+## separately generate response *data*,
+## and *inits* for covariates, etc
+data.gen <- function() {
+    y <- rnorm(1)
+    sigma <- runif(1)
+    list(data = list(y=y),
+         inits = list(sigma = sigma))
+}
+
+simu.data <- as.list(rep(NA, nReps))
+for(i in 1:nReps) {
+    simu.data[[i]] <- data.gen()
+}
+
+## supply data here, so that 'y' is specified as data,
+## and no MCMC sampler is placed on y.
+## we'll change the value of the data later, inside the loop
+constants <- list()
+Rmodel <- nimbleModel(code, constants, data = simu.data[[1]]$data)
+
+conf <- configureMCMC(Rmodel, enableWAIC = TRUE)
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+sim4.new <- function(dat) {
+    data.new <- dat$data
+    inits.new <- dat$inits
+    Cmodel$setData(data.new)
+    Cmodel$setInits(inits.new)
+    mcmc.out <- runMCMC(Cmcmc, nchains = 1, nburnin = 1000, niter = 10000,
+                        summary = TRUE, WAIC = TRUE)
+    list(mcmc.out$summary, mcmc.out$WAIC)
+}
+
+Result4 <- lapply(simu.data[1:nReps], sim4.new)
+
+str(Result4)
+
+
+
+
+
+
+
+
+## someone's NIMBLE error for using dmnorm()
+
+library(nimble)
+library(mvtnorm)
+
+## generate data
+Y <- rmvnorm(25,c(300,350),sigma=matrix(c(9,0,0,9),2,2,byrow=TRUE))
+
+## specify the model
+nModel <- nimbleCode({
+    for(j in 1:N){
+        ##Y[j,1:2] ~ dmnorm(mu[1:2],cholesky=SIGMA[1:2,1:2],prec_param=0)
+        Y[j,1:2] ~ dmnorm(mu[1:2],cov=SIGMA[1:2,1:2])
+    }
+## priors and derivations
+    sig ~ dgamma(3,1)
+    for(i in 1:2){
+        for(k in 1:2){
+            SIGMA[i,k] <- equals(i,k)*sig*sig
+        }
+        mu[i] ~ dnorm(300,1/25)
+    }
+})
+
+## monitors, constants, data, inits, and mcmc controls
+parameters <- c("mu","sig") 
+nConsts <- list(N=25)
+nInits <- function(){list(mu=rnorm(2,300,10),
+               sig=rgamma(1,3,1),
+               SIGMA=diag(rgamma(2,3,1)**2))}
+nData <- list(Y=Y)
+ni <- 300
+nt <- 3
+nb <- 100
+nc <- 3
+
+## compile and run the model
+nim <- nimbleModel(code=nModel,name='nim',constants=nConsts,data=nData)
+
+nim$initializeInfo()
+
+nimMCconf <- configureMCMC(nim,monitors=parameters,thin=nt)
+nimMC <- buildMCMC(nimMCconf)
+Cnim <- compileNimble(nim)
+CnimMC <- compileNimble(nimMC,project=nim)
+out <- runMCMC(CnimMC,niter=ni+nb,nburnin=nb,nchains=nc,inits=nInits)
+
+
+
+## budget additions for Hellman Fellowship
+
+2000 + 500 + 80*12 + 60*7 + 1200*12 + 100*7
+
+80*12
+
+## looking at Beta(1/2, 1/2) prior effects:
+plot(function(x) dbeta(x,1,1), xlim = c(0,1), ylim = c(0,3))
+text(.05, 0.9, 'Beta(1, 1)', cex=.8)
+
+plot(function(x) dbeta(x, 1/2, 1/2), add = TRUE, col = 'red')
+text(.9, 2.5, 'Beta(1/2, 1/2)', cex=.8, col = 'red')
+
+plot(function(x) dbeta(x, 1/2, 3/2), add = TRUE, col = 'blue')
+text(.15, 2.4, 'Beta(1/2, 3/2)', cex=.8, col = 'blue')
+
+plot(function(x) dbeta(x, 1/2, 5/2), add = TRUE, col = 'orange') 
+text(.22, 1.9, 'Beta(1/2, 5/2)', cex=.8, col = 'orange') 
+
+plot(function(x) dbeta(x, 3/2, 3/2), add = TRUE, col = 'purple')
+text(.6, 1.35, 'Beta(3/2, 3/2)', cex=.8, col = 'purple')
+
+plot(function(x) dbeta(x, 3/2, 5/2), add = TRUE, col = 'green')
+text(.25, 1.7, 'Beta(3/2, 5/2)', cex=.8, col = 'green')
+
+plot(function(x) dbeta(x, 5/2, 5/2), add = TRUE, col = 'grey')
+text(.6, 1.75, 'Beta(5/2, 5/2)', cex=.8, col = 'grey')
+
+points(0.25, 1.1, lwd=3)
+text(0.35, 1.1, 'what\'s going on?', cex=0.7)
+
+
+
+lambda_true <- 3
+
+
+set.seed(0)
+n <- 3
+y <- rpois(n, lambda_true)
+y
+
+## priors:
+## prior 1: Jeffreys'
+## prior 2: Flat
+## prior 3: common choice: Gamma(0.001, 0.001)
+
+par(mfrow = c(2,1), mar = c(4,2,2,1))
+xmax <- lambda_true * 2.5
+ymax <- 2
+
+## graph priors:
+plot(-1, -1, xlim = c(0,xmax), ylim = c(0,ymax), xlab='', ylab='', main = 'Priors & Likelihood')
+xs <- seq(0, xmax, length = 100000)
+
+## prior 1: Jeffreys (blue)
+ys <- 1/sqrt(xs)
+lines(xs, ys, lwd=2, col = 'blue')
+
+## prior 2: Flat (green)
+lines(xs, xs/xs, lwd=2, col = 'green')
+
+## prior 3: common Gamma(0.001, 0.001) (red)
+lines(xs, dgamma(xs, 0.001, 0.001), lwd=2, col = 'red')
+
+legend(x = 'topright', legend = c('Jeffreys', 'flat', 'Gamma(0.001,0.001)'), col = c('blue', 'green', 'red'), lwd=2)
+
+## Likelihood
+likelihood <- sapply(xs, function(x) prod(dpois(y,x)))
+likelihood_scaled <- likelihood/max(likelihood) * ymax/2
+lines(xs, likelihood_scaled, lwd = 2)
+
+## Posteriors:
+plot(-1, -1, xlim = c(0,xmax), ylim = c(0,ymax), xlab='', ylab='', main = 'Posteriors')
+
+## prior 1: Jeffreys (blue)
+ys <- dgamma(xs, 1/2+sum(y), 0+n)
+thismax <- max(ys) * 1.3
+lines(xs, ys/thismax*ymax, lwd=2, col = 'blue')
+
+## prior 2: Flat (green)
+ys <- dgamma(xs, 1+sum(y), 0+n)
+lines(xs, ys/thismax*ymax, lwd=2, col = 'green')
+
+## prior 3: common Gamma(0.001, 0.001) (red)
+ys <- dgamma(xs, 0.001+sum(y), 0.001+n)
+lines(xs, ys/thismax*ymax, lwd=2, col = 'red')
+
+legend(x = 'topright', legend = c('Jeffreys', 'flat', 'Gamma(0.001,0.001)'), col = c('blue', 'green', 'red'), lwd=2)
+
+abline(v = lambda_true, lwd = 2)
+mean(y)
+abline(v = mean(y), col = 'purple', lwd = 2)
+
+
+
+
+
+
+## daily Pittsfield MA temperatures in September:
+temps <- c(87, 81, 79, 87, 75, 73, 67, 73, 75, 77,
+           81, 81, 84, 88, 91, 88, 91, 86, 81, 91,
+           68, 68, 76, 80, 65, 67, 72)
+
+length(temps)
+
+## histogram
+hist(temps, xlab='Daily High Temperature (F)', breaks = 15)
+
+## time series
+plot(1:length(temps), temps, type='l', xlab='September Day', ylab='Daily High Temperature (F)')
+points(1:length(temps), temps, pch=20)
+
+## BOOTSTRAPPING
+## parameter of interest:
+## average daily temperature in September
+
+
+
+
+
+
+
+## example of dmnorm() issues
+## on branch ADcleanup
+
+library(nimble)
+set.seed(0)
+
+s1 <- 4
+s2 <- 7
+rho <- 0.6
+Sigma <- array(0, c(2,2))
+Sigma[1,1] <- s1^2
+Sigma[2,2] <- s2^2
+Sigma[1,2] <- s1*s2*rho
+Sigma[2,1] <- s1*s2*rho
+
+code <- nimbleCode({ x[1:2] ~ dmnorm(mu[1:2], cov = Sigma[1:2,1:2]) })
+constants <- list(Sigma = Sigma, mu = c(0,0))
+data <- list()
+inits <- list(x = c(0,0))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()   ## -4.946938
+
+Cmodel <- compileNimble(Rmodel)
+Cmodel$calculate()   ## -8.502286 ... why different ???
+
+N <- 10000
+x <- array(0, c(N,2))
+for(i in 1:N) {
+    Cmodel$simulate()
+    x[i,1:2] <- Cmodel$x
+}
+
+cov(x)    ## why not equal to Sigma ???
+##          [,1]     [,2]
+## [1,] 251.0265  269.636
+## [2,] 269.6360 2703.788
+
+## here's what I think these values are approaching:
+s1^4
+s2^4
+s1^2 * s2^2 * rho^2
+
+
+
+
+
+## testing modelling correlated random effects
+## for Chloe Nater trout model
+
+s1 <- 13
+s2 <- .5
+rho <- -0.4
+n <- 1000000
+x1 <- rnorm(n)
+x2 <- rho*x1 + sqrt(1-rho^2)*rnorm(n)
+z1 <- s1*x1
+z2 <- s2*x2
+c(sd(z1), sd(z2), cor(z1, z2))
+
+
+library(nimble)
+
+code <- nimbleCode({
+    Sigma[1,1] <- s1^2
+    Sigma[2,2] <- s2^2
+    Sigma[1,2] <- s1*s2*rho
+    Sigma[2,1] <- s1*s2*rho
+    mu[1] <- 0
+    mu[2] <- 0
+    x[1:2] ~ dmnorm(mu[1:2], cov = Sigma[1:2,1:2])
+    t[1] ~ dnorm(0, 1)
+    t[2] ~ dnorm(0, 1)
+    t[3] <- rho*t[1] + sqrt(1-rho^2)*t[2]
+    y[1] <- s1*t[1]
+    y[2] <- s2*t[3]
+})
+constants <- list(s1 = 4, s2 = 7, rho = 0.6)
+data <- list()
+inits <- list()
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Cmodel <- compileNimble(Rmodel)
+
+N <- 20000
+x <- array(0, c(N,2))
+y <- array(0, c(N,2))
+for(i in 1:N) {
+    Cmodel$simulate()
+    x[i,1:2] <- Cmodel$x
+    y[i,1:2] <- Cmodel$y
+}
+
+c(sd(x[,1]), sd(x[,2]), cor(x[,1], x[,2]))
+c(sd(y[,1]), sd(y[,2]), cor(y[,1], y[,2]))
+
+Cmodel$Sigma
+cov(x)
+cov(y)
+
+
+library(MASS)
+n <- 10000
+z <- array(0, c(n,2))
+for(i in 1:n) {
+    z[i,1:2] <- mvrnorm(1, mu=c(0,0), Sigma = Cmodel$Sigma)
+}
+
+cov(z)
+sd(z[,1])
+sd(z[,2])
+cor(z[,1], z[,2])
+
+
+
+
+## working out the two-sample Poisson (gamma ray emissions) from
+## STAT365 problem set 3
+
+theta_true
+na <- 27
+ya <- 341
+
+nb <- 43
+yb <- 467
+
+
+prior_shape <- 0.5
+prior_rate <- 0
+
+n <- 100000
+lambdaa <- rgamma(n, prior_shape+ya, prior_rate+na)
+lambdab <- rgamma(n, prior_shape+yb, prior_rate+nb)
+
+mean(lambdaa > lambdab)
+dif <- lambdaa - lambdab
+quantile(dif, c(0.025, 0.975))
+
+
+theta_true <- 0.8
+
+
 ## testing removing extra logH() calculations from HMC sampler
 
 library(nimble)
@@ -5661,6 +7970,7 @@ set.seed(0); Rmcmc$run(niter)
 
 setwd('~/Downloads')
 survey <- read.csv('ClassSurvey.csv')
+head(survey)
 survey$Phone <- as.character(survey$Phone)
 survey$Phone <- factor(survey$Phone, levels = c('iPhone', 'Android', 'other smartphone'))
 levels(survey$Phone) <- factor(c('iPhone', 'Android', 'other smartphone'))
@@ -12615,7 +14925,8 @@ effectiveSize(samples)
 
 
 ## fitting classification model of oak tree heights
-
+## STAT 365
+## Fall 2016
 
 load('~/Downloads/oak_heights.RData')
 ls()
@@ -12844,6 +15155,7 @@ model$getDependencies('b')
 
 ## group membership / classification problem for STAT365
 ## generating data
+## from Fall 206:
 
 mu1 <- 24
 sd1 <- 4
@@ -12862,6 +15174,7 @@ oak_heights <- y
 save(oak_heights, file='~/Downloads/oak_heights.RData')
 
 ## fit classification model
+## from Fall 206:
 
 library(nimble)
 
@@ -12914,6 +15227,8 @@ samplesPlot(samples, c('x[253]', 'x[260]', 'x[275]'), ind=1001:1050)
 
 
 
+
+## this is from Fall 2016:
 ## doing continuous-valued state-space model
 ## for STAT365 problem set 12
 
@@ -12967,6 +15282,8 @@ data <- list(y=y)
 inits <- list(a=0, b=0, sigmaOE=1, sigmaPN=1, x=y)
 
 Rmodel <- nimbleModel(code, constants, data, inits)
+
+
 
 
 
@@ -13198,7 +15515,7 @@ samplesPlot(samples)
 
 
 ## generating Dolphin dolphin capture-recapture data for STAT365
-
+## Fall 2016:
 
 phi <- .8
 p <- 0.5
@@ -13290,6 +15607,7 @@ samplesPlot(samples, burnin=1000)
 
 
 ## modelling dolphin capture-recapture data for STAT 365
+## Fall 2016:
 
 load('~/Downloads/dolphins.RData')
 
@@ -13544,10 +15862,11 @@ apply(codalist[[1]], 2, var) / apply(codalist[[1]], 2, effectiveSize)
 
 
 ## "seeds" example for STAT365
-write.csv(df, '~/Downloads/Seeds.csv')
+## from Fall 2016
+write.csv(df, '~/Downloads/seeds.csv')
 
 
-df <- read.csv('~/Downloads/Seeds.csv')
+df <- read.csv('~/Downloads/seeds.csv')
 df
 
 cucumber <- as.numeric(df$plant) - 1
@@ -14226,123 +16545,8 @@ Cmodel <- compileNimble(smosModel)
 
 ## doing the Surgeries example for STAT 365 homework
 
-library(nimble)
-df <- read.csv('~/Downloads/Surgeries.csv')
-df
-
-code <- nimbleCode({
-    for(i in 1:N) {
-        p[i] ~ dbeta(1, 1)
-        y[i] ~ dbinom(size = n[i], prob = p[i])
-    }
-})
-constants <- list(N = dim(df)[1], n = df$Surgeries)
-data <- list(y = df$Mortalities)
-inits <- list(p = rep(0.5, dim(df)[1]))
-
-Rmodel <- nimbleModel(code, constants, data, inits)
-
-conf <- configureMCMC(Rmodel)
-conf$printSamplers()
-Rmcmc <- buildMCMC(conf)
-
-Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
-
-set.seed(0)
-samples <- runMCMC(Cmcmc, 10000)
-
-apply(samples, 2, mean)
-colnames(samples)
-samplesPlot(samples)
-samplesPlot(samples, var=1)
-
-mean(samples[,1])
-median(samples[,1])
-sd(samples[,1])
-quantile(samples[,1], probs=c(0.025, 0.975))
 
 
-
-code <- nimbleCode({
-    mu ~ dnorm(0, 0.0001)
-    sigma ~ dunif(0, 1000)
-    for(i in 1:N) {
-        logit(p[i]) ~ dnorm(mu, sd=sigma)
-        y[i] ~ dbinom(size = n[i], prob = p[i])
-    }
-})
-constants <- list(N = dim(df)[1], n = df$Surgeries)
-data <- list(y = df$Mortalities)
-inits <- list(mu=0, sigma=1)
-
-Rmodel <- nimbleModel(code, constants, data, inits)
-
-conf <- configureMCMC(Rmodel)
-conf$printSamplers()
-Rmcmc <- buildMCMC(conf)
-
-Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
-
-set.seed(0)
-samples <- runMCMC(Cmcmc, 10000)
-
-apply(samples, 2, mean)
-colnames(samples)
-samplesPlot(samples)
-samplesPlot(samples, var=1)
-
-mean(samples[,1])
-quantile(samples[,1], probs=c(0.025, 0.975))
-
-expit(mean(samples[,1]))
-expit(quantile(samples[,1], probs=c(0.025, 0.975)))
-
-sum(df$Mortalities)/sum(df$Surgeries)
-
-
-code <- nimbleCode({
-    b0 ~ dnorm(0, 0.0001)
-    b1 ~ dnorm(0, 0.0001)
-    sigma ~ dunif(0, 1000)
-    for(i in 1:N) {
-        logit(p[i]) ~ dnorm(b0 + b1*x[i], sd=sigma)
-        y[i] ~ dbinom(size = n[i], prob = p[i])
-    }
-    old_procedure <- expit(b0)
-    new_procedure <- expit(b0 + b1)
-    mortality_difference <- new_procedure - old_procedure
-})
-constants <- list(N = dim(df)[1], n = df$Surgeries)
-data <- list(y = df$Mortalities)
-inits <- list(b0=0, b1=0, sigma=1, x=df$Procedure)
-
-Rmodel <- nimbleModel(code, constants, data, inits)
-
-conf <- configureMCMC(Rmodel)
-conf$printSamplers()
-conf$addMonitors(c('old_procedure', 'new_procedure', 'mortality_difference'))
-Rmcmc <- buildMCMC(conf)
-
-Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
-
-set.seed(0)
-samples <- runMCMC(Cmcmc, 10000)
-
-apply(samples, 2, mean)
-colnames(samples)
-samplesPlot(samples)
-samplesPlot(samples, var=3:5, burnin=500)
-
-mean(samples[,3])
-quantile(samples[,3], probs=c(0.025, 0.975))
-
-expit(mean(samples[,1]))
-expit(quantile(samples[,1], probs=c(0.025, 0.975)))
-
-sum(df$Mortalities)/sum(df$Surgeries)
 
 
 ## spatial NIMBLE model example from Abhirup Datta
@@ -22377,6 +24581,9 @@ samplesPlot(samples, var=1, burnin=2000)
 quantile(samples[-(1:2000), 1], c(0.025, 0.975))
 
 
+1
+
+
 
 
 
@@ -22446,10 +24653,10 @@ apply(codalist[[1]], 2, var) / apply(codalist[[1]], 2, effectiveSize)
 
 
 ## "seeds" example for STAT365
-write.csv(df, '~/Downloads/Seeds.csv')
+write.csv(df, '~/Downloads/seeds.csv')
 
 
-df <- read.csv('~/Downloads/Seeds.csv')
+df <- read.csv('~/Downloads/seeds.csv')
 df
 
 cucumber <- as.numeric(df$plant) - 1
