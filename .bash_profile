@@ -84,7 +84,7 @@ alias branch='git branch'
 alias log='git log'
 alias commit=~/github/utils/commit.sh
 alias s202='cd ~/github/courses/stat202'
-alias s365='cd ~/github/courses/stat365'
+alias s360='cd ~/github/courses/stat360'
 
 set -o noclobber
 
