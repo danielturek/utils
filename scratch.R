@@ -1,32 +1,135 @@
 
+
+1490-1615
+1687-1812
+1932-2057
+
+
+## STAT 202 Lecture 14
+## Permutation Distribution
+
+## preliminaries:
+survey <- read.csv('~/github/courses/stat202/data/STAT202.csv')
+
+head(survey)
+
+gender <- survey$Gender
+friends <- survey$Friends
+
+gender
+friends
+
+######## BELOW HERE, LIVE CODE IN CLASS:
+## histogram
+hist(friends, breaks = 10)
+## boxplots
+boxplot(friends)
+boxplot(friends ~ gender)
+## permutation distribution
+N <- 100000
+difs <- numeric(N)
+for(i in 1:N) {
+    ##genderP <- sample(gender)
+    ##friendsM <- friends[genderP == "male"]
+    ##friendsF <- friends[genderP == "female"]
+    #### alternate:
+    ##friendsP <- sample(friends)
+    ##friendsM <- friendsP[gender == "male"]
+    ##friendsF <- friendsP[gender == "female"]
+    ## another alternate:
+    friendsP <- sample(friends)
+    friendsM <- friendsP[1:16]
+    friendsF <- friendsP[17:25]
+    difs[i] <- mean(friendsM) - mean(friendsF)
+}
+hist(difs, breaks = 100, freq = FALSE)
+abline(v=0, lwd=2)
+ci <- quantile(difs, c(0.025, 0.975))
+abline(v=ci, col="blue", lwd=2)
+friendsM <- friends[gender == "male"]
+friendsF <- friends[gender == "female"]
+friendsM
+friendsF
+dif <- mean(friendsM) - mean(friendsF)
+dif
+abline(v=dif, col="red", lwd=2)
+## permutation p-value
+dif
+mean(difs < dif | difs > -dif)
+## two-samples t-test
+t.test(friendsM, friendsF) 
+
+
+
+females:
+462
+428
+1338
+555
+0
+574
+721
+586
+316
+407
+1175
+
+males:
+325
+531
+1065
+300
+764
+1217
+100
+910
+970
+500
+201
+268
+0
+461
+280
+850
+
+
+
+
+## creating new test for CAR conjugacy checking system,
+## using skipExpansionsNode rather than old skipExpansions system
+
 library(nimble)
 
 code <- nimbleCode({
-    for(i in 1:N){
-        ## Men Model
-        men[i] ~ dnorm(mu.men[i], prec.men)
-        mu.men[i] <- beta1[1] + beta1[2]*X1[i] + beta1[3]*X2[i] + beta1[4]*X3[i] +
-            U[ region[i] ] + S[ region[i] ]
+    S[1:N] ~ dcar_normal(adj[1:L], weights[1:L], numneighbours[1:N], 1)
+    for(i in 1:K) {
+        beta[i] ~ dnorm(0, 1)
     }
-    ## CAR prior distribution for spatial random effects:
-    for(k in 1:sum.numneighbours) { weights[k] <- 1 }
-    S[1 : n.region] ~ car.normal(adj[1:sum.numneighbours], weights[1:sum.numneighbours], numneighbours[1:n.region], tau.car)
-    ## Prior for the tau.car considering an Uniforme distribution for the std
-    tau.car ~ dgamma(0.5, 0.0005)
-    ## normal prior for the unstructured random effects within each municipality
-    for ( j in 1:n.region) {
-        U[j] ~ dnorm(0, tau.U[j])           # Unstructured normal:
+    for(i in 1:N){
+        eta[i] <- inprod(beta[1:K], x[1:K])
+        mu[i] <- S[i] + eta[i]
+        y[i] ~ dnorm(mu[i], 1)
     }
 })
 
-constants <- list(N = 5)
-data <- list()
-inits <- list()
+N <- 3
+L <- 4
+K <- 7
+
+constants <- list(N=N, L=L, K=K, adj=c(2,1,3,2), weights=rep(1,L), numneighbours=c(1,2,1))
+data <- list(y = rep(0,N))
+inits <- list(S = rep(0,N), beta = rep(0,K), x=1:K)
 
 Rmodel <- nimbleModel(code, constants, data, inits)
 
 Rmodel$calculate()
 
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+class(Rmcmc) == 'MCMC'
 
 
 
@@ -270,6 +373,242 @@ code_dSCR2 <- nimbleCode({
             z = z[i,1:nPrimary], phi = phi[gr[i],1:(nPrimary-1)])
     }
 })
+
+
+
+
+dSS <- nimbleFunction(
+    run = function(x = double(1), S = double(1), lam = double(), log = double()) {
+        dist <- sqrt(sum((x-S)^2))
+        lp <- dexp(dist, rate = lam, log = TRUE) - log(dist)
+        returnType(double())
+        if(log) return(lp) else return(exp(lp))
+    }
+)
+
+code_dSCR4 <- nimbleCode({
+    ## space use and recapture probability parameters
+    PL ~ dunif(0.01, 0.99)
+    lambda0 <- -log(1-PL)
+    for(sex in 1:2) {
+        kappa[sex] ~ dunif(0,   50)
+        sigma[sex] ~ dunif(0.1, 20)
+        beta[sex]  ~ dunif(0.1, 10)    # misnomer: beta[1] is coeff of tod, beta[2] is coeff of sex
+        for(TOD in 1:2) {
+            lambda[TOD, sex] <- lambda0 * beta[1]^(TOD-1) * beta[2]^(sex-1)
+        }
+        ## survival parameters
+        Phi[sex] ~ dunif(0, 1)
+        for(k in 1:(nPrimary-1)) {
+            phi[sex, k] <- Phi[sex]^dt[k]
+        }
+        ## dispersal parameters
+        dmean[sex] ~ dunif(0, 100)
+        dlambda[sex] <- 1/dmean[sex]
+    }
+    for(i in 1:nInd) {
+        S[i, 1, first[i]] ~ dunif(xlow[i], xupp[i])  # initial center of activity (x)
+        S[i, 2, first[i]] ~ dunif(ylow[i], yupp[i])  # initial center of activity (y)
+        for(k in first[i]:last[i]) {
+            D[i, k, 1:R] <- sqrt((S[i, 1, k] - X[1:R, 1])^2 + (S[i, 2, k] - X[1:R, 2])^2)
+            g[i, k, 1:R] <- exp(-(D[i, k, 1:R]/sigma[gr[i]])^kappa[gr[i]])  # trap exposure
+            G[i, k] <- sum(g[i, k, 1:R])                                    # total trap exposure
+        }
+        for(k in first[i]:(last[i]-1)) {
+            ##theta[i, k] ~ dunif(-3.141593, 3.141593)   # dispersal direction
+            ##d[i, k] ~ dexp(dlambda[gr[i]])
+            ##S[i, 1, k+1] <- S[i, 1, k] + d[i, k] * cos(theta[i, k])
+            ##S[i, 2, k+1] <- S[i, 2, k] + d[i, k] * sin(theta[i, k])
+            S[i, 1:2, k+1] ~ dSS(S[i, 1:2, k], dlambda[gr[i]])
+        }
+        ## likelihood
+        H[i, 1:nSecondary, 1:nPrimary] ~ dSCR2(   ## this model is SCR4
+            first = first[i], last = last[i], J = J[i,1:nPrimary],
+            lambda = lambda[1:2,gr[i]], tod = tod[1:nPrimary,1:nSecondary],
+            g = g[i,1:nPrimary,1:R], G = G[i,1:nPrimary],
+            z = z[i,1:nPrimary], phi = phi[gr[i],1:(nPrimary-1)])
+    }
+})
+\end{verbatim}
+\end{singlespace}
+
+
+
+
+
+\begin{singlespace}
+\begin{verbatim}
+makeGrid <- function(xmin=0, ymin=0, xmax, ymax, resolution=1, buffer=0) {
+    makeVals <- function(min, max, buf, res) {
+        unique(c(rev(seq(min, min-buf, by = -res)), seq(min, max+buf, by = res)))
+    }
+    xvals <- makeVals(xmin, xmax, buffer, resolution)
+    yvals <- makeVals(ymin, ymax, buffer, resolution)
+    grid <- expand.grid(xvals, yvals)
+    colnames(grid) <- c('x', 'y')
+    ## unique ids:
+    mult <- diff(range(grid$y/resolution)) + 1
+    ids <- grid$x/resolution * mult + grid$y/resolution
+    offset <- 1 - min(ids)
+    require(nimble)
+    makeIDdef <- substitute(
+        nimbleFunction(
+            run = function(xy = double(1)) {
+                id <- xy[1]/RES * MULT + xy[2]/RES + OFFSET
+                returnType(double())
+                return(id)
+            }
+        ),
+        list(RES = resolution,
+             MULT = mult,
+             OFFSET = offset))
+    makeID <- eval(makeIDdef)
+    ##length(grid$x/resolution * mult + grid$y/resolution)
+    ##length(unique(grid$x/resolution * mult + grid$y/resolution))
+    ids2 <- apply(grid, 1, function(xy) makeID(xy))
+    if(!identical(ids+offset, ids2)) stop('something wrong')
+    sorted <- sort(ids2, index.return = TRUE)
+    gridReordered <- grid[sorted$ix, ]
+    gridReordered$id <- sorted$x
+    if(!all(apply(gridReordered, 1, function(row) makeID(row[1:2]) == row[3]))) stop('something wrong')
+    return(list(grid = gridReordered, makeID = makeID))
+}
+
+
+xr <- range(constants$X[, 1])
+yr <- range(constants$X[, 2])
+
+buffer <- 40
+exposureRadius = 40
+resolution <- 7
+
+makeGridReturn <- makeGrid(xmin=xr[1], xmax = xr[2], ymin=yr[1], ymax = yr[2], buffer = buffer, resolution = resolution)
+
+grid <- makeGridReturn$grid
+makeID <- makeGridReturn$makeID
+
+
+findLocalTraps <- function(grid, traps, exposureRadius) {
+    trtrapsBool <- apply(grid, 1, function(row) {
+        apply(traps, 1, function(tp) {
+            ##print(tp)
+            sqrt(sum((row[1:2]-tp)^2)) <= exposureRadius
+        })
+    })
+    trapsBool <- t(trtrapsBool)
+    trapsInd <- apply(trapsBool, 1, which)
+    numsTraps <- sapply(trapsInd, length)
+    localTraps <- array(as.numeric(NA), c(dim(grid)[1], max(numsTraps)+1))
+    for(i in seq_along(trapsInd)) {
+        n <- numsTraps[i]
+        localTraps[i,1] <- n
+        if(n > 0)    localTraps[i, 2:(n+1)] <- trapsInd[[i]]
+    }
+    localTraps
+}
+
+## n = localTraps[i,1] gives the number of local traps
+## localTraps[i, 2:(n+1)] gives the indices of the local traps
+localTraps <- findLocalTraps(grid, constants$X, exposureRadius)   ## ~10 seconds for 9x more traps
+
+
+constants$localTraps <- localTraps
+constants$LTD1 <- dim(localTraps)[1]
+constants$LTD2 <- dim(localTraps)[2]
+constants$MaxNumberLocalTraps <- dim(localTraps)[2] - 1
+
+
+code_dSCR6 <- nimbleCode({
+    ## space use and recapture probability parameters
+    PL ~ dunif(0.01, 0.99)
+    lambda0 <- -log(1-PL)
+    for(sex in 1:2) {
+        kappa[sex] ~ dunif(0,   50)
+        sigma[sex] ~ dunif(0.1, 20)
+        beta[sex]  ~ dunif(0.1, 10)    # misnomer: beta[1] is coeff of tod, beta[2] is coeff of sex
+        for(TOD in 1:2) {
+            lambda[TOD, sex] <- lambda0 * beta[1]^(TOD-1) * beta[2]^(sex-1)
+        }
+        ## survival parameters
+        Phi[sex] ~ dunif(0, 1)
+        for(k in 1:(nPrimary-1)) {
+            phi[sex, k] <- Phi[sex]^dt[k]
+        }
+        ## dispersal parameters
+        dmean[sex] ~ dunif(0, 100)
+        dlambda[sex] <- 1/dmean[sex]
+    }
+    for(i in 1:nInd) {
+        S[i, 1, first[i]] ~ dunif(xlow[i], xupp[i])  # initial center of activity (x)
+        S[i, 2, first[i]] ~ dunif(ylow[i], yupp[i])  # initial center of activity (y)
+        Sdiscrete[i, 1, first[i]] <- round(S[i, 1, first[i]]/7) * 7            ## resolution = 7
+        Sdiscrete[i, 2, first[i]] <- round(S[i, 2, first[i]]/7) * 7            ## resolution = 7
+        for(k in first[i]:last[i]) {
+            id[i, k] <- makeID(Sdiscrete[i,1:2,k])
+            nLocalTraps[i, k] <- getNumLocalTraps6(idarg=id[i,k], localTrapNumbers = localTraps[1:LTD1,1], LTD1arg = LTD1)
+            localTrapIndices[i, k, 1:MaxNumberLocalTraps] <- getLocalTrapIndices6(MAXNUM = MaxNumberLocalTraps, localTraps = localTraps[1:LTD1,1:LTD2], n = nLocalTraps[i, k], idarg = id[i,k])
+            Ds[i, k, 1:MaxNumberLocalTraps] <- calcLocalTrapDists6(MAXNUM = MaxNumberLocalTraps, n = nLocalTraps[i,k], localTrapInd = localTrapIndices[i,k,1:MaxNumberLocalTraps], S = S[i,1:2,k], X = X[1:R,1:2])
+            g[i, k, 1:R] <- calcLocalTrapExposure6(R = R, n = nLocalTraps[i,k], Ds = Ds[i,k,1:MaxNumberLocalTraps], localTrapInd = localTrapIndices[i,k,1:MaxNumberLocalTraps], sigma = sigma[gr[i]], kappa = kappa[gr[i]])
+            G[i, k] <- sum(g[i, k, 1:R])                                    # total trap exposure
+        }
+        for(k in first[i]:(last[i]-1)) {
+            S[i, 1:2, k+1] ~ dSS(S[i, 1:2, k], dlambda[gr[i]])
+            Sdiscrete[i, 1:2, k+1] <- round(S[i, 1:2, k+1]/7) * 7            ## resolution = 7
+        }
+        ## likelihood
+        H[i, 1:nSecondary, 1:nPrimary] ~ dSCR2(   ## this model is SCR6
+            first = first[i], last = last[i], J = J[i,1:nPrimary],
+            lambda = lambda[1:2,gr[i]], tod = tod[1:nPrimary,1:nSecondary],
+            g = g[i,1:nPrimary,1:R], G = G[i,1:nPrimary],
+            z = z[i,1:nPrimary], phi = phi[gr[i],1:(nPrimary-1)])
+    }
+})
+
+getNumLocalTraps6 <- nimbleFunction(
+    run = function(idarg = double(), localTrapNumbers = double(1), LTD1arg = double()) {
+        if(idarg < 1)       {   return(0)   }
+        if(idarg > LTD1arg) {   return(0)   }
+        n <- localTrapNumbers[idarg]
+        returnType(double())
+        return(n)
+    }
+)
+
+getLocalTrapIndices6 <- nimbleFunction(
+    run = function(MAXNUM = double(), localTraps = double(2), n = double(), idarg = double()) {
+        indices <- numeric(MAXNUM, 0)
+        if(n > 0) {
+            indices[1:n] <- localTraps[idarg, 2:(n+1)]
+        }
+        returnType(double(1))
+        return(indices)
+    }
+)
+
+calcLocalTrapDists6 <- nimbleFunction(
+    run = function(MAXNUM = double(), n = double(), localTrapInd = double(1), S = double(1), X = double(2)) {
+        Ds <- numeric(MAXNUM, 0)
+        if(n > 0) {
+            Ds[1:n] <- sqrt((S[1] - X[localTrapInd[1:n],1])^2 + (S[2] - X[localTrapInd[1:n],2])^2)
+        }
+        returnType(double(1))
+        return(Ds)
+    }
+)
+
+calcLocalTrapExposure6 <- nimbleFunction(
+    run = function(R = double(), n = double(), Ds = double(1), localTrapInd = double(1), sigma = double(), kappa = double()) {
+        g <- numeric(R, 0.00000000000001)      ## small value = 0.00000001
+        if(n > 0) {
+            g[localTrapInd[1:n]] <- exp(-(Ds[1:n]/sigma)^kappa)
+        }
+        returnType(double(1))
+        return(g)
+    }
+)
+\end{verbatim}
+\end{singlespace}
+
 
 
 

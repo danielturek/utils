@@ -63,6 +63,10 @@ parse_git_branch() {
     git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/^* \(.*\)/(branch: \1)/'
 }
 
+function g() {
+  cd ~/github/$1
+}
+
 alias e=emacs
 alias ex=exit
 alias o='open -a "Google Chrome"'
