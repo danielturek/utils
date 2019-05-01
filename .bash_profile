@@ -27,6 +27,12 @@
 # TeXShop, LaTeXiT, BibDesk, TeX Live Utility, to /Library/TeX/texbin
 # see: https://tug.org/mactex/UpdatingForElCapitan.pdf
 
+# download and install Anaconda Python version 3.7, from:
+# (the "command line" version of the installer works better - use that one)
+# https://www.anaconda.com/distribution/
+# after the Anaconda insallation, run from terminal (to remove "(base)" from bash prompt):
+# $ conda config --set changeps1 False
+
 # Macbook FIXES
 # 
 # Apple Technical Support (Education): 1-800-800-2775, option 3
@@ -91,4 +97,20 @@ alias s202='cd ~/github/courses/stat202'
 alias s360='cd ~/github/courses/stat360'
 
 set -o noclobber
+
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/Users/dturek/anaconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/Users/dturek/anaconda3/etc/profile.d/conda.sh" ]; then
+        . "/Users/dturek/anaconda3/etc/profile.d/conda.sh"
+    else
+        export PATH="/Users/dturek/anaconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
 

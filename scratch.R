@@ -1,8 +1,836 @@
 
 
-1490-1615
-1687-1812
-1932-2057
+
+
+
+## STAT202 Lecture #23
+## ANOVA I
+
+cars <- read.csv('~/github/courses/stat202/data/UsedCars.csv')
+cars
+
+## say there was a categorical predictor with 3 levels:
+## 1 = unleaded gasoline
+## 2 = diesel
+## 3 = hybrid
+
+Power <- c(rep("gas",10), rep("diesel",6), rep("hybrid",3))
+Power
+
+cars$Power <- as.factor(Power)
+cars
+cars$Power
+
+## multiple regression with (categorical) Power variable
+m <- lm(Price ~ Power, data = cars)
+summary(m)
+
+## ANOVA
+anova(m)   # DELETE THIS, DO IT IN CLASS
+
+
+
+
+
+## STAT360 Lecture #23
+## Bayesian Inference
+
+theta_true <- 0.8
+
+set.seed(0)
+
+n <- 100
+n
+
+y <- rbinom(1, size = n, prob = theta_true)
+y
+
+## choose & graph some priors
+par(mfrow = c(3,1), mar = c(4,2,2,1)) 
+plot(-1, -1, xlim=c(0,1), ylim=c(0,9), xlab='', ylab='', main='Priors')
+
+## prior 1: Uniform
+a1 <- b1 <- 1
+plot(function(x) dbeta(x, a1, b1), add = TRUE, lwd=2, col = 'blue')
+
+## prior 2: mildly weighted towards 0.5
+a2 <- b2 <- 10
+plot(function(x) dbeta(x, a2, b2), add = TRUE, lwd=2, col = 'green')
+
+## prior 3: heavily weighted towards 0.5
+a3 <- b3 <- 50
+plot(function(x) dbeta(x, a3, b3), add = TRUE, lwd=2, col = 'purple')
+
+## plot likelihood:
+xs <- seq(0, 1, 0.01)
+plot(xs, dbinom(y, n, xs), type='l', lwd=2, xlab='', main='Likelihood')
+
+## graph posteriors:
+plot(-1, -1, xlim = c(0,1), ylim = c(0,13), xlab='', ylab='', main = 'Posteriors')
+plot(function(x) dbeta(x, a1+y, b1+n-y), add = TRUE, lwd=2, col = 'blue')
+plot(function(x) dbeta(x, a2+y, b2+n-y), add = TRUE, lwd=2, col = 'green')
+plot(function(x) dbeta(x, a3+y, b3+n-y), add = TRUE, lwd=2, col = 'purple')
+
+## true value:
+theta_true
+abline(v = theta_true, lwd=2, col = 'red')
+
+## posterior means:
+round(
+rbind((a1 + y) / (a1 + b1 + n),
+      (a2 + y) / (a2 + b2 + n),
+      (a3 + y) / (a3 + b3 + n)), 2)
+
+## posterior CIs (credible intervals):
+round(
+rbind(qbeta(c(0.025, 0.975), a1+y, b1+n-y),
+      qbeta(c(0.025, 0.975), a2+y, b2+n-y),
+      qbeta(c(0.025, 0.975), a3+y, b3+n-y)), 2)
+
+## frequentist MLE for p
+phat <- y/n
+round(phat, 2)
+
+## frequentist 95% CI for p
+se <- sqrt(phat*(1-phat)/n)
+round(se, 2)
+round(phat + c(-1,1) * 1.96 * se, 2)
+
+theta_true 
+
+
+
+summary(m)
+
+(b)
+0.6615 / 0.1578 = 4.192015
+(c)
+2*pt(-4.1920, 100-4) = 0.0000615418
+(d)
+qt(0.975, 96) = 1.984984
+0.0075 + c(-1,1) *1.9849*0.0151 = (-0.0224, 0.03747)
+(e) No, it doesnt
+(f) s = 0.218624
+(g)
+1.1362 + 0.6615*3.8 + 0.3301*0.9 + 0.0075*5 = 3.98449
+3.98449 + c(-1,1) * 1.9849 * 0.218624 = (3.55, 4.418)
+
+## STAT202 Lecture 20
+## Multiple Regression 1 using Cars dataset
+cars <- read.csv('~/github/courses/stat202/data/UsedCars.csv')
+
+cars <- cars[, c('Price', 'Age', 'HP')]
+
+## pairs plot:
+plot(cars)
+
+## correlation matrix:
+cor(cars)
+
+## let's do multiple regression,
+## trying to predict y = Price,
+## using covariates x1 = Age, and x2 = HP
+m <- lm(Price ~ Age + HP, data = cars)
+
+## regression coefficients
+m$coefficients[3]
+
+## model summary
+summary(m)
+
+## calculating multiple-R
+cor(cars$Price, m$fitted.values)^2
+
+## plot yhat vs. y to "see" the multiple-R
+plot(cars$Price, m$fitted.values)
+
+## calculating multiple-R^2
+## residuals
+m$residuals
+
+cars$Price - m$fitted.values
+
+
+## calculating s = residual standard error
+## sqrt(SSE / (n-p))
+sqrt(sum((cars$Price - m$fitted.values)^2) / (19-3))
+
+
+## R can also calculate s,
+## using sigma() function:
+sigma(m)
+
+
+
+## Daily Problem 19:
+df <- read.csv('~/Downloads/house_selling_prices_OR.csv')
+df <- df[, c('House.Price..USD.', 'House.Size', 'Lot.Size')]
+head(df)
+dim(df)
+par(mfrow = c(1,3))
+boxplot(df$House.Price..USD.)
+boxplot(df$House.Size)
+boxplot(df$Lot.Size)
+pairs(df)
+cor(df)
+m <- lm(House.Price..USD. ~ House.Size + Lot.Size, data = df)
+summary(m)
+
+
+    
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 10000)
+    sigma ~ dunif(0, 10000)
+    for(i in 1:5) {
+        y[i] ~ dnorm(mu, sd = sigma)
+    }
+    for(i in 1:N) {
+        yc[i] ~ T(dnorm(mu, sd = sigma), 2, )
+    }
+})
+N <- 2
+constants <- list(N = N)
+data <- list(y = c(-2, -1, 0, 1, 2))
+inits <- list(mu = 0, sigma = 1, yc = rep(2.1,N))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printMonitors()
+conf$addMonitors('yc')
+Rmcmc <- buildMCMC(conf)
+
+##compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+##Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+[27,]  0.4970267 1.4853999 3.211170 2.286722
+[28,] -0.2797500 1.4853999 2.575468 2.102819
+[29,] -0.2797500 0.2046505      Inf      Inf
+
+
+set.seed(0)
+Rmcmc$run(28)
+samples <- as.matrix(Rmcmc$mvSamples)
+samples
+
+debug(Rmcmc$run)
+Rmcmc$run(2, reset = FALSE)
+
+debug(samplerFunctions[[ind]]$run)
+ls(model$nodes)
+debug(model$nodes[['yc_L6_UID_59']]$simulate)
+
+Cmodel$yc
+colnames(samples)
+samples
+
+
+samplesSummary(samples)
+             Mean       Median  St.Dev. 95%CI_low 95%CI_upp
+mu    -0.01309894 -0.007039629 1.292003 -2.633911  2.569409
+sigma  2.49683880  2.066773567 1.503980  1.041366  7.015764
+
+library(basicMCMCplots)
+samplesPlot(samples)
+
+Cmodel$yc
+
+
+
+x1 <- 12
+(n1 <- x1+6+16)
+x2 <- 4
+(n2 <- x2+11+19)
+(p1 <- x1/n1)
+(p2 <- x2/n2)
+(RR <- p1/p2)
+(logRR <- log(RR))
+(se <- sqrt(1/x1 - 1/n1 + 1/x2 - 1/n2))
+##z <- qnorm(0.995)    ## 99% CI
+z <- 1.96
+(logCI <- logRR + c(-1,1) * z * se)
+(CI <- exp(logCI))
+
+## STAT202 Quiz #3, problem #3
+n <- 93
+r <- -0.3
+sx <- 3.1
+sy <- 0.7
+(b <- sy/sx * r)
+(r2 <- r^2)
+r2*100    ## as a percentage
+(SSE <- 100*(1 - r2))
+(s <- sqrt(SSE / (n-2)))
+
+
+
+
+
+
+
+df <- read.csv('~/Downloads/digit.csv')
+
+labels <- df[, 1]
+pixels <- df[, -1]
+
+table(labels)   ## explortory
+dim(pixels)     ## explortory
+
+## part (a)
+
+plotImage <- function(x) {
+    x <- as.numeric(x)
+    label <- ''
+    if(length(x) > 784) {
+        label <- x[1]
+        x <- x[-1]
+    }
+    xMatrix <- matrix(x, nrow=28)
+    xMatrix <- xMatrix[, 28:1]    ## flips image from top-to-bottom
+    col <- grey(seq(0, 1, length = 256))
+    image(xMatrix, main = label, col = col, xaxt = 'n', yaxt = 'n')
+}
+
+par(mfrow = c(3,4))
+for(i in 1:12) plotImage(df[i,])
+
+
+## part (b)
+
+nTotal <- nrow(df)
+nTrain <- nTotal / 2   ## assumes nTotal is even
+
+set.seed(355)     ## set.seed(0) is better
+trainInd <- sample(1:nTotal, nTrain)
+testInd <- setdiff(1:nTrain, trainInd)
+
+trainPixels <- pixels[trainInd, ]
+testPixels <- pixels[testInd, ]
+
+## part(c)
+
+?prcomp
+
+out <- prcomp(trainPixels)   ## ~ 45 seconds
+
+evs <- out$rotation
+
+par(mfrow = c(2,3))
+for(i in 1:6) plotImage(evs[,i])   ## careful, ordering of indices here
+
+## explain what you learned here
+## PC1 for detecting 1's ?
+## PC2 for detecting 9's or 0's ?
+## PC3 for detecting 3's ?
+## ..... ?
+
+
+## part (d)
+
+percentVariance <- out$sdev^2 / sum(out$sdev^2)
+
+cumulativeVariance <- cumsum(percentVariance)
+
+M <- min(which(cumulativeVariance > 0.9))   ## 87 PCs
+
+par(mfrow = c(1,1))
+plot(1:784, cumulativeVariance, type = 'l')
+abline(h = 0.9, col = 'red')
+segments(M, -10, M, 0.9, col = 'blue')
+
+
+
+## part (e)
+
+?predict.prcomp
+
+pca <- out
+
+Projection <- predict(pca, pixels)
+
+dim(Projection)
+
+proj <- Projection[,1:M]
+
+
+## (f) (10pts) Use hierarchical clustering based on Euclidean distances between principal components for a random sample of 500 training images. Compare three different types of linkages; discuss pros and cons of the linkages for this data set. Also, comment on the structure you notice in the dendrograms and what does this tells you about the data (what did you learn about the data?).
+
+set.seed(355)
+randomInd <- sample(1:nTrain, 500)
+randomInd <- sample(1:nTrain, 100)
+
+
+## Euclidean distances b/w principle components
+dm <- dist(Projection[randomInd,1:M])
+
+cs <- hclust(dm, method = "single")
+ca <- hclust(dm, method = "average")
+cc <- hclust(dm, method = "complete")
+ 
+par(mfrow = c(1,3))
+plot(cs, labels=FALSE, xlab = "" , main = "Single")
+plot(cc, labels=FALSE, xlab = "", main = "Cluster")
+plot(ca, labels=FALSE, xlab = "", main = "Complete")
+ 
+par(mfrow = c(1,1))
+plot(cs, xlab = "" , main = "Single", labels = labels[randomInd], cex = 0.5)
+plot(cc, xlab = "" , main = "Single", labels = labels[randomInd], cex = 0.5)
+plot(ca, xlab = "" , main = "Single", labels = labels[randomInd], cex = 0.5)
+ 
+names(cs)
+cs$labels
+ 
+dim(Projection)
+dim(pixels)
+length(labels)
+table(labels)
+
+
+
+
+
+
+
+
+## STAT202 Lecture 19
+## Exponential Regression
+
+## Moore's Law
+x <- c(0, 3, 4, 5, 6)      ## years since 1959
+y <- c(1, 7, 19, 29, 64)   ## num. of components on microchip
+
+plot(x, y, pch=19, xlim = c(0,8), ylim = c(0,100), col = 'red', type = 'b')
+
+m <- lm(y ~ x)
+
+abline(m, col = 'blue')
+
+## correlation, measure of linear relationship
+cor(x, y)
+
+## R^2 for linear regression:
+cor(x, y)^2
+
+## instead, let's plot of log(y) vs. x
+plot(x, log(y), pch=19, xlim=c(0,8), ylim=c(0,6), type = 'b')
+
+
+m <- lm(log(y) ~ x)   ## fit exponential regression model in R
+
+m
+
+abline(m, col = 'red')
+
+## R^2 for exponential regression:
+cor(x, log(y))^2
+
+summary(m)
+
+## let's extract the coefficients
+## don't forget, these are: log(a), and log(b)
+loga <- m$coefficients[1]
+logb <- m$coefficients[2]
+
+a <- exp(loga)
+b <- exp(logb)
+
+plot(x, y, pch=19, xlim = c(0,8), ylim = c(0,100), type='b')
+
+
+a*b^x
+
+points(x, a*b^x, col='red', pch=5)
+
+xs <- seq(0, 10, by = 0.01)
+xs
+
+lines(xs, a*b^xs, col = 'red')
+
+## extracting fitted values:
+## predict() function:
+
+
+library(nimble)
+library(mvtnorm)
+
+S <- 159   # number of locations
+X <- rmvnorm(159, sigma = diag(rep(1, 6)))
+b1 <- rep(-1, S) + rnorm(S)
+b2 <- rep(2, S) + rnorm(S)
+b3 <- rep(0, S)
+b4 <- rep(0, S)
+b5 <- rep(2, S) + rnorm(S)
+b6 <- rep(1, S) + rnorm(S)
+y <- 1 + b1 * X[, 1] + b2 * X[, 2] + b3 * X[, 3] + b4 * X[, 4] + b5 * X[, 5] + b6 * X[, 6] + rnorm(S) 
+
+##(ii) spatial-specific coefficients
+code <- nimbleCode({
+    for (i in 1:S) {
+        y[i] ~ dnorm(mu_y[i], tau = tau_y)
+        mu_y[i] <-
+            b0 + b[i, 1] * x1[i] + b[i, 2] * x2[i] +
+            b[i, 3] * x3[i] + b[i, 4] * x4[i] + b[i, 5] * x5[i] + b[i, 6] * x6[i]
+        b[i, 1:6] ~ dmnorm(mu_bm[1:6], cov = var_bm[1:6, 1:6])
+    }
+    var_bm[1:6, 1:6] <- diag(1/tau_bm[1:6])
+    for (j in 1:6) {
+        mu_bm[j] <- 0
+        tau_bm[j] <- tau_bmm[ind[j] + 1]
+        ind[j] ~ dbern(gamma[j])
+        gamma[j] ~ dbeta(0.5, 0.5)
+    }
+    tau_bmm[1] <- tau_b0
+    tau_bmm[2] <- tau_b0 * c
+    b0 ~ dnorm(0, 1)
+    tau_y ~ dgamma(1, 1)
+})
+
+
+constants <- list(S = 159, c = 0.0001, tau_b0 = 100)
+
+data <- list(y = y, x1 = X[,1], x2 = X[,2], x3 =X[,3], x4 = X[,4], x5 = X[,5], x6 = X[,6])
+
+inits <- list(tau_y = 1, tau_bm = rep(1,6), b0 = rnorm(1), ind = rep(1,6), gamma = runif(6),
+              b = array(0, c(159,6)))   ## DT: added initial value for b array
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+## DT: calculate() returns a real number, model is fully initialized
+Rmodel$calculate()   
+
+conf <- configureMCMC(Rmodel)
+
+## check the sampler assignments.
+## might consider whether or not you want the RW_block samplers assigned
+## to each b[i, 1:6] ?
+conf$printSamplers()
+
+## add your monitors
+conf$addMonitors(c("b0","b","ind","gamma","tau_y"))
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+samplesSummary(samples)
+
+library(basicMCMCplots)
+samplesPlot(samples, c('gamma', 'b0'))
+
+#### this does the same thing:
+##mcmc.out <- nimbleMCMC(code, constants, data, inits,
+##                       monitors = c("b0","b","ind","gamma","tau_y"),
+##                       niter = 50000, thin = 10, nchains = 1, setSeed = TRUE)
+
+
+
+
+
+
+## STAT202 Lecture 18
+## Regression 2
+
+head(mtcars)
+dim(mtcars)
+names(mtcars)
+
+hp <- mtcars$hp
+mpg <- mtcars$mpg
+
+
+plot(x = hp, y = mpg)
+
+## lm(y ~ x)
+m <- lm(mpg ~ hp)
+
+## coefficients
+## residuals
+## residual standard error
+## model summary
+
+m
+m$coefficients
+a <- m$coefficients[1]
+b <- m$coefficients[2]
+
+e <- mpg - (a + b*hp)
+e
+
+m$residuals - e
+
+n <- length(hp)
+n
+
+sqrt(sum(e^2) / (n-2))
+
+summary(m) #### !!!! remember this
+
+
+
+
+
+
+
+
+
+
+##-- Daily Participation Problem 18 ---
+
+x <- c(3,8,9,10,11,20,29,30,31,31,31,34,41)  ## GDP
+y <- c(1,2,4,7,8,18,12,13,11,12,16,26,26)    ## oil comsumption
+(n <- length(x))    ## 13
+(b <- cor(x,y) * sd(y)/sd(x))   ## 0.5464
+(a <- mean(y) - b*mean(x))      ## -0.1055
+yhat <- a + b*x
+(SSE <- sum((y - yhat)^2))      ##  217.92
+(s <- sqrt(SSE / (n-2)))    ## 4.451
+(seb <- s / sqrt(sum((x-mean(x))^2)))   ## 0.1033
+(T <- (b - 0)/seb)    ## 5.288
+(cib <- b + c(-1,1) * qt(0.975, n-2) * seb)   ## 0.319 0.774
+m <- lm(y ~ x)
+
+summary(m)
+##             Estimate Std. Error t value Pr(>|t|)    
+## (Intercept)  -0.1055     2.6007  -0.041 0.968382    
+## x             0.5464     0.1033   5.288 0.000257 ***
+## Residual standard error: 4.451 on 11 degrees of freedom
+
+e <- m$residuals
+
+plot(x, y)
+
+hist(e)
+    
+
+
+
+
+
+
+
+
+
+
+name <- '~/github/courses/stat360/data/from_textbook/textbook_datasets/Chapter 8/whales.txt'
+
+
+df <- read.delim(name, header = FALSE)
+
+
+dim(df)
+head(df)
+
+names(df) <- 'time'
+
+dim(df)
+head(df)
+
+write.csv(df, '~/Downloads/whales.csv', row.names = FALSE)
+
+df2 <- read.csv('~/Downloads/whales.csv')
+
+dim(df2)
+head(df2)
+
+
+
+
+## STAT202 Lecture 17 Daily Participation Problem
+## Simple Linear Regression
+
+x <- c(3,8,9,10,11,20,29,30,31,31,31,34,41)  ## GDP
+
+y <- c(1,2,4,7,8,18,12,13,11,12,16,26,26)    ## oil consumption 
+
+n <- length(x)
+n
+
+(x-mean(x))/sd(x)
+
+sum( (x-mean(x))/sd(x) * (y-mean(y)/sd(y)))
+
+
+sum((x-mean(x))/sd(x) * (y-mean(y))/sd(y)) / (n-1)
+
+cor(x, y)
+
+plot(x, y)
+
+lm(y ~ x)
+
+26 - (-.1055 + 0.5464 * 34)
+
+
+
+
+
+## for Canada, x = GDP = 34, y = oil = 26
+## prediction for Canada:
+-0.1055 + 0.5464 * 34
+
+## residual for Canada:
+26 - 18.4721
+
+
+
+
+## Poisson data (from Example A, page 261)
+
+x <- c(
+    31, 29, 19, 18, 31, 28,
+    34, 27, 34, 30, 16, 18,
+    26, 27, 27, 18, 24, 22,
+    28, 24, 21, 17, 24)
+
+n <- length(x)
+n
+
+xbar <- mean(x)
+xbar
+
+xbar + c(-1,1) * 1.96 * sqrt(xbar/n)
+
+## 22.87, 26.95
+
+## Bootstrap CI:
+N <- 100
+N <- 100000
+
+lambdaHatStar <- numeric(N)
+
+for(i in 1:N) {
+    xStar <- rpois(n, xbar)
+    lambdaHatStar[i] <- mean(xStar)
+}
+
+hist(lambdaHatStar, breaks = 50)
+
+quantile(lambdaHatStar, probs = c(0.025, 0.975))
+
+##     2.5%    97.5% 
+## 22.86957 26.95652 
+
+
+## alternate: using replicate()
+replicate
+
+lambdaHatStar <- replicate(N, mean(rpois(n, xbar) ))
+
+hist(lambdaHatStar, breaks = 50)
+quantile(lambdaHatStar, probs = c(0.025, 0.975))
+
+
+
+## secret!
+lambda <- 17
+
+
+
+## STAT 202 Lecture 14
+## X^2 test for independence
+
+data <- matrix(c(10, 40, 20, 30, 20, 40), nrow = 2)
+
+data
+
+
+chisq.test(data, correct = FALSE)
+
+## pchisq
+## 3.84
+## 4.8485
+
+pchisq(3.84, 1)
+
+1 - pchisq(3.84, 1)
+
+pchisq(3.84, 1, lower.tail = FALSE)
+
+1 - pchisq(4.8485, 2)
+
+
+
+
+data <- matrix(c(914, 46, 581, 735), nrow = 2)
+data
+
+chisq.test(data)
+
+
+
+## secret value: lambda
+
+xlim <- c(12, 25)
+par(mfrow = c(2,2))
+ 
+## generate n iid observations Poisson(lambda)
+n <- 10      ## 1st time
+n <- 100     ## 2nd time
+ 
+set.seed(0)
+(y <- rpois(n, lambda))
+
+## let's now caluclate the MLE !!
+(ybar <- mean(y))
+ 
+xs <- seq(min(xlim), max(xlim), length = 10000)
+ys <- sapply(xs, function(lam) prod(dpois(y, lam)))
+plot(xs, ys, type='l', xlim=xlim, xlab='lambda', ylab='Likelihood', main=paste0('n = ',n))
+ 
+abline(v = ybar, col = 'red')
+ 
+ys2 <- sapply(xs, function(lam) sum(dpois(y, lam, log = TRUE)))
+plot(xs, ys2, type='l', xlim=xlim, xlab='lambda', ylab='log-ikelihood', main=paste0('n = ',n))
+ 
+abline(v = ybar, col = 'red')
+ 
+(se <- sqrt(ybar/n))
+ci <- ybar + c(-1,1) * 2 * se
+round(ci, 1)
+ci[2] - ci[1]
+
+segments(x0=ci[1], x1=ci[2], y0=max(ys2), col='blue', lwd=2)
+abline(v = ci, col = 'blue')
+ 
+## secret value of lambda:
+
+lambda
+
+
+
+
+## doing STAT360 quiz3 question by simulation
+
+N <- 1000000
+x <- numeric(N)
+
+th <- 1/3
+for(i in 1:N) {
+    x[i] <- rexp(1, th)
+}
+
+y <- x * (rbinom(N, 1, .5)*2-1)
+
+mean(y)
+var(y)
+
+sum(y^2) / N
+
+
+hist(y, breaks=100)
+
+
 
 
 ## STAT 202 Lecture 14
@@ -19,45 +847,52 @@ friends <- survey$Friends
 gender
 friends
 
-######## BELOW HERE, LIVE CODE IN CLASS:
+length(gender)
+
 ## histogram
-hist(friends, breaks = 10)
+hist(friends)
+
 ## boxplots
 boxplot(friends)
 boxplot(friends ~ gender)
+
+table(gender)
+
+## using sample(friends)
+sample(1:5)
+sample(gender)
+
 ## permutation distribution
 N <- 100000
 difs <- numeric(N)
+
 for(i in 1:N) {
-    ##genderP <- sample(gender)
-    ##friendsM <- friends[genderP == "male"]
-    ##friendsF <- friends[genderP == "female"]
-    #### alternate:
-    ##friendsP <- sample(friends)
-    ##friendsM <- friendsP[gender == "male"]
-    ##friendsF <- friendsP[gender == "female"]
-    ## another alternate:
     friendsP <- sample(friends)
-    friendsM <- friendsP[1:16]
-    friendsF <- friendsP[17:25]
-    difs[i] <- mean(friendsM) - mean(friendsF)
+    F <- friendsP[1:11]
+    M <- friendsP[12:27]
+    difs[i] <- mean(M) - mean(F)
 }
-hist(difs, breaks = 100, freq = FALSE)
-abline(v=0, lwd=2)
-ci <- quantile(difs, c(0.025, 0.975))
-abline(v=ci, col="blue", lwd=2)
-friendsM <- friends[gender == "male"]
-friendsF <- friends[gender == "female"]
-friendsM
-friendsF
-dif <- mean(friendsM) - mean(friendsF)
-dif
-abline(v=dif, col="red", lwd=2)
+
+difs
+
+## histogram of permutation distribution
+hist(difs, breaks = 100)
+
+## confidence interval
+## assuming *no assocuation*
+ci <- quantile(difs, probs = c(0.025, 0.975))
+abline(v = ci, col = 'blue', lwd = 2)
+
+## the observed difference
+od <- mean(friends[gender == 'male']) - mean(friends[gender == 'female'])
+abline(v = od, col = 'red', lwd = 2)
+
 ## permutation p-value
-dif
-mean(difs < dif | difs > -dif)
+pv <- mean(difs < od | difs > (-od))
+pv
+
 ## two-samples t-test
-t.test(friendsM, friendsF) 
+## t.test(group1, group2)
 
 
 
@@ -91,6 +926,178 @@ males:
 461
 280
 850
+
+
+
+## permutation distribution class problem for STAT202
+
+y <- c(5,7,9,10,12,12,12,13,13,15,15,20,
+       5,7,7,8,10,10,11,12,12,14,14,14,16,18,20,20,20,22,23,25,40)
+
+indM <- 1:12
+indF <- 13:33
+
+y[indM]
+y[indF]
+
+N <- 100000
+difs <- numeric(N)
+
+for(i in 1:N) {
+    newy <- sample(y)
+    difs[i] <- mean(newy[indM]) - mean(newy[indF])
+}
+
+hist(difs, breaks = 50)
+
+ci <- quantile(difs, c(0.025, 0.975))
+ci
+abline(v = ci, col = 'blue', lwd = 2)
+
+obsdif <- mean(y[indM]) - mean(y[indF])
+obsdif
+
+abline(v = obsdif, col = 'red', lwd = 2)
+
+mean(difs < obsdif | difs > -obsdif)
+
+t.test(y[indM], y[indF])
+
+
+
+
+
+
+
+library(CompGLM)
+library(nimble)
+
+ZICMPcode <- nimbleCode({
+    p~dunif(0,1)
+    lam~dunif(0,100)
+    nu~dunif(0,100)
+    for(i in 1:N) {
+        y[i] ~ dZICMP(lam, nu,sumTo = 200L,zeroProb = p)
+    }
+})
+
+
+## constants, data, and initial values
+constants <- list(N = 100)
+
+dCMP <- nimbleRcall(function(y = integer(), lam = double(), nu = double(),sumTo = integer(),logP = logical(0, default = 0)){}, Rfun = 'dcomp',
+                    returnType = double() )##  DT: shouldn't need this: envir = .GlobalEnv)
+
+rCMP <- nimbleRcall(function(n = integer(), lam = double(), nu = double(),sumTo = integer()){}, Rfun = 'rcomp',
+                    returnType = integer()) ## DT: shouldn't need this: envir = .GlobalEnv)
+
+
+dZICMP <- nimbleFunction(
+    run = function(x = integer(), lam = double(), nu = double(),sumTo = integer(), zeroProb = double(), log = logical(0, default = 0)) {
+        returnType(double())
+        ## First handle non-zero data
+        if(x != 0) {
+            ## return the log probability if log = TRUE
+            if(log) return(dCMP(x, lam, nu,sumTo = 200L, log = TRUE) + log(1-zeroProb))
+            ## or the probability if log = FALSE
+            else return((1-zeroProb) * dCMP(x, lam, nu,sumTo = 200L, log = FALSE))
+        }
+        ## From here down we know x is 0
+        totalProbZero <- zeroProb + (1-zeroProb) * dCMP(0, lam, nu,sumTo = 200L, log = FALSE)
+        if(log) return(log(totalProbZero))
+        return(totalProbZero)
+    })
+
+
+rZICMP <- nimbleFunction(
+    run = function(n = integer(), lam = double(), nu = double(),sumTo = integer(), zeroProb = double()) {
+        returnType(integer())
+        isStructuralZero <- rbinom(1, prob = zeroProb, size = 1)
+        if(isStructuralZero) return(0)
+        return(rCMP(1, lam,nu,sumTo = 200L))
+    })
+
+
+registerDistributions(list(
+    dZICMP = list(
+        BUGSdist = "dZICMP(lam, nu,sumTo, zeroProb)",
+        discrete = TRUE,
+        range = c(0, Inf),
+        types = c('value = integer()', 'lam = double()', 'nu = double()','sumTo = integer()', 'zeroProb = double()')
+    )))
+
+
+## DT: let's include the model check.
+## it's helpful, especially for such a small model:
+ZICMPmodel <- nimbleModel( ZICMPcode, constants=constants) ##check = FALSE)
+
+ZICMPmodel$calculate()   ## something is wrong here!
+## DT:
+## Error in if (x != 0) { : missing value where TRUE/FALSE needed
+## looks like since we're missing values for y[i] (no initial values were provided)
+## this first logical if() statement in your dZICMP() function definition
+## is failing.  Let's provide initial values and try again:
+
+inits <- list(p = 0.5,
+              lam = 1,
+              nu = 1)
+
+data <- list(y = rep(1, constants$N))
+
+ZICMPmodel <- nimbleModel( ZICMPcode, constants=constants, data=data, inits=inits)
+
+ZICMPmodel$calculate()    ## -178.5251    DT: that's better
+
+ZICMPmodel$p <- .4             
+ZICMPmodel$lam <- 1.8
+ZICMPmodel$nu<-0.9
+ZICMPmodel$simulate('y')     
+
+ZICMPmodel$calculate()    ##  -191.4907    DT: still good
+
+simulatedData <- ZICMPmodel$y
+simulatedData
+hist(simulatedData)
+
+ZICMPmodel$setData(list(y = simulatedData))  
+cZICMPmodel <- compileNimble(ZICMPmodel)
+
+## DT: let's configure the MCMC first, look at the samplers
+## that are assigned, and the monitors.  Always
+## helpful and a good idea to know what's going on in the MCMC:
+##ZICMPmcmc <- buildMCMC(ZICMPmodel)   not this line, but instead:
+
+conf <- configureMCMC(ZICMPmodel)
+
+conf$printMonitors()
+## thin = 1: p, lam, nu
+
+conf$printSamplers()
+## [1] RW sampler: p
+## [2] RW sampler: lam
+## [3] RW sampler: nu
+
+## DT: now build the MCMC, and compile it:
+ZICMPmcmc <- buildMCMC(conf)
+    
+cZICMPmcmc <- compileNimble(ZICMPmcmc, project = ZICMPmodel)
+
+cZICMPmcmc$run(1000)   ## using fewer iterations
+
+samples <- as.matrix(cZICMPmcmc$mvSamples)
+
+samplesSummary(samples)
+##           Mean      Median    St.Dev.    95%CI_low  95%CI_upp
+## lam 0.62186699 0.560347129 0.18223126 0.4068033525 0.93935815
+## nu  0.34242280 0.014943882 0.40012792 0.0026253462 0.90000000
+## p   0.02232572 0.002589668 0.02716132 0.0009254903 0.05182992
+
+
+library(basicMCMCplots)
+samplesPlot(samples)    ## DT: looks like we need longer runs, but things are off to a good start
+
+
+
 
 
 
