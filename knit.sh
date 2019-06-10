@@ -47,21 +47,21 @@ if [ -r "$1" ]; then
     mdfile="${mdfile%.*}"  # remove extension
     if [[ $compile = 1 ]]; then
 	##(
-	##    Rscript -e "require(methods); require(knitr); require(markdown); knit('${mdfile}.rmd', quiet=TRUE); \
+	##    /usr/local/bin/Rscript -e "require(methods); require(knitr); require(markdown); knit('${mdfile}.rmd', quiet=TRUE); \
         ##                markdownToHTML('${mdfile}.md', '${mdfile}.html')"
 	##    ) > /dev/null 2>&1
         (
-            Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE)"
+            /usr/local/bin/Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE)"
         )
 	##> /dev/null 2>&1
     fi
     if [[ $browser = 1 ]]; then
 	##(
-	##    Rscript -e "require(methods); require(knitr); require(markdown); knit('${mdfile}.rmd', quiet=TRUE); \
+	##    /usr/local/bin/Rscript -e "require(methods); require(knitr); require(markdown); knit('${mdfile}.rmd', quiet=TRUE); \
         ##                markdownToHTML('${mdfile}.md', '${mdfile}.html'); browseURL('${mdfile}.html')"
 	##    ) > /dev/null 2>&1
         (
-            Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE)"
+            /usr/local/bin/Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE)"
         )
 	##> /dev/null 2>&1
 	if [ -f ${mdfile}.pdf ]; then
@@ -74,7 +74,7 @@ if [ -r "$1" ]; then
     if [[ $tangle = 1 ]]; then
 	(
 	    rm -f ${mdfile}.R       ## remove existing .R file, if one exists
-	    Rscript -e "require(knitr); purl('${mdfile}.rmd', documentation = 0)"
+	    /usr/local/bin/Rscript -e "require(knitr); purl('${mdfile}.rmd', documentation = 0)"
 	    gsed -i "s/^## //" ${mdfile}.R     ## uncomment any R lines (generated from eval = FALSE code blocks)
 ) > /dev/null 2>&1
     fi
