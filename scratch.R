@@ -1,6 +1,440 @@
 
 
 
+## quick demo for Richard Bischoff, regarding how to clear out the mvSamples
+## MCMC samples from R memory, then continue the same MCMC run
+
+library(nimble)
+
+## construct model object (standard BUGS example: pump)
+code <- nimbleCode({
+    for(i in 1:N){
+        theta[i] ~ dgamma(alpha, beta)
+        lambda[i] <- theta[i] * t[i]
+        x[i] ~ dpois(lambda[i])
+    }
+    alpha ~ dexp(1)
+    beta ~ dgamma(1, 1)
+}) 
+
+constants <- list(N = 10, t = c(94.3,15.7,62.9,126,5.24,31.4,1.05,1.05,2.1,10.5))
+data <- list(x = c(5,1,5,14,3,19,1,1,4,22))
+inits <- list(alpha = 1, beta = 1,theta = rep(1, 10))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+## build MCMC, compile model and MCMC
+
+conf <- configureMCMC(Rmodel)
+conf$addMonitors('theta')   ## so we're monitoring a total of 12 nodes
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+## generate initial 1000 MCMC samples
+set.seed(0)
+Cmcmc$run(1000)
+
+## extract the samples from the compiled MCMC object, as an R array
+
+samples1000 <- as.matrix(Cmcmc$mvSamples)
+
+####################################
+## save samples1000, or otherwise ##
+####################################
+
+## remove the samples1000 variable,
+## reduce the internal mvSamples object to 0 rows,
+## run R's garbage collector
+rm('samples1000')
+Cmcmc$mvSamples$resize(0)
+gc()
+
+## continue same run of the MCMC for another 1000 iterations, using reset = FALSE
+
+Cmcmc$run(1000, reset = FALSE)
+
+samples2000 <- as.matrix(Cmcmc$mvSamples)
+
+## samples2000 contains the *second set of 1000 samples* from the MCMC run,
+## that is, samples # 1001 - 2000.
+
+## now you could save the 'samples2000' object,
+## clear the mvSamples object again using: Cmcmc$mvSamples$resize(0)
+## run R's garbage collector again: gc()
+## and continue the MCMC run for longer, if desired: Cmcmc$run(10000, reset = FALSE)
+
+
+
+
+##Cmcmc$run(10000, reset = FALSE)
+##samples10000 <- as.matrix(Cmcmc$mvSamples)
+##samples_save <- rbind(samples1000, samples2000, samples10000)
+##dim(samples_save)
+##set.seed(0)
+##Cmcmc$run(12000)
+##samples_save2 <- as.matrix(Cmcmc$mvSamples)
+##dim(samples_save2)
+##identical(samples_save, samples_save2)
+
+
+## developing new MCMC printSamplers(byType = TRUE)
+
+library(nimble)
+
+N1 <- 2
+N2 <- 100
+##
+code <- nimbleCode({
+    b ~ dgamma(1, 1)
+    for(i in 1:N1) {
+        a[i] ~ dnorm(0, 1)
+        y[i] ~ dnorm(a[i], b)
+    }
+    for(i in 1:N2) {
+        x[i] ~ dexp(1)
+        yy[i] ~ dnorm(x[i], 1)
+    }
+})
+##
+constants <- list(N1=N1, N2=N2)
+data <- list(y = c(0, N1), yy = rep(0, N2))
+inits <- list(b = 1, a = rep(0,N1), x = rep(1,N2))
+##
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+Rmodel$initializeInfo()
+##
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf <- configureMCMC(Rmodel)
+
+
+conf$printSamplers()
+conf$printSamplers(byType = TRUE)
+
+
+
+## testing new nimble MCMC options for BayesNSGP
+## MCMCmultivariateNodesAsScalars
+## MCMCmultivariateNodesAsScalars
+
+nimbleOptions(MCMCmonitorAllSampledNodes = TRUE)
+
+
+library(nimble)
+
+getNimbleOption('MCMCprogressBar')
+getNimbleOption('MCMCmultivariateNodesAsScalars')
+getNimbleOption('MCMCmonitorAllSampledNodes')
+
+
+nimbleOptions(MCMCprogressBar = TRUE)
+nimbleOptions(MCMCprogressBar = FALSE)
+
+nimbleOptions(MCMCmultivariateNodesAsScalars = TRUE)
+nimbleOptions(MCMCmultivariateNodesAsScalars = FALSE)
+
+nimbleOptions(MCMCmonitorAllSampledNodes = TRUE)
+nimbleOptions(MCMCmonitorAllSampledNodes = FALSE)
+
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dnorm(a, 1)
+    d ~ dnorm(b, 1)
+    x[1:2] ~ dmnorm(mu[1:2], cov = Sigma[1:2,1:2])
+    c ~ dexp(x[1])
+})
+constants <- list(Sigma = diag(2), mu = c(0,0))
+data <- list(c = 1, d = 1)
+inits <- list(a = 0, x = c(1,1), b = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printMonitors()
+
+Rmodel$getNodeNames()
+Rmodel$getNodeNames(stochOnly = TRUE)
+Rmodel$getNodeNames(stochOnly = TRUE, includeData = FALSE)
+
+
+conf <- configureMCMC(Rmodel, print = TRUE)
+conf <- configureMCMC(Rmodel, print = TRUE, multivariateNodesAsScalars = TRUE)
+conf <- configureMCMC(Rmodel, print = TRUE, multivariateNodesAsScalars = FALSE)
+
+
+
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+samples <- runMCMC(Cmcmc, 10000)
+samples <- runMCMC(Cmcmc, 10000, progressBar = TRUE)
+samples <- runMCMC(Cmcmc, 10000, progressBar = FALSE)
+
+samples <- nimbleMCMC(code, constants, data, inits)
+samples <- nimbleMCMC(code, constants, data, inits, progressBar = TRUE)
+samples <- nimbleMCMC(code, constants, data, inits, progressBar = FALSE)
+
+undebug(nimbleMCMC)
+undebug(runMCMC)
+undebug(mcmc$run)
+
+
+
+
+
+library(basicMCMCplots)
+
+nchains <- 2
+nparams <- 3
+nsamples <- 1000
+samplesList <- vector('list', nchains)
+for(i in 1:nchains) {
+    samples <- array(NA, c(nsamples, nparams))
+    colnames(samples) <- letters[1:nparams]
+    for(j in 1:nparams) {
+        samples[,j] <- rnorm(nsamples, j/10, j/10)
+    }
+    samplesList[[i]] <- samples
+}
+names(samplesList) <- paste0('chain', 1:nchains)
+str(samplesList)
+
+chainsPlot(samplesList, cex = 0.7)
+chainsPlot(samplesList, traceplot = FALSE, cex = 0.7)
+chainsPlot(samplesList, densityplot = FALSE, cex = 0.7, burnin = 100)
+chainsPlot(samplesList, densityplot = FALSE, traceplot = FALSE, cex = 0.7)
+
+
+
+samplesPlot(samplesList)
+chainsSummary(samplesList, jitter = .1, buffer.left = 0.3, buffer.right = 0.3)
+chainsPlot(samplesList, density = TRUE, cex = 0.7)
+samplesPlot3(samplesList, ind = 1:6)
+
+
+
+
+## scoping error with nimbleOptions() function,
+## in the BayesNSGP package (5/3/2019)
+
+library(BayesNSGP)
+
+# Generate some data: stationary/isotropic
+N <- 100
+coords <- matrix(runif(2*N), ncol = 2)
+alpha_vec <- rep(log(sqrt(1)), N) # Log process SD
+delta_vec <- rep(log(sqrt(0.05)), N) # Log nugget SD
+Sigma11_vec <- rep(0.4, N) # Kernel matrix element 1,1
+Sigma22_vec <- rep(0.4, N) # Kernel matrix element 2,2
+Sigma12_vec <- rep(0, N) # Kernel matrix element 1,2
+mu_vec <- rep(0, N) # Mean
+nu <- 0.5 # Smoothness
+dist_list <- nsDist(coords)
+Cor_mat <- nsCorr( dist1_sq = dist_list$dist1_sq, dist2_sq = dist_list$dist2_sq, 
+                   dist12 = dist_list$dist12, Sigma11 = Sigma11_vec, 
+                   Sigma22 = Sigma22_vec, Sigma12 = Sigma12_vec, nu = nu )
+Cov_mat <- diag(exp(alpha_vec)) %*% Cor_mat %*% diag(exp(alpha_vec))
+D_mat <- diag(exp(delta_vec)^2) 
+set.seed(110)
+z <- as.numeric(mu_vec + t(chol(Cov_mat + D_mat)) %*% rnorm(N))
+# Set up constants
+constants <- list( nu = 0.5, Sigma_HP1 = 2 )
+# Defaults: tau_model = "constant", sigma_model = "constant", mu_model = "constant",
+# and Sigma_model = "constant"
+Rmodel <- nsgpModel(likelihood = "fullGP", constants = constants, coords = coords, z = z )
+
+
+
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+samples <- runMCMC(Cmcmc, niter = 200, nburnin = 100)
+# Prediction
+predCoords <- as.matrix(expand.grid(seq(0,1,l=10),seq(0,1,l=10)))
+postpred <- nsgpPredict( model = Rmodel, samples = samples, coords.predict = predCoords )
+
+
+
+
+
+## error from Floriane Plard (14 May 2019)
+
+library(nimble)
+
+test_HT <- nimbleCode({
+    Nad[1] <- round(0.14*inipop/2)
+    mean.sad ~ dunif(0, 1)
+    for(t in 2:nyears) {
+        Nad[t] ~ dbin(prob = mean.sad, size = Nad[t-1])
+        y[t] ~ dpois(Nad[t])
+    }
+})
+
+Count <- c(44,66,66,75,65,72,94,112,90,100,96,70,104,94,105)
+inipop <- Count[1]
+nyears <- length(Count)
+
+constants <- list(nyears = nyears)
+data <- list(inipop = inipop, y = Count)
+inits <- list(mean.sad = 0.4, Nad = rep(1,nyears))   ## possible initial value for Nad
+
+IPMi <- nimbleModel(code = test_HT, constants = constants, data = data, inits = inits)
+IPMi$calculate()
+
+IPMi$calculate('mean.sad')
+IPMi$getNodeNames()
+IPMi$calculate('y')
+IPMi$Nad
+IPMi$logProb_Nad
+IPMi$calculate('Nad[1]')
+IPMi$calculate('Nad[2]')   ## -Inf
+
+
+params <- c('mean.sad','Nad')
+specIPMi <- configureMCMC(IPMi, monitors = params)
+specIPMi$printSamplers()
+specIPMi$removeSamplers('mean.sad')
+specIPMi$addSampler(target = 'mean.sad', type ='slice')
+
+IPMMCMCi <- buildMCMC(specIPMi)
+CIPMi <- compileNimble(IPMi)
+CIPMMCMCi <- compileNimble(IPMMCMCi, project=IPMi, resetFunctions = TRUE)
+
+CIPMMCMCi$run(1000)
+
+### Warning: slice sampler reached maximum number of contractions.
+### Warning: slice sampler reached maximum number of contractions.
+### Warning: slice sampler reached maximum number of contractions.
+### Warning: slice sampler reached maximum number of contractions.
+### Warning: slice sampler reached maximum number of contractions.
+### Warning: slice sampler reached maximum number of contractions.
+### Warning: slice sampler reached maximum number of contractions.
+### .....
+dim(as.matrix(CIPMMCMCi$mvSamples)  )
+
+as.matrix(CIPMMCMCi$mvSamples)[1:50,]  
+## Nad[1] Nad[2] Nad[3] Nad[4]       Nad[5] Nad[6] Nad[7] Nad[8] Nad[9] Nad[10] Nad[11] Nad[12] Nad[13] Nad[14] Nad[15]   mean.sad
+## [19,]      3   -624    -17    145 -40513298256  -1240   -485   -221   -677      87   -1560    -728    -720    -476     523 -11.892531
+## [20,]      3   -624    -17    145 -40513298256  -1240   -485   -221   -677      87   -1560    -728    -720    -476     523 -11.614054
+## [21,]      3   -624    -17    145 -40513298256  -1240   -485   -221   -677      87   -1560    -728    -720    -476     523 -11.955403
+## [22,]      3   -624    -17    145 -40513298256  -1240   -485   -221   -677      87   -1560    -728    -720    -476     523 -11.883934
+## [23,]      3   -624    -17    145 -40513298256  -1240   -485   -221   -677      87   -1560    -728    -720    -476     523 -11.169499
+## [24,]      3   -624    -17    145 -40513298256  -1240   -485   -221   -677
+
+
+
+## demo of using HMC hmc sampler
+
+remove.packages("nimble")
+library(devtools)
+install_github("nimble-dev/nimble", ref = "hmcAD", subdir = "packages/nimble")
+library(nimble)
+nimbleOptions(experimentalEnableDerivs = TRUE)  ## NEED THIS LINE
+
+code <- nimbleCode({
+    sigma ~ dunif(0, 100)
+    a ~ dnorm(0, 1)
+    b ~ dnorm(a, sd = sigma)
+})
+
+constants <- list()
+data <- list(b = 1)
+inits <- list(sigma = 1, a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()   ## -6.943047
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$removeSamplers(c('sigma', 'a'))
+conf$addSampler(c('sigma', 'a'), type = 'HMC')
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+samples <- runMCMC(Cmcmc, 1000)
+
+
+
+## testing inits() model$setInits() handling of un-named list elements
+
+
+library(nimble)
+
+code <- nimbleCode({ a ~ dnorm(0, 1) })
+
+inits <- list(a = 0)   ## inits list has an unnamed element
+inits <- NULL   ## inits list has an unnamed element
+inits <- list()
+inits <- list(0)   ## inits list has an unnamed element
+inits <- list(a = 0, 1)   ## inits list has an unnamed element
+inits <- list(a = 0, b = 11)   ## inits list has an unnamed element
+inits <- list(b = 11, c = 4)   ## inits list has an unnamed element
+
+Rmodel <- nimbleModel(code, inits = inits)
+
+Rmodel$initializeInfo()
+##debug(Rmodel$setInits)
+
+Rmodel$setInits(inits)
+
+Rmodel$a
+UGcars <- read.csv('~/github/courses/stat202/data/UsedCars.csv')
+cars
+
+Power <- c('gas', 'hybrid', 'diesel', 'hybrid', 'hybrid', 'gas', 'hybrid', 'gas', 'diesel', 'diesel', 'diesel', 'hybrid', 'diesel', 'gas', 'diesel', 'hybrid', 'hybrid', 'hybrid', 'gas')
+
+cars$Power <- as.factor(Power)
+
+cars$Type <- as.factor(ifelse(cars$Type, 'foreign', 'domestic'))
+cars$Type
+
+## look at the data:
+library(ggplot2) 
+ggplot(cars, aes(x = Price, y = Power, color = Type)) + geom_point(size = 3) 
+
+## multiple regression with (categorical) Power variable
+m <- lm(Price ~ Power + Type, data = cars)    # DELETE THIS, DO IT IN CLASS
+summary(m)                                    # DELETE THIS, DO IT IN CLASS
+
+## ANOVA
+anova(m)                                      # DELETE THIS, DO IT IN CLASS
+
+## Important and interesting:
+## if we *only* consider Type (foreign / domestic),
+## then it's highly significant:
+
+ggplot(cars, aes(x = Price, y = Type, color = Type)) + geom_point(size = 3)
+
+m2 <- lm(Price ~ Type, data = cars)
+
+summary(m2)
+
+anova(m2)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ## STAT202 Lecture #23
@@ -14,28 +448,59 @@ cars
 ## 2 = diesel
 ## 3 = hybrid
 
-Power <- c(rep("gas",10), rep("diesel",6), rep("hybrid",3))
+Power <- c(rep("gas",   10),
+           rep("diesel", 6),
+           rep("hybrid", 3))
+
 Power
 
 cars$Power <- as.factor(Power)
 cars
 cars$Power
 
+## let's look at the data:
+library(ggplot2)
+
+ggplot(cars, aes(x = Price, y = Power, color = Power)) + geom_point(size = 3)
+
+
+
 ## multiple regression with (categorical) Power variable
+## fit multiple regression model,
+## price as a function of (categorical) Power variable:
+
 m <- lm(Price ~ Power, data = cars)
+
 summary(m)
 
-## ANOVA
-anova(m)   # DELETE THIS, DO IT IN CLASS
+
+## ANOVA:
+## anova() function
+
+anova(m)
 
 
+## let's look at the data:
+library(ggplot2)
+ggplot(cars, aes(x = Price, y = Power, color = Power)) + geom_point(size = 3)
+
+## try new assignments of Power:
+Power <- c('gas', 'hybrid', 'diesel', 'hybrid', 'hybrid', 'gas', 'hybrid', 'gas', 'diesel', 'diesel', 'diesel', 'hybrid', 'diesel', 'gas', 'diesel', 'hybrid', 'hybrid', 'hybrid', 'gas')
+Power
+
+cars$Power <- as.factor(Power)
+cars
+cars$Power
+
+## refit model, and ANOVA:
+m <- lm(Price ~ Power, data = cars)
+summary(m)
+anova(m)
 
 
 
 ## STAT360 Lecture #23
 ## Bayesian Inference
-
-theta_true <- 0.8
 
 set.seed(0)
 
@@ -82,6 +547,7 @@ rbind((a1 + y) / (a1 + b1 + n),
       (a3 + y) / (a3 + b3 + n)), 2)
 
 ## posterior CIs (credible intervals):
+## equal-tailed BCIs
 round(
 rbind(qbeta(c(0.025, 0.975), a1+y, b1+n-y),
       qbeta(c(0.025, 0.975), a2+y, b2+n-y),
@@ -95,6 +561,13 @@ round(phat, 2)
 se <- sqrt(phat*(1-phat)/n)
 round(se, 2)
 round(phat + c(-1,1) * 1.96 * se, 2)
+
+a <- a1+y
+b <- b1+n-y
+
+v <- a*b / ((a+b)^2 * (a+b+1))
+sqrt(v)
+se
 
 theta_true 
 
@@ -3134,6 +3607,9 @@ remove.packages("nimble")
 library(devtools)
 install_github("nimble-dev/nimble", ref = "hmcAD", subdir = "packages/nimble")
 library(nimble)
+
+
+
 
 
 
