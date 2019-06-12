@@ -14,7 +14,9 @@ Rmodel$calculate()
 
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
+conf$printSamplers(byType = TRUE)
 conf$printMonitors()
+
 Rmcmc <- buildMCMC(conf)
 
 compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))

@@ -1,6 +1,113 @@
 
 
 
+
+## fixing HK's model initialization error, sent to the nimble-users email list.
+
+
+setwd('~/Downloads')
+
+library(nimble)
+
+dat <- read.csv("3He3Hedat.csv")
+
+re <- as.numeric(dat$lab) # Change the label to a numeric vector
+## Note that the numbers are assigned by "sorting" the labels in alphabetical order
+
+Nre <- length(unique(dat$lab))
+## Unique removes duplicated vector, we want to know how many groups of 
+## data are there
+
+N <- nrow(dat) # Total No of data sets
+obsy <- dat$S    # Response variable in MeV
+obsx <-  dat$E   # Predictors
+erry <- dat$Stat # Error in MeV
+set <- dat$lab # Get the labels as a vector
+
+## Inputting the quoted systematic uncertainty:
+syst = c(log(1.057),log(1.082),log(1.037),log(1.045),log(1.038))
+                                        ## In accordance to 
+                                        ## 1 Bon99 5.7%
+                                        ## 2 Daw71 8.2%
+                                        ## 3 Jun98 3.7%
+                                        ## 4 Kra87 4.5%
+                                        ## 5 Kud04 3.8%
+
+samplerCode <-  nimbleCode({
+    for (i in 1:N) {
+        mut[i] <- (exp(2.429819509 * i.screen * (obsx[i]^(-1.5)))) * (alpha + beta * obsx[i] + gamma * (obsx[i]^2))
+        yt[i] <- y.norm[re[i]]*mut[i]
+        ## Temp mean (mut) multiplied by normalising constant, 
+        ya[i] ~ dnorm(yt[i],sd = y.scat[re[i]])
+        ## re[i] refers to the index that we would use to refer to the category
+        obsy[i] ~ dnorm(ya[i], sd = erry[i])
+        ## Propagating the errors in observations of y
+    }
+    ## PRIORS  
+    ## polynomial parameters
+    alpha ~ T(dnorm(0.0,sd=100),0,Inf)
+    ## Note the difference in how we truncate the distributions
+    beta ~ dnorm(0.0,sd=100)
+    gamma ~ dnorm(0.0,sd=100)
+    i.screen ~ T(dnorm(0.0,sd=100),0,Inf)  
+    ## Some sort of hyperprior for the "grand mean"
+    mt ~ T(dnorm(0.0,sd=5),0,Inf)
+    for (k in 1:Nre){
+        ## Systematic Uncertainty as a highly informative prior
+        y.norm[k] ~ dlnorm(0,sd = syst[k])       ## DT: changed log(1.0) to 0
+        y.scat[k] ~ T(dnorm(mt,sd=100),0,Inf)
+    }
+})
+
+samplerData <- list(obsy = obsy)    # Response variable
+
+samplerConst <- list(N = N, # Sample size
+                     Nre = Nre, 
+                     re = re, # This is used to "iterate")
+                     erry = erry,
+                     syst = syst,
+                     obsx = obsx     # Predictors   ## DT: moved predictor/covariate obsx to "constants",
+                                                    ## more appropriate than "data", although if you plan
+                                                    ## on ever changing the values of obsx, then move it back to "data"
+                     )
+
+samplerInits <- list(alpha = 1, 
+                     beta = -1, 
+                     gamma = 1, 
+                     i.screen = 1e-6,
+                     mt = 1,                  ## DT: initial value added
+                     ya = rep(1, N),          ## DT: initial value added
+                     y.norm = rep(1, Nre),    ## DT: initial value added
+                     y.scat = rep(1, Nre)     ## DT: initial value added
+                     )
+
+ourmodel <- nimbleModel(samplerCode, samplerConst, samplerData, samplerInits)
+
+Rmodel <- ourmodel
+
+Rmodel$calculate()     ## DT: -34550.91  good, a real number.  model is now fully initialized
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers(byType = TRUE)
+conf$printMonitors()
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+library(basicMCMCplots)
+samplesPlot(samples, c('alpha', 'beta', 'gamma'))
+samplesPlot(samples, 'y.norm')
+
+samplesSummary(samples)
+
+
+
+
+
 ## quick demo for Richard Bischoff, regarding how to clear out the mvSamples
 ## MCMC samples from R memory, then continue the same MCMC run
 
