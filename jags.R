@@ -21,12 +21,14 @@ sds
 ## alternate, using jagsUI::jags
 library(jagsUI)
 set.seed(0)
-out <- jags(model.file = modelfile,
-     data = constsAndData,
-     inits = list(inits),   ## a list, of length = n.chains
-     parameters.to.save = params,
-     n.iter = niter,
-     n.chains = 1,
-     n.burnin = 0,
-     n.thin = 1)
+out <- jags(
+    model.file = modelfile,
+    data = constsAndData,
+    inits = list(inits),   ## a list, of length = n.chains
+    parameters.to.save = params,
+    n.iter = niter,
+    n.chains = 1,
+    n.burnin = 0,
+    n.thin = 1)
+print(out, dig = 3)
 ## out$sims.list is a *named list* of samples for each parameter
