@@ -6,7 +6,7 @@ output: html_document
 ---
 
 <!---
-danielturek.github.io/public/folder/fileName.html
+danielturek.github.io/public/folder/fileName
 [TEXT](URL)
 <a href="URL_GOES_HERE" target="_blank">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>
 ![](IMAGE.png)
