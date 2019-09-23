@@ -1,5 +1,627 @@
 
 
+## making table rows for SCR paper
+
+## for Wolverine example
+df <- as.data.frame(dfRepAvg)
+head(df)
+dim(df)
+df
+for(e in 1:4) {
+    start <- 3*(e-1)
+    for(i in 1:3) {
+        row <- start + i
+        if(i == 1) cat(as.character(df[row,1]), '& ')
+        val <- df[row,3]
+        if(i == 1)  rnd <- 6
+        if(i == 2)  rnd <- 6
+        if(i == 3)  rnd <- 6
+        cat(round(val,rnd))
+        if(i < 3) cat(' & ')
+        if(i == 3) cat(' \\\\\n')
+    }
+}
+
+## for Voles example
+df <- as.data.frame(dfRepAvg)
+head(df)
+dim(df)
+df
+for(e in 1:4) {
+    start <- 11*(e-1)
+    for(i in 1:11) {
+        row <- start + i
+        if(i == 1) cat(as.character(df[row,1]), '& ')
+        val <- df[row,3]
+        if(i == 1)  rnd <- 2
+        if(i == 2)  rnd <- 2
+        if(i == 3)  rnd <- 2
+        if(i == 4)  rnd <- 3
+        if(i == 5)  rnd <- 3
+        if(i == 6)  rnd <- 2
+        if(i == 7)  rnd <- 2
+        if(i == 8)  rnd <- 3
+        if(i == 9)  rnd <- 3
+        if(i == 10) rnd <- 3
+        if(i == 11) rnd <- 3
+        cat(round(val,rnd))
+        if(i < 11) cat(' & ')
+        if(i == 11) cat(' \\\\\n')
+    }
+}
+
+
+## loading models, to find number of nodes, for SCR paper models
+
+model <- 'SCR1'
+model <- 'SCR2'
+model <- 'SCR4'
+model <- 'SCR6'
+
+modelToLoad <- if(model == 'jags') 'orig' else model
+filename <- paste0('data/modelInfo_',
+                   modelToLoad,
+                   if(makeDatasetLarger) paste0('_i',timesMoreIndividuals,'_t',timesMoreTraps^2) else "",
+                   ifelse(reduced, '_reduced', ''),
+                   '.RData')
+if(!filename %in% list.files(recursive = TRUE)) stop(paste0('could not find file: ', filename))
+load(filename)
+Rmodel <- nimbleModel(modelInfo$code, modelInfo$constants, modelInfo$data, modelInfo$inits)
+Rmodel$calculate()
+
+length(Rmodel$getNodeNames())
+length(Rmodel$getNodeNames(stochOnly = TRUE, includeData = FALSE))
+
+
+## trying to build the Rmd vignette for nimbleEcology package
+
+setwd('~/github/nimble/nimbleEcology/vignettes/')
+library(knitr)
+knit('Introduction_to_nimbleEcology.Rmd')
+knit('Introduction_to_nimbleEcology.md')
+
+
+
+## making a general solution for
+## "saving MCMC state" variables of the samplers,
+## for Cyril
+
+library(nimble)
+
+
+checkModels <- function(model, model2) {
+    modelVarNames <- model$getVarNames()
+    for(v in modelVarNames) {
+        if(!all(model[[v]] == model2[[v]])) return(FALSE)
+    }
+    return(TRUE)
+}
+
+checkMCMCs <- function(conf, mcmc, conf2, mcmc2) {
+    mcmcState <- getMCMCstate(conf, mcmc)
+    mcmcState2 <- getMCMCstate(conf2, mcmc2)
+    return(identical(mcmcState, mcmcState2))
+}
+
+
+
+
+
+moreItsRan <- 0
+while(all(c(checkModels(model, model2), checkMCMCs(conf, mcmc, conf2, mcmc2)))) {
+    set.seed(1)
+    mcmc$run(1, reset = FALSE)
+    set.seed(1)
+    mcmc2$run(1, reset = FALSE)
+    moreItsRan <- moreItsRan + 1
+    print('==================================================================')
+    print(paste0('RAN ITERATION', moreItsRan))
+    print('==================================================================')
+}
+
+
+c(checkModels(model, model2), checkMCMCs(conf, mcmc, conf2, mcmc2))
+
+
+valueInCompiledNimbleFunction(mcmc$samplerFunctions[[6]],  'timesRan')
+valueInCompiledNimbleFunction(mcmc2$samplerFunctions[[6]], 'timesRan')
+
+valueInCompiledNimbleFunction(mcmc$samplerFunctions[[6]],  'empirSamp')
+valueInCompiledNimbleFunction(mcmc2$samplerFunctions[[6]], 'empirSamp')
+
+valueInCompiledNimbleFunction(mcmc$samplerFunctions[[7]],  'empirSamp')
+valueInCompiledNimbleFunction(mcmc2$samplerFunctions[[7]], 'empirSamp')
+
+
+
+## restart R here !
+
+
+## load model and mcmc state lists:
+stateFilename <- '~/temp/state.rds'
+stateLists <- readRDS(stateFilename)
+modelState <- stateLists[['modelState']]
+mcmcState <- stateLists[['mcmcState']]
+
+
+
+set.seed(1)
+mcmc$run(200, reset = FALSE)
+vars500 <- c(model$x, model$b, model$c, model$p)
+##saveRDS(vars500, '~/temp/vars500.rds')
+vars500_saved <- readRDS('~/temp/vars500.rds')
+if(!all(round(vars500 - vars500_saved, 10) == 0)) stop()
+
+
+
+
+
+
+
+
+
+## request for Perry
+
+## how to do the same thing with Cmcmc ??
+## that is, extract the value of the 'gamma1' state variable, from the nested
+## nimbleFunction 'my_calcAdaptationFactor' that's within the first (RW_block)
+## sampler?
+
+library(nimble)
+
+code <- nimbleCode({
+    x[1] ~ dnorm(0, 1)
+    x[2] ~ dnorm(0, 1)
+})
+
+Rmodel <- nimbleModel(code)
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('x[1:2]', 'RW_block')
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Rmcmc$samplerFunctions$contentsList[[1]]$my_calcAdaptationFactor$gamma1
+
+Rmcmc$samplerFunctions$contentsList[[1]]
+Rmcmc$samplerFunctions$contentsList[[1]]$my_calcAdaptationFactor
+Rmcmc$samplerFunctions$contentsList[[1]]$my_calcAdaptationFactor$.CobjectInterface
+
+model <- if(is.Cnf(mcmc)) mcmc$Robject$model$CobjectInterface else mcmc$model
+
+identical(Cmcmc$Robject, Rmcmc)
+
+## his answer:
+valueInCompiledNimbleFunction(Rmcmc$samplerFunctions$contentsList[[1]]$my_calcAdaptationFactor$.CobjectInterface, 'gamma1')
+valueInCompiledNimbleFunction(Cmcmc$Robject$samplerFunctions$contentsList[[1]]$my_calcAdaptationFactor$.CobjectInterface, 'gamma1')
+
+
+
+
+
+
+## trying Perry's problem about default (length) parameters to
+## custom distributions
+
+library(nimble)
+
+## Occupancy distribution with scalar detection prob (not time-varying)
+dOcc_s <- nimbleFunction(
+    run = function(x = double(1),
+        probOcc = double(0),
+        probDetect = double(0),
+        len = integer(0, default = 0),
+        log = logical(0, default = 0)) {
+        if (len != 0) if (len != length(x)) stop("Argument 'len' must match length of data, or be 0.")
+        returnType(double(0))
+        logProb_x_given_occupied <- sum(dbinom(x, prob = probDetect, size = 1, log = TRUE))
+        prob_x_given_unoccupied <- sum(x) == 0
+        prob_x <- exp(logProb_x_given_occupied) * probOcc + prob_x_given_unoccupied * (1 - probOcc)
+        if (log) return(log(prob_x))
+        return(prob_x)
+    }
+)
+
+## We need the len argument for the r function only, else it has no way to know how long the return object should be.
+rOcc_s <- nimbleFunction(
+    run = function(n = integer(),
+        probOcc = double(0),
+        probDetect = double(0),
+        len = integer(0, default = 0)) {
+        if (len == 0) stop("Argument 'len' must be given for rOcc_s (or if a nimble model with dOcc_s is used for simulation).")
+        returnType(double(1))
+        u <- runif(1, 0, 1)
+        if (u > probOcc) return(numeric(0, length = len))
+        return(rbinom(len, prob = probDetect, size = 1))
+    }
+)
+
+## We desire to avoid requiring len if it won't be used, i.e. in MCMC only the d function is used and that doesn't need len.
+registerDistributions(list(
+    dOcc_s = list(
+        BUGSdist = "dOcc_s(probOcc, probDetect, len)",
+        Rdist = c("dOcc_s(probOcc, probDetect, len)",
+                  "dOcc_s(probOcc, probDetect, len = )"),
+        discrete = TRUE,
+        types = c('value = double(1)', 'probOcc = double(0)', 'probDetect = double(0)', 'len = integer(0)'),
+        pqAvail = FALSE)))
+
+
+
+
+## like here, where AFAIC see I have to include len.
+occupancy_code_new <- nimbleCode({
+    psi ~ dunif(0,1)
+    p ~ dunif (0,1)
+    for(i in 1:nSites) {
+        y[i, 1:nVisits] ~ dOcc_s(probOcc = psi, probDetect = p, len = nVisits)
+    }
+})
+
+## Example to use this model (a bit roundabout b/c of what I was writing):
+## Make a traditional model to use for simulation
+occupancy_code <- nimbleCode({
+    psi ~ dunif(0,1)
+    p ~ dunif (0,1)
+    for(i in 1:nSites) {
+        z[i] ~ dbern(psi)
+        for(j in 1:nVisits) {
+            y[i, j] ~ dbern(z[i] * p)
+        }
+    }
+})
+
+occupancy_model <- nimbleModel(occupancy_code,
+                               constants = list(nSites = 50, nVisits = 5))
+
+occupancy_model$psi <- 0.7
+occupancy_model$p <- 0.15
+simNodes <- occupancy_model$getDependencies(c("psi", "p"), self = FALSE)
+occupancy_model$simulate(simNodes)
+occupancy_model$z
+head(occupancy_model$y, 10) ## first 10 rows
+occupancy_model$setData('y') ##
+
+## Then make our model of interest
+occupancy_model_new <- nimbleModel(occupancy_code_new,
+                                   constants = list(nSites = 50, nVisits = 5),
+                                   data = list(y = occupancy_model$y),
+                                   inits = list(psi = 0.7, p = 0.15))
+
+## I know we've seen things like this before, where we need a "length" argument that is in some cases redundant.  I'm not sure we have a good way to avoid it when it's not needed.
+
+
+## testing whether the 'data' list can be character string names ??
+## answer: no! error!
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list('a')
+inits <- list()
+
+a <- 10
+
+Rmodel <- nimbleModel(code, constants, data, inits)  ## error
+
+
+
+## updates and testing to BayesNSGP package
+
+# Generate some data: stationary/isotropic
+N <- 100
+coords <- matrix(runif(2*N), ncol = 2)
+alpha_vec <- rep(log(sqrt(1)), N) # Log process SD
+delta_vec <- rep(log(sqrt(0.05)), N) # Log nugget SD
+Sigma11_vec <- rep(0.4, N) # Kernel matrix element 1,1
+Sigma22_vec <- rep(0.4, N) # Kernel matrix element 2,2
+Sigma12_vec <- rep(0, N) # Kernel matrix element 1,2
+mu_vec <- rep(0, N) # Mean
+nu <- 0.5 # Smoothness
+dist_list <- nsDist(coords)
+Cor_mat <- nsCorr( dist1_sq = dist_list$dist1_sq, dist2_sq = dist_list$dist2_sq, 
+                   dist12 = dist_list$dist12, Sigma11 = Sigma11_vec, 
+                   Sigma22 = Sigma22_vec, Sigma12 = Sigma12_vec, nu = nu )
+Cov_mat <- diag(exp(alpha_vec)) %*% Cor_mat %*% diag(exp(alpha_vec))
+D_mat <- diag(exp(delta_vec)^2) 
+set.seed(110)
+z <- as.numeric(mu_vec + t(chol(Cov_mat + D_mat)) %*% rnorm(N))
+# Set up constants
+constants <- list( nu = 0.5, Sigma_HP1 = 2 )
+# Defaults: tau_model = "constant", sigma_model = "constant", mu_model = "constant",
+# and Sigma_model = "constant"
+Rmodel <- nsgpModel(likelihood = "fullGP", constants = constants, coords = coords, z = z )
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+samples <- runMCMC(Cmcmc, niter = 200, nburnin = 100)
+# Prediction
+predCoords <- as.matrix(expand.grid(seq(0,1,l=10),seq(0,1,l=10)))
+postpred <- nsgpPredict( model = Rmodel, samples = samples, coords.predict = predCoords )
+
+
+
+
+
+NOTES for BayesNSGP package resubmission
+Wrote package and software names in single quotes in title and description fields of DESCRIPTION file.
+Provided reference to the main method in the description field of DESSCRIPTION file.
+Instance of \dontrun was replaced by \donttest, since examples of this function will require >5 seconds to execute.    
+Replaced instances of cat() with message().
+
+
+
+## trying new printSamplers() method for crossLevel sampler
+## on example: litters
+
+library(nimble)
+
+littersCode <- nimbleCode({
+  for (i in 1:G) {
+    for (j in 1:N) {
+      r[i,j] ~ dbin(p[i,j], n[i,j])
+      p[i,j] ~ dbeta(a[i], b[i]) 
+    }
+    a[i] ~ dgamma(1, .001)
+    b[i] ~ dgamma(1, .001)
+  }
+})
+##
+G <- 2
+N <- 16
+n <- matrix(c(13, 12, 12, 11, 9, 10, 
+              9, 9, 8, 11, 8, 10, 13, 10, 12, 9, 10, 9, 10, 5, 9, 9, 13, 
+              7, 5, 10, 7, 6, 10, 10, 10, 7), nrow = 2)
+r <- matrix(c(13, 12, 12, 11, 9, 10, 9, 9, 8, 10, 8, 9, 
+              12, 9, 11, 8, 9, 8, 9, 4, 8, 7, 11, 4, 4, 5, 5, 3, 7, 3, 7, 0), 
+            nrow = 2)
+##
+littersConsts <- list(G = G, N = N, n = n)
+littersData <- list(r = r)
+littersInits <- list( a = c(2, 2), b=c(2, 2) )
+##
+Rmodel <- nimbleModel(littersCode,
+                      littersConsts,
+                      littersData,
+                      littersInits)
+##
+conf <- configureMCMC(Rmodel)
+
+conf$printSamplers()
+
+conf$addSampler(target = 'p', type = 'RW', scalarComponents = TRUE)
+conf$addSampler(target = 'a', type = 'slice', scalarComponents = TRUE)
+
+conf$addSampler(type = 'crossLevel', target = c('a[1]')) 
+conf$addSampler(type = 'crossLevel', target = c('a[1]', 'b[1]')) 
+conf$addSampler(type = 'crossLevel', target = c('a', 'b')) 
+
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+
+## compareMCMCs installation from GitHub
+
+
+library(nimble)
+library(devtools)
+
+
+install_github('nimble-dev/compareMCMCs', subdir = 'compareMCMCs')
+
+
+
+littersCode <- nimbleCode({
+  for (i in 1:G) {
+    for (j in 1:N) {
+      r[i,j] ~ dbin(p[i,j], n[i,j])
+      p[i,j] ~ dbeta(a[i], b[i]) 
+    }
+    a[i] ~ dgamma(1, .001)
+    b[i] ~ dgamma(1, .001)
+  }
+})
+
+G <- 2
+N <- 16
+n <- matrix(c(13, 12, 12, 11, 9, 10, 
+              9, 9, 8, 11, 8, 10, 13, 10, 12, 9, 10, 9, 10, 5, 9, 9, 13, 
+              7, 5, 10, 7, 6, 10, 10, 10, 7), nrow = 2)
+r <- matrix(c(13, 12, 12, 11, 9, 10, 9, 9, 8, 10, 8, 9, 
+              12, 9, 11, 8, 9, 8, 9, 4, 8, 7, 11, 4, 4, 5, 5, 3, 7, 3, 7, 0), 
+            nrow = 2)
+
+littersConsts <- list(G = G, N = N, n = n)
+littersData <- list(r = r)
+littersInits <- list( a = c(2, 2), b=c(2, 2) )
+
+Rmodel <- nimbleModel(littersCode,
+                      littersConsts,
+                      littersData,
+                      littersInits)
+
+
+
+
+
+
+
+
+
+
+
+## Ron Bassar model
+## salmon lab and field metabolic rates
+
+library(nimble)
+
+code <- nimbleCode({
+    ## Prior for beta
+    for(j in 1:4) {
+        beta[j] ~ dnorm(0, 0.0001)
+    }
+    ## Prior for the inverse variance
+    inv.var ~ dgamma(0.01, 0.01)
+    sigma <- 1/sqrt(inv.var)
+    ## Priors for lab smr
+    for (ii in 1:nfam) {
+        alpha.smrcent[ii] ~ dnorm(0, 0.0001)
+    }
+    sigma.int.m ~ dunif(0, 100)   #dgamma(0.01, 0.01)
+    tau.int.m <- 1/(sigma.int.m)
+    ## Likelihood
+    ## lab data
+    for (ii in 1:nlab) {
+        smrcent[ii] ~ dnorm(alpha.smrcent[lab.fam[ii]], tau.int.m)
+    }
+    ## for field data
+    for(i in 1:nfield) {
+        mu[i] <- beta[1] + beta[2]*treat[i] + beta[3]*alpha.smrcent[family[i]] + beta[4]*treat[i]*alpha.smrcent[family[i]] 
+        flowindex[i] ~ dnorm(mu[i], inv.var)
+    }
+})
+
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printSamplers(byType = TRUE)
+conf$printMonitors()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+samplesSummary(samples)
+library(basicMCMCplots)
+samplesPlot(samples)
+apply(samples, 2, effectiveSize)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        returnType()
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
+
+
+
+
+## NIMBLE User List error ... ?
+
+library(nimble)
+
+simple.model <- nimbleModel(code=nimble.fixed.s, constants=constants, data=jags.onestate.data, inits=inits, check = FALSE)
+Rmcmc <- buildMCMC(simple.model)
+Cmodel <- compileNimble(simple.model)
+Cmcmc <- compileNimble(Rmcmc, project = simple.model)
+Cmcmc$run(10000)
+samples <- as.matrix(Cmcmc$mvSamples)
+
+However if I run this code 
+ms<-nimbleMCMC(simple.model, data = jags.onestate.data, inits = inits,
+               monitors = c("pd_a", "psi", "phi"), thin = 10,
+               niter = 10000, nburnin = 5000, nchains = 3,
+               summary = TRUE, WAIC = FALSE)
+
+
+
+
+## for VIBASS3 NIMBLE Workshop in Valencia
+## change all [...](...) links to
+## <a href="URL_GOES_HERE" target="_blank">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>
+
+setwd('~/github/nimble/nimble-vibass-2019')
+filenames <- c(list.files(pattern = '*\\.Rmd'),
+               list.files(path = 'modules', pattern = '*\\.Rmd', full.names = TRUE))
+filesnamesModified <- character()
+
+##f <- filenames[4]
+##lines[linesToModify[3]]
+##linesModified[linesToModify[3]]
+
+for(f in filenames) {
+    message('================================================')
+    message('processing file: ', f)
+    message('------------------------------------------------')
+    lines <- readLines(f)
+    linesToModify <- grep('\\[.+?\\]\\(.+?\\)', lines)
+    if(length(linesToModify) > 0) {
+        filesnamesModified <- c(filesnamesModified, f)
+    }
+    linesModified <- gsub('\\[(.+?)\\]\\((.+?)\\)', '<a href="\\2" target="_blank" style="color: blue">\\1</a>', lines)
+    for(ind in linesToModify) {
+        message(lines[ind])
+        message(linesModified[ind])
+        message('------------------------------------------------')
+    }
+    writeLines(linesModified, con = f)
+    message('================================================')
+}
+
+filenames
+filesnamesModified
+
+## now, run shell command
+## ./make_slides, for the filenames that were modified:
+for(f in filesnamesModified) {
+    message('================================================')
+    message('building slides for file: ', f)
+    out <- system2(command = './make_slides', args = f, stdout = TRUE, stderr = TRUE)
+    message(paste0(out, collapse = '\n'))
+    message('================================================')
+}
+
+## open the modified files:
+for(f in filesnamesModified) {
+    system2('open', args = gsub('\\.Rmd$', '_slides.html', f))
+}
 
 
 ## fixing HK's model initialization error, sent to the nimble-users email list.
@@ -2929,9 +3551,10 @@ mean(temps) + c(-1, 1) * 1.96 * se
 
 
 
-library(nimble)
 
 ## do unit testing of cc_checkLinearity too
+
+library(nimble)
 
 code <- nimbleCode({
     for(i in 1:n) 
@@ -2939,11 +3562,15 @@ code <- nimbleCode({
     for(i in 1:p) 
         beta[i] ~ dnorm(0, 1)
     b0 ~ dnorm(0, 1)
+    xx ~ dbeta(1, 1)
+    yy ~ dbern(xx)
 })
+
 constants <- list(n = 5, p = 3)
 data <- list(y = rnorm(constants$n),
-             X = matrix(rnorm(constants$n * constants$p), constants$n))
-inits <- list(b0 = 1, beta = rnorm(constants$p))
+             X = matrix(rnorm(constants$n * constants$p), constants$n),
+             yy = 1)
+inits <- list(b0 = 1, beta = rnorm(constants$p), xx = 0.5)
 
 m <- nimbleModel(code, data = data, constants = constants)
 
@@ -2951,8 +3578,84 @@ conf <- configureMCMC(m)
 
 conf$printSamplers()
 
+conf$getSamplerDefinition(1)
+
 expect_identical(conf$getSamplers()[[1]]$name, 'conjugate_dnorm_dnorm',
                  info = "conjugacy with inprod not detected")
+
+conf$getSamplerDefinition(5)
+
+
+
+$setup
+function (model, mvSaved, target, control) {
+    calcNodes <- model$getDependencies(target)
+    calcNodesDeterm <- model$getDependencies(target, determOnly = TRUE)
+    dep_dnorm_nodeNames <- control$dep_dnorm
+    N_dep_dnorm <- length(control$dep_dnorm)
+    dep_dnorm_values <- array(0, dim = N_dep_dnorm)
+    dep_dnorm_tau <- array(0, dim = N_dep_dnorm)
+    dep_dnorm_offset <- array(0, dim = N_dep_dnorm)
+    dep_dnorm_coeff <- array(0, dim = N_dep_dnorm)
+    contribution_mean <- 0
+    contribution_tau <- 0
+}
+
+$run
+function () {
+    prior_mean <- model$getParam(target[1], "mean")
+    prior_tau <- model$getParam(target[1], "tau")
+    for (iDep in 1:N_dep_dnorm) {
+        dep_dnorm_values[iDep] <<- model$getParam(dep_dnorm_nodeNames[iDep], "value")
+        dep_dnorm_tau[iDep] <<- model$getParam(dep_dnorm_nodeNames[iDep], "tau")
+    }
+    model[[target]] <<- 0
+    model$calculate(calcNodesDeterm)
+    for (iDep in 1:N_dep_dnorm) dep_dnorm_offset[iDep] <<- model$getParam(dep_dnorm_nodeNames[iDep], "mean")
+    model[[target]] <<- 1
+    model$calculate(calcNodesDeterm)
+    for (iDep in 1:N_dep_dnorm) dep_dnorm_coeff[iDep] <<- model$getParam(dep_dnorm_nodeNames[iDep], "mean") - dep_dnorm_offset[iDep]
+    contribution_mean <<- 0
+    contribution_tau <<- 0
+    for (iDep in 1:N_dep_dnorm) {
+        contribution_mean <<- contribution_mean + dep_dnorm_coeff[iDep] * (dep_dnorm_values[iDep] - dep_dnorm_offset[iDep]) * dep_dnorm_tau[iDep]
+        contribution_tau <<- contribution_tau + dep_dnorm_coeff[iDep]^2 * dep_dnorm_tau[iDep]
+    }
+    newValue <- rnorm(1, mean = (prior_mean * prior_tau + contribution_mean)/(prior_tau + contribution_tau), sd = (prior_tau + contribution_tau)^(-0.5))
+    model[[target]] <<- newValue
+    calculate(model, calcNodes)
+    nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+}
+
+$getPosteriorLogDensity
+function () {
+    prior_mean <- model$getParam(target[1], "mean")
+    prior_tau <- model$getParam(target[1], "tau")
+    for (iDep in 1:N_dep_dnorm) {
+        dep_dnorm_values[iDep] <<- model$getParam(dep_dnorm_nodeNames[iDep], "value")
+        dep_dnorm_tau[iDep] <<- model$getParam(dep_dnorm_nodeNames[iDep], "tau")
+    }
+    model[[target]] <<- 0
+    model$calculate(calcNodesDeterm)
+    for (iDep in 1:N_dep_dnorm) dep_dnorm_offset[iDep] <<- model$getParam(dep_dnorm_nodeNames[iDep], "mean")
+    model[[target]] <<- 1
+    model$calculate(calcNodesDeterm)
+    for (iDep in 1:N_dep_dnorm) dep_dnorm_coeff[iDep] <<- model$getParam(dep_dnorm_nodeNames[iDep], "mean") - dep_dnorm_offset[iDep]
+    contribution_mean <<- 0
+    contribution_tau <<- 0
+    for (iDep in 1:N_dep_dnorm) {
+        contribution_mean <<- contribution_mean + dep_dnorm_coeff[iDep] * (dep_dnorm_values[iDep] - dep_dnorm_offset[iDep]) * dep_dnorm_tau[iDep]
+        contribution_tau <<- contribution_tau + dep_dnorm_coeff[iDep]^2 * dep_dnorm_tau[iDep]
+    }
+    targetValue <- model[[target]]
+    posteriorLogDensity <- dnorm(targetValue, mean = (prior_mean * prior_tau + contribution_mean)/(prior_tau + contribution_tau), sd = (prior_tau + contribution_tau)^(-0.5), log = 1)
+    returnType(double())
+    return(posteriorLogDensity)
+}
+
+
+
+
 
 ## compare to conjugate sampler using summed contributions
 mcmc <- buildMCMC(conf)
