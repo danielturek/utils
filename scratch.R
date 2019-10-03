@@ -1,8 +1,1051 @@
 
 
+
+
+
+1
+library(nimble)
+library(testthat)
+nimbleOptions(experimentalEnableDerivs = TRUE)
+
+sampler_HMC2 <- nimbleFunction(
+    name = 'sampler_HMC2',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        printTimesRan  <- if(!is.null(control$printTimesRan))  control$printTimesRan  else FALSE
+        printGradient  <- if(!is.null(control$printGradient))  control$printGradient  else FALSE
+        printEpsilon   <- if(!is.null(control$printEpsilon))   control$printEpsilon   else FALSE
+        printJ         <- if(!is.null(control$printJ))         control$printJ         else FALSE
+        messages       <- if(!is.null(control$messages))       control$messages       else TRUE
+        warnings       <- if(!is.null(control$warnings))       control$warnings       else 5
+        initialEpsilon <- if(!is.null(control$initialEpsilon)) control$initialEpsilon else 0
+        gamma          <- if(!is.null(control$gamma))          control$gamma          else 0.05
+        t0             <- if(!is.null(control$t0))             control$t0             else 10
+        kappa          <- if(!is.null(control$kappa))          control$kappa          else 0.75
+        delta          <- if(!is.null(control$delta))          control$delta          else 0.65
+        deltaMax       <- if(!is.null(control$deltaMax))       control$deltaMax       else 1000
+        maxAdaptIter   <- if(!is.null(control$maxAdaptIter))   control$maxAdaptIter   else 1000
+        maxTreeDepth   <- if(!is.null(control$maxTreeDepth))   control$maxTreeDepth   else 10
+        ## node list generation, and processing of bounds and transformations
+        targetNodes <- model$expandNodeNames(target)
+        if(length(targetNodes) <= 0) stop('HMC sampler must operate on at least one node', call. = FALSE)
+        calcNodes <- model$getDependencies(targetNodes)
+        originalTargetAsScalars <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        targetNodesAsScalars <- model$expandNodeNames(targetNodes, returnScalarComponents = TRUE)
+        IND_ID   <- 1   ## transformation ID: 1=identity, 2=log, 3=logit
+        IND_LB   <- 2   ## interval-bounded parameters: lower-bound
+        IND_RNG  <- 3   ## interval-bounded parameters: range
+        IND_LRNG <- 4   ## interval-bounded parameters: log(range)
+        maxInd <- max(sapply(grep('^IND_', ls(), value = TRUE), function(x) eval(as.name(x))))
+        d <- length(targetNodesAsScalars)
+        d2 <- max(d, 2) ## for pre-allocating vectors
+        transformInfo <- array(0, c(d, maxInd))
+        logTransformNodes   <- character()
+        logitTransformNodes <- character()
+        for(i in 1:d) {
+            node <- targetNodesAsScalars[i]
+            if(model$isDeterm(node))      stop(paste0('HMC sampler doesn\'t operate on deterministic nodes: ', node), call. = FALSE)
+            if(model$isDiscrete(node))    stop(paste0('HMC sampler doesn\'t operate on discrete nodes: ', node), call. = FALSE)
+            dist <- model$getDistribution(node)
+            bounds <- c(model$getBound(node, 'lower'), model$getBound(node, 'upper'))
+            if(!model$isMultivariate(node)) {   ## univariate node
+                if(bounds[1] == -Inf & bounds[2] == Inf) {             ## 1 = identity, support = (-Inf, Inf)
+                    transformInfo[i, IND_ID] <- 1
+                } else if(bounds[1] == 0 & bounds[2] == Inf) {         ## 2 = log, support = (0, Inf)
+                    logTransformNodes <- c(logTransformNodes, node)
+                    transformInfo[i, IND_ID] <- 2
+                } else if(isValid(bounds[1]) & isValid(bounds[2])) {   ## 3 = logit, support = (a, b)
+                    if(dist == 'dunif') {   ## uniform distribution
+                        lowerBdExpr <- cc_expandDetermNodesInExpr(model, model$getParamExpr(node, 'min'))
+                        upperBdExpr <- cc_expandDetermNodesInExpr(model, model$getParamExpr(node, 'max'))
+                        if(length(all.vars(lowerBdExpr)) > 0) stop('Node ', node, ' appears to have a non-constant lower bound.  HMC sampler does not yet handle that, please contant the NIMBLE development team.', call. = FALSE)
+                        if(length(all.vars(upperBdExpr)) > 0) stop('Node ', node, ' appears to have a non-constant upper bound.  HMC sampler does not yet handle that, please contant the NIMBLE development team.', call. = FALSE)
+                    } else {   ## some other distribution with finite support
+                        message('HMC sampler is not familiar with the ', dist, ' distribution of node ', node, '.')
+                        message('We\'re going to use a logit-transformation for sampling this node, but')
+                        message('this requires the upper and lower bounds of the ', dist, ' distribution are *constant*.')
+                        message('If you\'re uncertain about this, please get in touch with the NIMBLE development team.')
+                    }
+                    logitTransformNodes <- c(logitTransformNodes, node)
+                    transformInfo[i, IND_ID] <- 3
+                    transformInfo[i, IND_LB] <- bounds[1]
+                    range <- bounds[2] - bounds[1]
+                    if(range <= 0) stop(paste0('HMC sampler doesn\'t have a transformation for the bounds of node: ', node), call. = FALSE)
+                    transformInfo[i, IND_RNG]  <- range
+                    transformInfo[i, IND_LRNG] <- log(range)
+                } else stop(paste0('HMC sampler doesn\'t have a transformation for the bounds of node: ', node, ', which are (', bounds[1], ', ', bounds[2], ')'), call. = FALSE)
+            } else {                            ## multivariate node
+                if(!(node %in% originalTargetAsScalars)) stop(paste0('HMC sampler only operates on complete multivariate nodes. Must specify full node: ', model$expandNodeNames(node), ', or none of it'), call. = FALSE)
+                if(dist %in% c('dmnorm', 'dmvt')) {
+                    message('HMC sampler is waiting for derivatives of dmnorm() to be implemented.')  ## waiting for dmnorm() derivatives
+                    message('otherwise, HMC sampler already works on dmnorm nodes.')                  ## waiting for dmnorm() derivatives
+                    stop()                                                                            ## waiting for dmnorm() derivatives
+                    transformInfo[i, IND_ID] <- 1                      ## dmnorm: identity
+                } else if(dist %in% c('dwish', 'dinvwish')) {
+                    message('HMC sampler is waiting for derivatives of dwish() to be implemented.')   ## waiting for dwish() derivatives
+                    stop()                                                                            ## waiting for dwish() derivatives
+                    transformInfo[i, IND_ID] <- 5                      ## wishart: log-cholesky
+                    ## NOTE: implementing for dwish() and dinvwish() will require a slightly deeper re-design
+                    ## d <- d + sqrt(len) * (sqrt(len)+1) / 2
+                    ## dmodel <- dmodel + len
+                } else stop(paste0('HMC sampler yet doesn\'t handle \'', dist, '\' distributions.'), call. = FALSE)   ## Dirichlet ?
+            }
+        }
+        if(messages && length(logTransformNodes)   > 0) message('HMC sampler is using a log-transformation for: ',   paste0(logTransformNodes,   collapse = ', '))
+        if(messages && length(logitTransformNodes) > 0) message('HMC sampler is using a logit-transformation for: ', paste0(logitTransformNodes, collapse = ', '))
+        ## numeric value generation
+        timesRan <- 0;   epsilon <- 0;   mu <- 0;   logEpsilonBar <- 0;   Hbar <- 0
+        q <- numeric(d2);   qL <- numeric(d2);   qR <- numeric(d2);   qDiff <- numeric(d2);   qNew <- numeric(d2)
+        p <- numeric(d2);   pL <- numeric(d2);   pR <- numeric(d2);   p2 <- numeric(d2);      p3 <- numeric(d2)
+        grad <- numeric(d2);   gradFirst <- numeric(d2);   gradSaveL <- numeric(d2);   gradSaveR <- numeric(d2)
+        log2 <- log(2)
+        ## nested function and function list definitions
+        qpNLDef <- nimbleList(q  = double(1), p  = double(1))
+        btNLDef <- nimbleList(q1 = double(1), p1 = double(1), q2 = double(1), p2 = double(1), q3 = double(1), n = double(), s = double(), a = double(), na = double())
+        ## checks
+        if(!nimbleOptions('experimentalEnableDerivs')) stop('must enable NIMBLE derivates, use: nimbleOptions(experimentalEnableDerivs = TRUE)', call. = FALSE)
+        if(initialEpsilon < 0) stop('HMC sampler initialEpsilon must be positive', call. = FALSE)
+    },
+    run = function() {
+        ## No-U-Turm Sampler with Dual Averaging, Algorithm 6 from Hoffman and Gelman (2014)
+        if(timesRan == 0) {
+            if(initialEpsilon == 0) { initializeEpsilon()                 ## no initialEpsilon value was provided
+                                  } else { epsilon <<- initialEpsilon }   ## user provided initialEpsilon
+            mu <<- log(10*epsilon)
+        }
+        timesRan <<- timesRan + 1
+        if(printTimesRan) print('============ times ran = ', timesRan)
+        if(printEpsilon)  print('epsilon = ', epsilon)
+        transformValues()              ## sets value of member data 'q'
+        for(i in 1:d)     p[i] <<- rnorm(1, 0, 1)
+        qpLogH <- logH(q, p)
+        logu <- qpLogH - rexp(1, 1)    ## logu <- lp - rexp(1, 1) => exp(logu) ~ uniform(0, exp(lp))
+        qL <<- q;   qR <<- q;   pL <<- p;   pR <<- p;   j  <- 0;   n <- 1;   s <- 1;   qNew <<- q
+        while(s == 1) {
+            v <- 2*rbinom(1, 1, 0.5) - 1    ## -1 or 1
+            if(v == -1) { btNL <- buildtree(qL, pL, logu, v, j, epsilon, qpLogH, 1)        ## first call: first = 1
+                          qL <<- btNL$q1;   pL <<- btNL$p1
+                      } else { btNL <- buildtree(qR, pR, logu, v, j, epsilon, qpLogH, 1)   ## first call: first = 1
+                               qR <<- btNL$q2;   pR <<- btNL$p2 }
+            if(btNL$s == 1)   if(runif(1) < btNL$n / n)   qNew <<- btNL$q3
+            n <- n + btNL$n
+            qDiff <<- qR - qL
+            ##s <- btNL$s * nimStep(inprod(qDiff, pL)) * nimStep(inprod(qDiff, pR))                      ## this line replaced with the next,
+            if(btNL$s == 0) s <- 0 else s <- nimStep(inprod(qDiff, pL)) * nimStep(inprod(qDiff, pR))     ## which acccounts for NaN's in btNL elements
+            if(j >= maxTreeDepth) s <- 0
+            if(printJ) {   if(j == 0) cat('j = ', j) else cat(', ', j)
+                           cat('(');   if(v==1) cat('R') else cat('L');   cat(')')
+                           if(s != 1) print(' ')   }
+            if(j >= maxTreeDepth) if(warnings > 0) { print('HMC sampler encountered maximum search tree depth of ', maxTreeDepth); warnings <<- warnings - 1 }
+            j <- j + 1
+            checkInterrupt()
+        }
+        values(model, targetNodes) <<- inverseTransformValues(qNew)
+        model$calculate(calcNodes)
+        nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+        if(timesRan <= maxAdaptIter) {
+            Hbar <<- (1 - 1/(timesRan+t0)) * Hbar + 1/(timesRan+t0) * (delta - btNL$a/btNL$na)
+            logEpsilon <- mu - sqrt(timesRan)/gamma * Hbar
+            epsilon <<- exp(logEpsilon)
+            timesRanToNegativeKappa <- timesRan^(-kappa)
+            logEpsilonBar <<- timesRanToNegativeKappa * logEpsilon + (1 - timesRanToNegativeKappa) * logEpsilonBar
+            if(timesRan == maxAdaptIter)   epsilon <<- exp(logEpsilonBar)
+        }
+        if(warnings > 0) if(is.nan(epsilon)) { print('HMC sampler value of epsilon is NaN, with timesRan = ', timesRan); warnings <<- warnings - 1 }
+    },
+    methods = list(
+        transformValues = function() {
+            q <<- values(model, targetNodes)
+            for(i in 1:d) {
+                id <- transformInfo[i, IND_ID]                    ## 1 = identity, 2 = log, 3 = logit
+                if(id == 2) q[i] <<- log(q[i])
+                if(id == 3) q[i] <<- logit( (q[i]-transformInfo[i, IND_LB]) / transformInfo[i, IND_RNG] )
+            }
+        },
+        inverseTransformValues = function(qArg = double(1)) {
+            transformed <- qArg
+            for(i in 1:d) {
+                id <- transformInfo[i, IND_ID]                    ## 1 = identity, 2 = log, 3 = logit
+                if(id == 2) transformed[i] <- exp(qArg[i])
+                if(id == 3) transformed[i] <- transformInfo[i, IND_LB] + transformInfo[i, IND_RNG]*expit(qArg[i])
+            }
+            returnType(double(1));   return(transformed)
+        },
+        logH = function(qArg = double(1), pArg = double(1)) {
+            values(model, targetNodes) <<- inverseTransformValues(qArg)
+            lp <- model$calculate(calcNodes) - sum(pArg^2)/2
+            for(i in 1:d) {
+                id <- transformInfo[i, IND_ID]    ## 1 = identity, 2 = log, 3 = logit
+                if(id == 2) lp <- lp + qArg[i]
+                if(id == 3) lp <- lp + transformInfo[i, IND_LRNG] - log(exp(qArg[i])+exp(-qArg[i])+2)   ## alternate: -2*log(1+exp(-x))-x
+            }
+            returnType(double());   return(lp)
+        },
+        gradient = function(qArg = double(1)) {
+            values(model, targetNodes) <<- inverseTransformValues(qArg)
+            if(printGradient) { gradQ <- array(0, c(1,d)); gradQ[1,1:d] <- values(model, targetNodes); print(gradQ) }
+            derivsOutput <- derivs(model$calculate(calcNodes), order = 1, wrt = targetNodes)
+            grad <<- derivsOutput$jacobian[1, 1:d]
+            for(i in 1:d) {
+                x <- qArg[i];   id <- transformInfo[i, IND_ID]    ## 1 = identity, 2 = log, 3 = logit
+                if(id == 2) grad[i] <<- grad[i]*exp(x) + 1
+                if(id == 3) grad[i] <<- grad[i]*transformInfo[i, IND_RNG]*expit(x)^2*exp(-x) + 2/(1+exp(x)) - 1
+            }
+        },
+        leapfrog = function(qArg = double(1), pArg = double(1), eps = double(), first = double(), v = double()) {
+            ## Algorithm 1 from Hoffman and Gelman (2014)
+            if(first == 1) { gradient(qArg)     ## member data 'grad' is set in gradient() method
+                         } else { if(v ==  1) grad <<- gradSaveR
+                                  if(v == -1) grad <<- gradSaveL
+                                  if(v ==  2) grad <<- gradSaveL }
+            p2 <<- pArg + eps/2 * grad
+            q2 <-  qArg + eps   * p2
+            gradFirst <<- grad
+            gradient(q2)                        ## member data 'grad' is set in gradient() method
+            p3 <<- p2   + eps/2 * grad
+            if(first == 1) { if(v ==  1) { gradSaveL <<- gradFirst;   gradSaveR <<- grad }
+                             if(v == -1) { gradSaveR <<- gradFirst;   gradSaveL <<- grad }
+                             if(v ==  2) { gradSaveL <<- gradFirst                       }
+                         } else { if(v ==  1) gradSaveR <<- grad
+                                  if(v == -1) gradSaveL <<- grad }
+            if(warnings > 0) if(is.nan.vec(c(q2, p3))) { print('HMC sampler encountered a NaN value in leapfrog routine, with timesRan = ', timesRan); warnings <<- warnings - 1 }
+            returnType(qpNLDef());   return(qpNLDef$new(q = q2, p = p3))
+        },
+        initializeEpsilon = function() {
+            ## Algorithm 4 from Hoffman and Gelman (2014)
+            savedCalcNodeValues <- values(model, calcNodes)
+            transformValues()                   ## sets value of member data 'q'
+            p <<- numeric(d)                    ## keep, sets 'p' to size d on first iteration
+            for(i in 1:d)     p[i] <<- rnorm(1, 0, 1)
+            epsilon <<- 1
+            qpNL <- leapfrog(q, p, epsilon, 1, 2)            ## v = 2 is a special case for initializeEpsilon routine
+            while(is.nan.vec(qpNL$q) | is.nan.vec(qpNL$p)) {              ## my addition
+                if(warnings > 0) { print('HMC sampler encountered NaN while initializing step-size; recommend better initial values')
+                                   print('reducing initial step-size'); warnings <<- warnings - 1 }
+                epsilon <<- epsilon / 1000                                ## my addition
+                qpNL <- leapfrog(q, p, epsilon, 0, 2)                     ## my addition
+            }                                                             ## my addition
+            qpLogH <- logH(q, p)
+            a <- 2*nimStep(exp(logH(qpNL$q, qpNL$p) - qpLogH) - 0.5) - 1
+            if(is.nan(a)) if(warnings > 0) { print('HMC sampler caught acceptance prob = NaN in initializeEpsilon routine'); warnings <<- warnings - 1 }
+            ## while(a * (logH(qpNL$q, qpNL$p) - qpLogH) > -a * log2) {   ## replaced by simplified expression:
+            while(a * (logH(qpNL$q, qpNL$p) - qpLogH + log2) > 0) {
+                epsilon <<- epsilon * 2^a
+                qpNL <- leapfrog(q, p, epsilon, 0, 2)        ## v = 2 is a special case for initializeEpsilon routine
+            }
+            values(model, calcNodes) <<- savedCalcNodeValues
+        },
+        buildtree = function(qArg = double(1), pArg = double(1), logu = double(), v = double(), j = double(), eps = double(), logH0 = double(), first = double()) {
+            ## Algorithm 6 (second half) from Hoffman and Gelman (2014)
+            returnType(btNLDef())
+            if(j == 0) {    ## one leapfrog step in the direction of v
+                qpNL <- leapfrog(qArg, pArg, v*eps, first, v)
+                q <<- qpNL$q;   p <<- qpNL$p;   qpLogH <- logH(q, p)
+                n <- nimStep(qpLogH - logu)          ## step(x) = 1 iff x >= 0, and zero otherwise
+                s <- nimStep(qpLogH - logu + deltaMax)
+                ## lowering the initial step size, and increasing the target acceptance rate may keep the step size small to avoid divergent paths.
+                if(s == 0) if(warnings > 0) { print('HMC sampler encountered a divergent path on iteration ', timesRan, ', with divergence = ', logu - qpLogH)
+                                              warnings <<- warnings - 1 }
+                a <- min(1, exp(qpLogH - logH0))
+                if(is.nan.vec(q) | is.nan.vec(p)) { n <- 0; s <- 0; a <- 0 }     ## my addition
+                return(btNLDef$new(q1 = q, p1 = p, q2 = q, p2 = p, q3 = q, n = n, s = s, a = a, na = 1))
+            } else {        ## recursively build left and right subtrees
+                btNL1 <- buildtree(qArg, pArg, logu, v, j-1, eps, logH0, 0)
+                if(btNL1$s == 1) {
+                    if(v == -1) { btNL2 <- buildtree(btNL1$q1, btNL1$p1, logu, v, j-1, eps, logH0, 0)   ## recursive calls: first = 0
+                                  btNL1$q1 <- btNL2$q1;   btNL1$p1 <- btNL2$p1
+                              } else {
+                                  btNL2 <- buildtree(btNL1$q2, btNL1$p2, logu, v, j-1, eps, logH0, 0)   ## recursive calls: first = 0
+                                  btNL1$q2 <- btNL2$q2;   btNL1$p2 <- btNL2$p2 }
+                    nSum <- btNL1$n + btNL2$n
+                    if(nSum > 0)   if(runif(1) < btNL2$n / nSum)   btNL1$q3 <- btNL2$q3
+                    qDiff <<- btNL1$q2-btNL1$q1
+                    btNL1$a  <- btNL1$a  + btNL2$a
+                    btNL1$na <- btNL1$na + btNL2$na
+                    btNL1$s  <- btNL2$s * nimStep(inprod(qDiff, btNL1$p1)) * nimStep(inprod(qDiff, btNL1$p2))
+                    btNL1$n  <- nSum
+                }
+                return(btNL1)
+            }
+        },
+        reset = function() {
+            timesRan      <<- 0
+            epsilon       <<- 0
+            mu            <<- 0
+            logEpsilonBar <<- 0
+            Hbar          <<- 0
+        }
+    )
+)
+
+
+
+
+samplerName <- 'HMC'
+samplerName <- 'HMC2'
+
+{
+    code <- nimbleCode({
+        sigma ~ dunif(0, 100)
+        a ~ dnorm(0, 0.01)
+        y1 ~ dnorm(a, sd = sigma)
+        y2 ~ dnorm(a, sd = 2*sigma)
+    })
+    constants <- list()
+    data <- list(y1 = 1, y2 = 10)
+    inits <- list(sigma = 1, a = 0)
+    ##
+    Rmodel1 <- nimbleModel(code, constants, data, inits)
+    conf1 <- configureMCMC(Rmodel1)
+    conf1$removeSamplers(c('sigma', 'a'))
+    conf1$addSampler(c('sigma', 'a'), type = samplerName)
+    Rmcmc1 <- buildMCMC(conf1)
+    ##
+    Rmodel2 <- nimbleModel(code, constants, data, inits)
+    conf2 <- configureMCMC(Rmodel2)
+    conf2$removeSamplers(c('sigma', 'a'))
+    conf2$addSampler(c('sigma', 'a'), type = samplerName, control = list(maxTreeDepth = 4))
+    Rmcmc2 <- buildMCMC(conf2)
+    ##
+    Rmodel3 <- nimbleModel(code, constants, data, inits)
+    conf3 <- configureMCMC(Rmodel3)
+    conf3$removeSamplers('sigma')
+    conf3$addSampler('sigma', type = samplerName)
+    Rmcmc3 <- buildMCMC(conf3)
+    ##
+    compiledList <- compileNimble(list(model1=Rmodel1, mcmc1=Rmcmc1, model2=Rmodel2, mcmc2=Rmcmc2, model3=Rmodel3, mcmc3=Rmcmc3))
+    Cmodel1 <- compiledList$model1; Cmcmc1 <- compiledList$mcmc1
+    Cmodel2 <- compiledList$model2; Cmcmc2 <- compiledList$mcmc2
+    Cmodel3 <- compiledList$model3; Cmcmc3 <- compiledList$mcmc3
+    ##
+    set.seed(0);   samples1 <- runMCMC(Cmcmc1, 10000)
+    ##if(!all(round(as.numeric(samples1[10000,]),6) == c(1.057482, 11.073346))) stop()
+    expect_true(all(round(as.numeric(samples1[10000,]),6) == c(1.057482, 11.073346)))
+    set.seed(0);   samples2 <- runMCMC(Cmcmc2, 10000)
+    ##if(!all(round(as.numeric(samples2[10000,]),6) == c(-1.698464, 8.469846))) stop()
+    expect_true(all(round(as.numeric(samples2[10000,]),6) == c(-1.698464, 8.469846)))
+    set.seed(0);   samples3 <- runMCMC(Cmcmc3, 10000)
+    ##if(!all(round(as.numeric(samples3[10000,]),6) == c(2.785040, 8.364911))) stop()
+    expect_true(all(round(as.numeric(samples3[10000,]),6) == c(2.785040, 8.364911)))
+    code <- nimbleCode({ x ~ dexp(1); y ~ dunif(1, x) })
+    Rmodel <- nimbleModel(code, inits = list(x = 10))
+    conf <- configureMCMC(Rmodel, nodes = NULL)
+    conf$addSampler('y', samplerName)
+    expect_error(Rmcmc <- buildMCMC(conf))
+    ##
+    code <- nimbleCode({ x ~ dexp(1); y ~ dunif(x, 10) })
+    Rmodel <- nimbleModel(code, inits = list(x = 1))
+    conf <- configureMCMC(Rmodel, nodes = NULL)
+    conf$addSampler('y', samplerName)
+    expect_error(Rmcmc <- buildMCMC(conf))
+}
+
+
+
+
+
+
+##samples <- runMCMC(Cmcmc, 100)
+
+##samples[10000,]
+
+## max depth (10) not hit
+all(round(as.numeric(samples[10000,]),6) == c(1.057482, 11.073346))
+
+## setting max depth at 4
+all(round(as.numeric(samples[10000,]),6) == c(-1.698464, 8.469846))
+
+
+
+
+## code giving to Maud (at CEFE) for her large birds model
+
+
+#' Dynamic Hidden Markov Model distribution for use in NIMBLE models
+#'
+#' \code{dDHMM} and \code{dDHMMo} provide Dynamic hidden Markov model
+#' distributions for NIMBLE models.
+#'
+#' @param x vector of observations, each one a positive integer
+#'     corresponding to an observation state
+#'     (one value of which could can correspond to "not observed", and
+#'     another value of which can correspond to "dead" or
+#'     "removed from system").
+#' 
+#' @param init vector of initial state probabilities. Must sum to 1
+#' 
+#' @param probObs time-independent matrix (\code{dDHMM} and
+#'     \code{rHMM}) or time-dependent 3D array (\code{dDHMMo} and
+#'     \code{rHMMo}) of observation probabilities.
+#'     First two dimensions of \code{probObs} are of size x (number of possible
+#'     system states) x (number of possible observation classes). \code{dDHMMo}
+#'     and \code{rHMMo} expects an additional third dimension of size (number of
+#'     observation times)
+#' 
+#' @param probTrans time-dependent array of system state transition
+#' probabilities. Dimension of \code{probTrans} is (number of possible
+#' system states) x  (number of possible system states)
+#' x (number of observation times)
+#' 
+#' @param len length of observations (needed for rDHMM)
+#' 
+#' @param log TRUE or 1 to return log probability. FALSE or 0 to return probability
+#' 
+#' @param n number of random draws, each returning a vector of length
+#'     \code{len}. Currently only \code{n = 1} is supported, but the
+#'     argument exists for standardization of "\code{r}" functions
+#'
+#' @details
+#' 
+#' These nimbleFunctions provide distributions that can be used directly in R or
+#' in \code{nimble} hierarchical models (via \code{\link[nimble]{nimbleCode}}
+#' and \code{\link[nimble]{nimbleModel}}).
+#'
+#' The probability (or likelihood) of observation \code{x[t, o]} depends on
+#' the previous true latent state, the time-dependent probability of
+#' transitioning to a new state \code{probTrans}, and the probability of
+#' observation states given the true latent state \code{probObs}.
+#'
+#' The distribution has two forms, \code{dDHMM} and \code{dDHMMo}. \code{dDHMM}
+#' takes a time-independent observation probability matrix with dimension
+#' S x O, while \code{dDHMMo} expects a three-dimensional array of time-dependent
+#' observation probabilities with dimension S x O x T, where O is the number of
+#' possible occupancy states, S is the number of true latent states, and T is
+#' the number of time intervals.
+#'
+#' \code{probTrans} has dimension S x S x (T - 1). \code{probTrans}[i, j, t] is
+#' the probability that an individual in state \code{i} at time \code{t} takes on
+#' state \code{j} at time \code{t+1}.
+#'
+#' \code{initStates} has length S. \code{initStates[i]} is the
+#' probability of being in state \code{i} at the first observation time.
+#'
+#' Compared to writing \code{nimble} models with a discrete true latent state
+#' and a separate scalar datum for each observation, use
+#' of these distributions allows one to directly sum (marginalize) over the
+#' discrete latent state and calculate the probability of all observations from
+#' one site jointly.
+#'
+#' These are \code{nimbleFunction}s written in the format of user-defined
+#' distributions for NIMBLE's extension of the BUGS model language. More
+#' information can be found in the NIMBLE User Manual at
+#' \href{https://r-nimble.org}{https://r-nimble.org}.
+#'
+#' When using these distributions in a \code{nimble} model, the left-hand side
+#' will be used as \code{x}, and the user should not provide the \code{log}
+#' argument.
+#'
+#' For example, in a NIMBLE model,
+#'
+#' \code{observedStates[1:T] ~ dDHMM(initStates[1:S],
+#' observationProbs[1:S, 1:O],
+#' transitionProbs[1:S, 1:S, 1:(T-1)], T)}
+#'
+#' declares that the \code{observedStates[1:T]} vector follows a dynamic hidden
+#' Markov model distribution with parameters as indicated, assuming all the
+#' parameters have been declared elsewhere in the model. In this case, \code{S}
+#' is the number of system states, \code{O} is the number of observation
+#' classes, and \code{T} is the number of observation occasions.This
+#' will invoke (something like) the following call to \code{dDHMM} when
+#' \code{nimble} uses the model such as for MCMC:
+#'
+#' \code{rDHMM(observedStates[1:T], initStates[1:S],
+#' observationProbs[1:S, 1:O],
+#' transitionProbs[1:S, 1:S, 1:(T-1)], T, log = TRUE)}
+#'
+#' If an algorithm using a \code{nimble} model with this declaration
+#' needs to generate a random draw for \code{observedStates[1:T]}, it
+#' will make a similar invocation of \code{rDHMM}, with \code{n = 1}.
+#'
+#' If the observation probabilities are time-dependent, one would use:
+#'
+#' \code{observedStates[1:T] ~
+#' dDHMMo(initStates[1:S], observationProbs[1:S, 1:O, 1:(T-1)],
+#' transitionProbs[1:S, 1:S, 1:(T-1)], T)}
+#'
+#' @references D. Turek, P. de Valpine and C. J. Paciorek. 2016. Efficient Markov chain Monte
+#' Carlo sampling for hierarchical hidden Markov models. Environmental and Ecological Statistics
+#' 23:549–564. DOI 10.1007/s10651-016-0353-z
+#' 
+#' @examples
+#' 
+#' # Set up constants and initial values for defining the model
+#' dat <- c(1,2,1,1) # A vector of observations
+#' init <- c(0.4, 0.2, 0.4) # A vector of initial state probabilities
+#' probObs <- t(array( # A matrix of observation probabilities
+#'        c(1, 0,
+#'          0, 1,
+#'          0.8, 0.2), c(2, 3)))
+#'
+#' probTrans <- array(rep(0.5, 27), # A matrix of time-indexed transition probabilities
+#'             c(3,3,3))
+#'
+#' # Define code for a nimbleModel
+#'  nc <- nimbleCode({
+#'    x[1:4] ~ dDHMM(init[1:3], probObs = probObs[1:3, 1:2],
+#'                   probTrans = probTrans[1:3, 1:3, 1:4], len = 4)
+#'
+#'    for (i in 1:3) {
+#'      init[i] ~ dunif(0,1)
+#'
+#'      for (j in 1:3) {
+#'        for (t in 1:4) {
+#'          probTrans[i,j,t] ~ dunif(0,1)
+#'        }
+#'      }
+#'
+#'      probObs[i, 1] ~ dunif(0,1)
+#'      probObs[i, 2] <- 1 - probObs[1,i]
+#'    }
+#'  })
+#'
+#' # Build the model, providing data and initial values
+#' DHMM_model <- nimbleModel(nc,
+#'                           data = list(x = dat),
+#'                           inits = list(init = init,
+#'                                        probObs = probObs,
+#'                                        probTrans = probTrans)))
+#' # Calculate log probability of x from the model
+#' DHMM_model$calculate()
+#' 
+
+
+dDHMMo <- nimbleFunction(
+    run = function(x = double(1), init = double(1), probObs = double(3), probTrans = double(3), len = double(), log = integer(0, default = 0)) {
+        if(length(init) != dim(probObs)[1]) stop("Length of init does not match ncol of probObs in dDHMMo.")
+        if(length(init) != dim(probTrans)[1]) stop("Length of init does not match dim(probTrans)[1] in dDHMMo.")
+        if(length(init) != dim(probTrans)[2]) stop("Length of init does not match dim(probTrans)[2] in dDHMMo.")
+        if(length(x) != len) stop("Length of x does not match len in dDHMM.")
+        if(len - 1 != dim(probTrans)[3]) stop("dim(probTrans)[3] does not match len - 1 in dDHMMo.")
+        if(len != dim(probObs)[3]) stop("dim(probObs)[3] does not match len in dDHMMo.")
+        pi <- init
+        logL <- 0
+        nObsClasses <- dim(probObs)[2]
+        lengthX <- length(x)
+        for(t in 1:lengthX) {
+            if(x[t] > nObsClasses) stop("Invalid value of x[t] in dDHMM.")
+            Zpi <- probObs[, x[t], t] * pi
+            sumZpi <- sum(Zpi)
+            logL <- logL + log(sumZpi)
+            if(t != lengthX)   pi <- (probTrans[,,t] %*% asCol(Zpi) / sumZpi)[ ,1]
+        }
+        returnType(double())
+        if (log) return(logL)
+        return(exp(logL))
+    }
+)
+
+rDHMMo <- nimbleFunction(
+    run = function(n = integer(), init = double(1), probObs = double(3), probTrans = double(3), len = double()) {
+        returnType(double(1))
+        ans <- numeric(len)
+        trueInit <- 0
+        r <- runif(1, 0, 1)
+        j <- 1
+        while(r > sum(init[1:j])) j <- j + 1
+        trueState <- j
+        for(i in 1:len) {
+            r <- runif(1, 0, 1)
+            j <- 1
+            while(r > sum(probObs[trueState, 1:j, i])) j <- j + 1
+            ans[i] <- j
+            if (i != len) {
+                r <- runif(1, 0, 1)
+                j <- 1
+                while(r > sum(probTrans[trueState, 1:j, i])) j <- j + 1
+                trueState <- j
+            }
+        }
+        return(ans)
+    }
+)
+
+registerDistributions(list(
+    dDHMMo = list(
+        BUGSdist = "dDHMMo(init, probObs, probTrans, len)",
+        Rdist = "dDHMMo(init, probObs, probTrans, len)",
+        discrete = TRUE,
+        types = c('value = double(1)', 'init = double(1)', 'probObs = double(3)', 'probTrans = double(3)', 'len = double()'),
+        mixedSizes = TRUE,
+        pqAvail = FALSE)
+))
+
+
+
+
+
+## modifying map (maximum a posterior) code
+## from Oliver Stone
+
+library(nimble)
+
+n <- 100
+mu <- 4
+sigma <- 1
+y <- rnorm(100, mu, sigma)
+
+map_code <- nimbleCode({
+    for(i in 1:n) {
+        y[i] ~ dnorm(mu, sd = sigma)
+    }
+    mu ~ dnorm(0, sd = 10)
+    sigma ~ dexp(0.01)
+})
+
+map_constants <- list(n = n)
+map_data <- list(y = y)
+
+map_inits <- list(mu = 3, sigma = 4)
+
+map_model <- nimbleModel(map_code, map_constants, map_data, map_inits)
+
+stochNonDataNodes <- map_model$getNodeNames(stochOnly = TRUE, includeData = FALSE)
+stochNonDataNodes
+## [1] "mu"    "sigma"
+
+map_compiled_model <- compileNimble(map_model)
+
+map_lp <- nimbleFunction(
+    setup = function(model) {
+        stochNonDataNodes <- map_model$getNodeNames(stochOnly = TRUE, includeData = FALSE)
+    },
+    run = function(x = double(1)) {
+        map_compiled_model$mu <- x[1]
+        map_compiled_model$sigma <- x[2]
+        negLP <- -map_compiled_model$calculate()
+        returnType(double())    ## DT: was missing returnType() statement
+        return(negLP)
+})
+
+my_map_lp_function <- map_lp(
+
+nlm(map_lp, c(3,4))
+
+
+## removing internal print() statements,
+## from conf$getSamplerDefinition(), for Cyril
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:n) 
+        y[i] ~ dnorm(b0 + inprod(beta[1:p], X[i, 1:p]), 1)
+    for(i in 1:p) 
+        beta[i] ~ dnorm(0, 1)
+    b0 ~ dnorm(0, 1)
+    xx ~ dbeta(1, 1)
+    yy ~ dbern(xx)
+})
+
+constants <- list(n = 5, p = 3)
+data <- list(y = rnorm(constants$n),
+             X = matrix(rnorm(constants$n * constants$p), constants$n),
+             yy = 1)
+inits <- list(b0 = 1, beta = rnorm(constants$p), xx = 0.5)
+
+m <- nimbleModel(code, data = data, constants = constants)
+
+conf <- configureMCMC(m)
+
+conf$printSamplers()
+
+conf$getSamplerDefinition(1)
+d <- conf$getSamplerDefinition(1)
+
+
+
+
+## (failing) example of multiple nfList inheritance
+## for Perry.
+## trying to get this (multiple inheritance) to work for HMC sampler
+
+library(nimble)
+
+baseA <- nimbleFunctionVirtual(
+    methods = list(
+        methodA = function() { }
+    )
+)
+
+baseB <- nimbleFunctionVirtual(
+    contains = baseA,
+    methods = list(
+        methodB = function() { }
+    )
+)
+
+
+
+nfType1 <- nimbleFunction(
+    name = 'nfType1',
+    contains = baseA,
+    setup = function() {
+        print('building nfType1')
+    },
+    run = function() {
+        print('run function nfType1')
+    },
+    methods = list(
+        methodA = function() {
+            print('in methodA of nfType1')
+        }
+    )
+)
+
+nfType2 <- nimbleFunction(
+    name = 'nfType2',
+    contains = baseA,
+    setup = function() {
+        print('building nfType2')
+    },
+    run = function() {
+        print('run function nfType2')
+    },
+    methods = list(
+        methodA = function() {
+            print('in methodA of nfType2')
+        }
+    )
+)
+
+nfType3 <- nimbleFunction(
+    name = 'nfType3',
+    contains = baseB,
+    setup = function() {
+        print('building nfType3')
+    },
+    run = function() {
+        print('run function nfType3')
+    },
+    methods = list(
+        methodA = function() {
+            print('in methodA of nfType3')
+        },
+        methodB = function() {
+            print('in methodB of nfType3')
+        }
+    )
+)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {
+        nflA <- nimbleFunctionList(baseA)
+        nflA[[1]] <- nfType1()
+        nflA[[2]] <- nfType2()
+        nflA[[3]] <- nfType3()
+        ##
+        ## once the existing code works, I plan to add:
+        ## nflB <- nimbleFunctionList(baseB)
+        ## nflB[[1]] <- nfType3()
+    },
+    run = function() {
+        print('======================================')
+        print('running run() methods of nflA')
+        for(i in seq_along(nflA)) {
+            nflA[[i]]$run()
+        }
+        print('======================================')
+        print('running methodA() methods of nflA')
+        for(i in seq_along(nflA)) {
+            nflA[[i]]$methodA()
+        }
+        print('======================================')
+        ##
+        ## once the existing code works, I plan to add:
+        ## print('running methodA() methods of nflB')
+        ## for(i in seq_along(nflB)) {
+        ##     nflB[[i]]$methodA()
+        ## }
+        ## print('======================================')        
+        ## print('running methodB() methods of nflB')
+        ## for(i in seq_along(nflB)) {
+        ##     nflB[[i]]$methodB()
+        ## }
+        ## print('======================================')        
+    }
+)
+
+Rnf <- nfDef()
+## [1] "building nfType1"
+## [1] "building nfType2"
+## [1] "building nfType3"
+## Error: An element being put in a nimbleFunctionList is not valid. It may not have the right contains (base class)
+
+Cnf <- compileNimble(Rnf)
+
+Rnf$run()
+Cnf$run()
+
+
+
+
+
+
+## testing the use of dsum() distribution in jags
+
+## continuous-valued case: dsum
+code <- quote({
+    a ~ dnorm(5, .1)
+    b ~ dnorm(9, .2)
+    y ~ dsum2(a, b)
+})
+
+constants <- list()
+data <- list(y = 10)
+inits <- list(a = 5, b = 9)
+
+niter <- 10000
+monitorVars <- c('a', 'b')
+
+constsAndData <- c(constants, data)
+modelfile <- file.path(tempdir(), 'model.txt')
+writeLines(paste0('model\n', paste0(deparse(code, width.cutoff=500L), collapse='\n')), con=modelfile)
+
+library(rjags)
+set.seed(0)
+jags_mod <- jags.model(file=modelfile, data=constsAndData, inits=inits, n.chains=1, quiet=FALSE)
+set.seed(0)
+jags_out <- coda.samples(model=jags_mod, variable.names=monitorVars, n.iter=niter, thin=1)
+
+list.samplers(jags_mod)
+
+samples <- as.matrix(jags_out[[1]])
+
+library(basicMCMCplots)
+samplesPlot(samples)
+
+head(samples)
+apply(samples, 2, mean)
+sum(apply(samples, 2, mean))
+apply(samples, 1, sum)
+
+
+## discrete-valued case:dsum
+library(nimble)
+
+
+code <- nimbleCode({
+    a ~ dpois(50)
+    b ~ dbin(0.1, 200)
+    d[1] <- a
+    d[2] <- b
+    y ~ dsum(d[1:2])
+})
+constants <- list()
+data <- list(y = 40)
+inits <- list(a = 20, b = 20)
+
+
+sampler_dsum_pair <- nimbleFunction(
+    name = 'sampler_dsum_pair',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        adaptive      <- if(!is.null(control$adaptive))      control$adaptive      else TRUE
+        adaptInterval <- if(!is.null(control$adaptInterval)) control$adaptInterval else 200
+        scale         <- if(!is.null(control$scale))         control$scale         else 1
+        ## node list generation
+        targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        target1 <- targetAsScalar[1]
+        target2 <- targetAsScalar[2]
+        calcNodes <- model$getDependencies(target)
+        ## numeric value generation
+        scaleOriginal <- scale
+        timesRan      <- 0
+        timesAccepted <- 0
+        timesAdapted  <- 0
+        optimalAR     <- 0.44
+        gamma1        <- 0
+        ## checks
+        if(length(targetAsScalar) != 2) stop()
+        if(!model$isDiscrete(target1)) stop()
+        if(!model$isDiscrete(target2)) stop()
+        ## could check if they have a common dsum() dependent node,
+        ## and could do linearity check on dependent dsum() expression
+    },
+    run = function() {
+        currentTarget1 <- model[[target1]]
+        currentTarget2 <- model[[target2]]
+        currentLogProb <- model$getLogProb(calcNodes)
+        prop <- rpois(n = 1, scale) + 1   ## don't allow proposals = 0
+        pm <- 2 * rbinom(n = 1, size = 1, prob = 0.5) - 1  ## +1 or -1
+        signedProp <- prop * pm
+        model[[target1]] <<- currentTarget1 + signedProp
+        model[[target2]] <<- currentTarget2 - signedProp
+        probLogProb <- model$calculate(calcNodes)
+        logMHR <- probLogProb - currentLogProb
+        jump <- decide(logMHR)
+        if(jump) nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+        else     nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE)
+        if(adaptive)     adaptiveProcedure(jump)
+    },
+    methods = list(
+        adaptiveProcedure = function(jump = logical()) {
+            timesRan <<- timesRan + 1
+            if(jump)     timesAccepted <<- timesAccepted + 1
+            if(timesRan %% adaptInterval == 0) {
+                acceptanceRate <- timesAccepted / timesRan
+                timesAdapted <<- timesAdapted + 1
+                gamma1 <<- 1/((timesAdapted + 3)^0.8)
+                gamma2 <- 10 * gamma1
+                adaptFactor <- exp(gamma2 * (acceptanceRate - optimalAR))
+                scale <<- ceiling(scale * adaptFactor)
+                timesRan <<- 0
+                timesAccepted <<- 0
+            }
+        },
+        reset = function() {
+            scale <<- scaleOriginal
+            timesRan      <<- 0
+            timesAccepted <<- 0
+            timesAdapted  <<- 0
+            gamma1 <<- 0
+        }
+    )
+)
+
+
+
+
+
+dsum2 <- nimbleFunction(
+    run = function(x = double(), a = double(), b = double(), log = integer(0, default = 0)) {
+        returnType(double())
+        if(x == a + b) return(0)
+        print('warning: dsum2 density evaluation failed...')
+        return(-Inf)
+    }
+)
+
+rsum2 <- nimbleFunction(
+    run = function(n = integer(), a = double(), b = double()) {
+        print('warning: called rsum2 random generation function')
+        returnType(double())
+        return(1)
+    }
+)
+
+
+
+registerDistributions(list(
+    dsum2 = list(
+        BUGSdist = 'dsum2(a, b)',
+        types = c('value = double()', 'a = double()', 'b = double()')
+    )
+))
+
+
+
+{
+    ## dsum2 test #1
+    code <- nimbleCode({
+        a ~ dpois(5)
+        b ~ dbin(0.4, 20)
+        y ~ dsum2(a, b)
+    })
+    constants <- list()
+    data <- list(y = 10)
+    inits <- list(a = 5, b = 5)
+    Rmodel <- nimbleModel(code, constants, data, inits)
+    conf <- configureMCMC(Rmodel, nodes = NULL)
+    conf$addSampler(target = c('a', 'b'), type = 'dsum2')
+    Rmcmc <- buildMCMC(conf)
+    Cmodel <- compileNimble(Rmodel)
+    Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+    set.seed(0)
+    samples <- runMCMC(Cmcmc, 50000)
+    if(!all(apply(samples, 2, mean) == c(3.47178, 6.52822))) stop()
+    if(!all(round(apply(samples, 2, sd), 6) == c(1.404152, 1.404152))) stop()
+    if(!all(as.numeric(prop.table(table(samples[, 'a']))) == c(0.00906, 0.06274, 0.17744, 0.26978, 0.25672, 0.14824, 0.05802, 0.01576, 0.00188, 0.00034, 0.00002))) stop()
+    if(!all(prop.table(table(samples[, 'b'])) == c(0.00002, 0.00034, 0.00188, 0.01576, 0.05802, 0.14824, 0.25672, 0.26978, 0.17744, 0.06274, 0.00906))) stop()
+    ##
+    ## dsum2 test #2
+    code <- nimbleCode({
+        a ~ dpois(50)
+        b ~ dbin(0.1, 200)
+        y ~ dsum2(a, b)
+    })
+    constants <- list()
+    data <- list(y = 40)
+    inits <- list(a = 20, b = 20)
+    Rmodel <- nimbleModel(code, constants, data, inits)
+    conf <- configureMCMC(Rmodel, nodes = NULL)
+    conf$addSampler(target = c('a', 'b'), type = 'dsum2')
+    Rmcmc <- buildMCMC(conf)
+    Cmodel <- compileNimble(Rmodel)
+    Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+    set.seed(0)
+    samples <- runMCMC(Cmcmc, 50000)
+    if(!all(apply(samples, 2, mean) == c(28.1796, 11.8204 ))) stop()
+    if(!all(round(apply(samples, 2, sd), 6) == c(2.821819, 2.821819 ))) stop()
+    if(!all(as.numeric(prop.table(table(samples[, 'a']))) == c(0.00012, 0.00044, 0.00114, 0.00290, 0.00582, 0.01530, 0.02662, 0.04854, 0.07084, 0.09386, 0.12614, 0.14252, 0.14390, 0.11684, 0.08894, 0.05676, 0.03418, 0.01702, 0.00498, 0.00268, 0.00040, 0.00006))) stop()
+    if(!all(prop.table(table(samples[, 'b'])) == c(0.00006, 0.00040, 0.00268, 0.00498, 0.01702, 0.03418, 0.05676, 0.08894, 0.11684, 0.14390, 0.14252, 0.12614, 0.09386, 0.07084, 0.04854, 0.02662, 0.01530, 0.00582, 0.00290, 0.00114, 0.00044, 0.00012))) stop()
+}
+
+
+
+## fitting the discrete dsum example in jags
+niter <- 100000
+monitorVars <- c('a', 'b')
+
+constsAndData <- c(constants, data)
+modelfile <- file.path(tempdir(), 'model.txt')
+writeLines(paste0('model\n', paste0(deparse(code, width.cutoff=500L), collapse='\n')), con=modelfile)
+
+library(rjags)
+set.seed(0)
+jags_mod <- jags.model(file=modelfile, data=constsAndData, inits=inits, n.chains=1, quiet=FALSE)
+set.seed(0)
+jags_out <- coda.samples(model=jags_mod, variable.names=monitorVars, n.iter=niter, thin=1)
+
+list.samplers(jags_mod)
+
+samples <- as.matrix(jags_out[[1]])
+
+head(samples)
+
+apply(samples, 2, mean)
+
+apply(samples, 2, sd)
+
+prop.table(table(samples[, 'a']))
+
+prop.table(table(samples[, 'b']))
+
+
+
+## > apply(samples, 2, mean)
+##        a        b 
+## 28.16795 11.83205 
+## > apply(samples, 2, sd)
+##        a        b 
+## 2.808224 2.808224 
+## > prop.table(table(samples[, 'a']))
+##  
+##      17      18      19      20      21      22      23      24      25      26 
+## 0.00001 0.00027 0.00091 0.00266 0.00656 0.01391 0.02780 0.04643 0.07290 0.09875 
+##      27      28      29      30      31      32      33      34      35      36 
+## 0.12738 0.14215 0.13829 0.11493 0.09029 0.05983 0.03288 0.01592 0.00584 0.00191 
+##      37      38 
+## 0.00031 0.00007 
+## > prop.table(table(samples[, 'b']))
+##  
+##       2       3       4       5       6       7       8       9      10      11 
+## 0.00007 0.00031 0.00191 0.00584 0.01592 0.03288 0.05983 0.09029 0.11493 0.13829 
+##      12      13      14      15      16      17      18      19      20      21 
+## 0.14215 0.12738 0.09875 0.07290 0.04643 0.02780 0.01391 0.00656 0.00266 0.00091 
+##      22      23 
+## 0.00027 0.00001
+
+
+
+
 ## making table rows for SCR paper
 
 ## for Wolverine example
+
 df <- as.data.frame(dfRepAvg)
 head(df)
 dim(df)
@@ -3579,6 +4622,7 @@ conf <- configureMCMC(m)
 conf$printSamplers()
 
 conf$getSamplerDefinition(1)
+d <- conf$getSamplerDefinition(1)
 
 expect_identical(conf$getSamplers()[[1]]$name, 'conjugate_dnorm_dnorm',
                  info = "conjugacy with inprod not detected")
@@ -7155,7 +8199,7 @@ nimbleOptions(experimentalEnableDerivs = TRUE)
     conf <- configureMCMC(Rmodel)
     conf$removeSamplers(params)
     conf$addSampler(params, 'HMCexp', control = list(printTimesRan = TRUE, printJ = TRUE))
-    conf$addSampler(params, 'HMCexp', control = list(printTimesRan = TRUE, printJacobian = TRUE))
+    conf$addSampler(params, 'HMCexp', control = list(printTimesRan = TRUE, printGradient = TRUE))
     conf$addSampler(params, 'HMCexp')
     conf$printSamplers()
     ##
@@ -7374,7 +8418,7 @@ debug(Rmcmc$samplerFunctions$contentsList[[1]]$run)
 debug(Rmcmc$samplerFunctions$contentsList[[1]]$initializeEpsilon)
 debug(buildtree)
 debug(leapfrog)
-debug(jacobian)
+debug(gradient)
 
 
 
@@ -7748,7 +8792,7 @@ debug(Rmcmc$samplerFunctions$contentsList[[1]]$run)
 debug(Rmcmc$samplerFunctions$contentsList[[1]]$initializeEpsilon)
 debug(buildtree)
 debug(leapfrog)
-debug(jacobian)
+debug(gradient)
 set.seed(0)
 samples <- runMCMC(Rmcmc, 100)    ## XXXXXXXXXXXXXXXXXXXX
 
@@ -8219,12 +9263,12 @@ apply(conjSamples, 2, sd)
 
 debug(initializeEpsilon)
 debug(leapfrog)
-debug(jacobian)
+debug(gradient)
 debug(buildtree)
 
 undebug(initializeEpsilon)
 undebug(leapfrog)
-undebug(jacobian)
+undebug(gradient)
 undebug(buildtree)
 
 

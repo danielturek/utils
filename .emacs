@@ -96,7 +96,7 @@
 ;;  (interactive "commit message: ")
   (shell-command
    ;(format "cd $(dirname %s); ~/github/utils/commit.sh "
-   (format "cd $(dirname %s); FILEBASE=$(basename %s | cut -d. -f1);  git add $FILEBASE.*; git commit -m'.'; git push"
+   (format "cd $(dirname %s); FILEBASE=$(basename %s | cut -d. -f1);  git add $FILEBASE.*; git commit -m'updates'; git push"
 	   (shell-quote-argument (buffer-file-name))
 	   (shell-quote-argument (buffer-file-name))
      )))
