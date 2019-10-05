@@ -73,7 +73,7 @@
 (defun rmarkdown-external-html-link ()
   "Insert template for external HTML link."
   (interactive)
-  (insert "<a href=\"URL\" target=\"_blank\">LINK_TEXT</a>"))
+  (insert "<a href=\"URL\" target=\"_blank\" style=\"color: blue">LINK_TEXT</a>"))
 
 (defun rmarkdown-weave-file ()
   "Run knitr on the current file and weave it as MD and HTML."
