@@ -33,7 +33,9 @@ roundSig <- function(x) round(x, -floor(log10(abs(x))))
 
 makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
 
-makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('roundSig', 'samplesPlot', 'chainsPlot', 'samplesSummary', 'qqq', 'rrr')))), envir = .GlobalEnv), .GlobalEnv)
+makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('roundSig', 'qqq', 'rrr', 'ps')))), envir = .GlobalEnv), .GlobalEnv)
+
+makeActiveBinding('ps', function() conf$printSamplers(), .GlobalEnv)
 
 
 ## until basicMCMCplots package is on CRAN, keep this here:

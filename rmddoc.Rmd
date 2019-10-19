@@ -6,7 +6,7 @@ output: html_document
 ---
 
 <!---
-danielturek.github.io/public/folder/fileName
+http://danielturek.github.io/public/folder/fileName
 [TEXT](URL)
 <a href="URL_GOES_HERE" target="_blank">HYPERLINK_TEXT_OPENS_IN_NEW_TAB</a>
 ![](IMAGE.png)
@@ -31,6 +31,10 @@ samples <- runMCMC(Cmcmc, niter)
 ```{r, out.width = "1000px"}
 samplesPlot(samples)
 chainsPlot(samplesList)
+```
+
+```{r, fig.width = 6, fig.height = 4}
+chainsPlot(samples)
 ```
 
 
