@@ -33,6 +33,8 @@ options(scipen=999)  ## turns off scientific notation display
 
 makeActiveBinding('ppp', function() conf$printSamplers(), .GlobalEnv)
 
+makeActiveBinding('pppp', function() conf$printSamplers(byType = TRUE), .GlobalEnv)
+
 makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
 
 makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('ppp', 'qqq', 'rrr')))), envir = .GlobalEnv), .GlobalEnv)
