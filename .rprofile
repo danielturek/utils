@@ -27,7 +27,7 @@ options(repos  = 'http://cran.cnr.berkeley.edu')
 
 options(scipen=999)  ## turns off scientific notation display
 
-roundSig <- function(x) round(x, -floor(log10(abs(x))))
+##roundSig <- function(x) round(x, -floor(log10(abs(x))))
 
 
 
@@ -35,7 +35,7 @@ makeActiveBinding('ppp', function() conf$printSamplers(), .GlobalEnv)
 
 makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
 
-makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('roundSig', 'ppp', 'qqq', 'rrr')))), envir = .GlobalEnv), .GlobalEnv)
+makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c('ppp', 'qqq', 'rrr')))), envir = .GlobalEnv), .GlobalEnv)
 
 
 
