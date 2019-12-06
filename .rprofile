@@ -31,9 +31,9 @@ options(scipen=999)  ## turns off scientific notation display
 
 
 
-makeActiveBinding('ppp', function() conf$printSamplers(), .GlobalEnv)
+makeActiveBinding('ppp', function() conf$printSamplers(byType = TRUE), .GlobalEnv)
 
-makeActiveBinding('pppp', function() conf$printSamplers(byType = TRUE), .GlobalEnv)
+makeActiveBinding('pppp', function() conf$printSamplers(), .GlobalEnv)
 
 makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
 
