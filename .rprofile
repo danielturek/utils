@@ -23,7 +23,10 @@
 
 
 options(device = 'quartz')
-options(repos  = 'http://cran.cnr.berkeley.edu')
+
+## Berkeley CRAN mirror appears to have disappeared, Feb 2020
+##options(repos  = 'http://cran.cnr.berkeley.edu')
+options(repos  = 'https://cran.ma.imperial.ac.uk/')
 
 options(scipen=999)  ## turns off scientific notation display
 

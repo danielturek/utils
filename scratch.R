@@ -1,8 +1,611 @@
 
+## example of the non-generality of BNP
+## that makes it hard to use for CR methods.
+## putting this example together for Chris and Claudia
+
+library(nimble)
+
+code <- nimbleCode({
+    xi[1:N] ~ dCRP(conc = 1, size = N)
+    for(i in 1:N) {
+        p[i] ~ dunif(0, 1)
+        x[i,1] <- 1
+        y[i,1] <- 1
+        for(t in 2:T) {
+            x[i,t] ~ dbern(x[i,t-1] * 0.5)
+            y[i,t] ~ dbern(x[i,t] * p[xi[i]])
+        }
+    }
+})
+
+N <- 10
+T <- 5
+y <- array(1, c(N, T))
+constants <- list(N = N, T = T)
+data <- list(y = y)
+inits <- list(xi = rep(1,N), p = rep(0.5,N), x = array(1, c(N,T)))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+## [1] -57.75436
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers(byType = TRUE)
+## binary sampler (40)
+##   - x[]  (40 elements)
+## CRP_cluster_wrapper sampler (10)
+##   - p[]  (10 elements)
+## CRP sampler (1)
+##   - xi[1:10] 
+
+Rmcmc <- buildMCMC(conf)
+## this error *goes away* on github branch 'bnp_moreGeneral2':
+## Error in samplerFunction(model = model, mvSaved = mvSaved, target = target,  :
+##   sampler_CRP: At the moment, NIMBLE can only sample when there is one variable being clustered for each cluster membershipID.
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+table(samples[,grep('^xi', colnames(samples))])
+
+library(basicMCMCplots)
+samplesPlot(samples, 'p')
+samplesPlot(samples, Rmodel$expandNodeNames('p[1:3]'))
+
+## figuring out Vincent Landau's problem,
+## why the discrete z is sampling with non-integer values
+## using dinterval and a custom distribution
+
+##library(devtools)
+##devtools::install_gitlab("actionable-phenology/tempo")
+library(tempo)
+library(abind)
+library(doParallel)
+
+data <- tempo_simulate(n = 50,
+                       t = 200, 
+                       censor_intensity = 2,
+                       beta_mu = c(-6, 1, 0.1))
+
+str(data)
+
+##### Function to run sampler #####
+tempo_mcmc <- function(y,
+                       covariates,
+                       beta_start,
+                       n_iter = 1000,
+                       n_burnin = 1000,
+                       n_chains = 3,
+                       n_workers = 1,
+                       pp_checks = c("mean", "variance"),
+                       beta_prior_mean = NULL,
+                       beta_prior_sd = NULL,
+                       random_effects = NULL,
+                       group_ids = NULL,
+                       sd_eps_start = NULL,
+                       correlated = TRUE,
+                       monitor_random_effects = FALSE
+                       ) {
+    if (is.null(beta_prior_mean)) {
+        beta_prior_mean <- rep(0, length(covariates) + 1)
+    }
+    if (is.null(beta_prior_sd)) {
+        beta_prior_sd <- rep(1.5, length(covariates) + 1)
+    }
+    ## append interecept term to covariates
+    covariates <- c(list(intercept = array(1, dim = dim(covariates[[1]]))),
+                    covariates)
+    ## get indices of random effects
+    if (!is.null(random_effects)) { # TODO double check influence of order of random_effects elements
+        beta_random_indices <- seq_along(covariates)[names(covariates)
+                                                     %in% random_effects]
+    } else {
+        beta_random_indices <- NULL
+    }
+    
+    ## convert covariates to array
+    covariate_array <- do.call(abind, c(covariates, along = 3))
+    dimnames(covariate_array) <- list(rownames(covariates[[2]]),
+                                      NULL,
+                                      names(covariates))
+    ## Convert NAs in y to correct numbers
+    y$c1[is.na(y$c1)] <- 0
+    y$c2[is.na(y$c2)] <- dim(covariate_array)[2] + 1
+    
+    ## get model inputs
+    inputs <- tempo:::nimble_inputs(y, covariate_array, beta_prior_mean, beta_prior_sd,
+                                    beta_start, beta_random_indices, group_ids,
+                                    sd_eps_start, correlated, pp_checks) 
+    
+    if (is.null(random_effects)) {
+        monitors <- c("Beta")
+    } else if (length(beta_random_indices) == 1 | !correlated) {
+        monitors <- c("mean_beta", "sd_eps")
+        if (monitor_random_effects) {
+            monitors <- c(monitors, "eps") 
+        }
+    } else {
+        monitors <- c("mean_beta", "sd_eps", "rho")
+        if (monitor_random_effects) {
+            monitors <- c(monitors, "eps") 
+        }
+    }
+    monitors <- c(monitors, "z")
+    ##suppressWarnings(registerDistributions(list(
+    ##    dtvgeom_nimble = list(
+    ##        BUGSdist = "dtvgeom_nimble(prob)",
+    ##        pqAvail = TRUE,
+    ##        discrete = TRUE,
+    ##        range = c(1, Inf),
+    ##        types = c("prob = double(1)")
+    ##    )), verbose = F, userEnv = .GlobalEnv))
+    ## Parallel or serial processing
+    if (n_workers > 1) {
+        cat(
+            sprintf(
+                "Starting up nimble to run %s chain(s) in parallel on %s workers. Progress bars not shown in parallel mode...\n",
+                n_chains,
+                n_workers)
+        )
+        message("Compiling models and running samplers in parallel. This may take a while...")
+        cl <- makeCluster(n_workers)
+        registerDoParallel(cl)
+        out <- foreach(i = 1:n_chains,
+                       .combine = list,
+                       .packages = c("nimble", "tempo"),
+                       .multicombine = TRUE) %dopar% {
+                           pheno_model <- suppressMessages(
+                               nimbleModel(code = eval(parse(text = tempo:::nimble_model(beta_random_indices,
+                                                                 correlated))),
+                                           name = "pheno",
+                                           constants = inputs$pheno_consts,
+                                           data = inputs$pheno_data,
+                                           inits = inputs$pheno_inits # TODO: [[i]] # different inits for each chain
+                                           )
+                           )
+                           suppressWarnings(registerDistributions(list(
+                               dtvgeom_nimble = list(
+                                   BUGSdist = "dtvgeom_nimble(prob)",
+                                   pqAvail = TRUE,
+                                   discrete = TRUE,
+                                   range = c(1, Inf),
+                                   types = c("prob = double(1)")
+                               )), verbose = F, userEnv = .GlobalEnv))
+                           mcmc_cfg <- configureMCMC(pheno_model,
+                                                     monitors = monitors)
+                           samp <- mcmc_cfg$getSamplers()
+                           pheno_mcmc <- buildMCMC(mcmc_cfg)
+                           compiled_mcmc <- suppressMessages(compileNimble(pheno_model,
+                                                                           pheno_mcmc))
+                           out_temp <- runMCMC(compiled_mcmc$pheno_mcmc,
+                                               niter = n_iter + n_burnin,
+                                               nburnin = n_burnin)
+                           return(list(out_temp, samp))
+                       }
+        stopCluster(cl)
+        names(out) <- paste0("chain_", seq_len(n_chains))
+    } else {
+        cat(sprintf("Starting up nimble to run %s chain(s) in serial\n",
+                    n_chains))
+        message("Building and compiling model. This may take a few minutes...")
+        pheno_model <- suppressMessages(
+            nimbleModel(code = eval(parse(text = tempo:::nimble_model(beta_random_indices,
+                                              correlated))),
+                        name = "pheno",
+                        constants = inputs$pheno_consts,
+                        data = inputs$pheno_data,
+                        inits = inputs$pheno_inits
+                        )
+        )
+        mcmc_cfg <- configureMCMC(pheno_model,
+                                  monitors = monitors)
+        pheno_mcmc <- buildMCMC(mcmc_cfg)
+        compiled_mcmc <- suppressMessages(compileNimble(pheno_model, pheno_mcmc))
+        out <- runMCMC(compiled_mcmc$pheno_mcmc,
+                       niter = n_iter + n_burnin,
+                       nburnin = n_burnin,
+                       nchains = n_chains)
+        if(n_chains == 1) {
+            out <- list(out)
+        }
+        names(out) <- paste0("chain_", seq_len(n_chains))
+    }
+    out
+}
+
+## Problem shows up when run in parallel (n_workers > 1)
+draws <- tempo_mcmc(
+    y = data$y,
+    covariates = data$covariates,
+    beta_start = c(-5, 0, 0),
+    n_iter = 100,
+    n_burnin = 10,
+    n_workers = 2,
+    n_chains = 3,
+    pp_checks = NA
+)
+
+##str(draws)
+class(draws)
+length(draws)
+
+i <- 3
+class(draws[[i]])
+length(draws[[i]])
+names(draws[[i]])
+
+class(draws[[i]][[1]])
+dim(draws[[i]][[1]])
+dimnames(draws[[i]][[1]])
+draws[[i]][[1]][1:100,4:50]
+
+class(draws[[i]][[2]])
+length(draws[[i]][[2]])
+names(draws[[i]][[2]])
+
+for(kk in 1:103) print(draws[[i]][[2]][[kk]]$toStr())
+
+y = data$y
+covariates = data$covariates
+beta_start = c(-5, 0, 0)
+n_iter = 100
+n_burnin = 10
+n_workers = 2
+n_chains = 3
+pp_checks = NA
+beta_prior_mean = NULL
+beta_prior_sd = NULL
+random_effects = NULL
+group_ids = NULL
+sd_eps_start = NULL
+correlated = TRUE
+monitor_random_effects = FALSE
+
+draws[[1]][,7]
+
+## No issue when run in serial (n_workers = 1)
+draws2 <- tempo_mcmc(
+    y = data$y,
+    covariates = data$covariates,
+    beta_start = c(-5, 0, 0),
+    n_iter = 100,
+    n_burnin = 10,
+    n_workers = 1,
+    n_chains = 3,
+    pp_checks = NA
+)
+draws2[[1]][,7]
+
+
+
+## nimbleLists work and experimenting
+## done by David Pleydell
+
+#################
+## Toy Example ##
+#################
+
+library(nimble)
+
+toyCode <- nimbleCode({
+    rate[1,1] <- state[1,1] 
+    rate[2,1] <- state[1,1] + state[2,1] + state[3,1] 
+    rate[3,1] <- state[1,1] + state[2,1] 
+    rate[1,2] <- state[1,1] + state[2,2] + state[2,3] 
+    rate[2,2] <- state[1,1] + state[3,3] 
+    rate[3,2] <- state[1,1] + sum(state[3,])
+})
+
+inits    <- list(state = matrix(1:9, nrow=3))
+toyModel <- nimbleModel(toyCode, inits=inits)
+toyModel[["state"]]
+toyModel[["rate"]]
+
+(stateIndices <- as.vector(outer(1:dim(toyModel[["state"]])[1], 1:dim(toyModel[["state"]])[2], paste, sep=",")))
+(stateNodes   <- paste0("state[",stateIndices,"]"))
+(nStateNodes  <- length(stateNodes))
+(stateIndices <- paste0("row",sub(",","col",stateIndices)))
+
+(rateIndices <- as.vector(outer(1:dim(toyModel[["rate"]])[1], 1:dim(toyModel[["rate"]])[2], paste, sep=",")))
+(rateNodes   <- paste0("rate[",rateIndices,"]"))
+(nRateNodes  <- length(rateNodes))
+
+## Define list structures
+innerList <- nimbleList(n = integer(0), txt = character(1))
+(outerDef  <- paste0("nimbleList(",paste0(stateIndices, "=innerList()", collapse=","),")"))
+outerList <- eval(parse(text=outerDef))
+
+## Create outer list
+dependentRatesList <- outerList$new()
+
+## Create inner list & fill outer list
+for (iSN in 1:nStateNodes) { ## iSN=2
+    (deps <- toyModel$getDependencies(stateNodes[iSN]))
+    (deps <- deps[grep("rate", deps)])
+    eval(parse(text=paste0("dependentRatesList$",stateIndices[iSN], " <- innerList$new(n=", length(deps),", txt=deps)"))) 
+}
+
+print(dependentRatesList)
+
+
+
+## initial work on making a French-to-English
+## vocab testing program
+
+## I kinda got stuck with the French character encodings ....
+
+library(stringr)
+words <- readLines('~/Downloads/French vocab.txt')
+
+replaceSet <- c('â' = 'a', 'À' = 'A',
+                'é' = 'e', 'É' = 'E',
+                'è' = 'e',
+                'ê' = 'e',
+                'î' = 'i',
+                'ï' = 'i',
+                'ô' = 'o',
+                'û' = 'u',
+                'Ç' = 'C')
+
+wordsNew <- str_replace_all(words, replaceSet)
+
+for(i in seq_along(replaceSet)) {
+    wordsNew <- gsub(names(replaceSet)[i], replaceSet[i], wordsNew)
+}
+
+
+wordsNew <- gsub('\uFFFD', '\'', wordsNew)
+wordsNew <- gsub('’', '\'', wordsNew)
+
+head(wordsNew, 60)
+ind <- which(sapply(strsplit(wordsNew, '-'), length) > 2)
+ind
+wordsNew[ind]
+a <- wordsNew[ind][2]
+
+aa <- strsplit(a, '')[[1]][2]
+
+gsub("\uFFFD", "X", aa)
+
+
+str_replace_all(words[2], replaceSet)
+
+ww <- iconv(words, to = 'ASCII//TRANSLIT')
+
+
+
+## error when using the variable name 'class'
+## for a github issue
+
+library(nimble)
+
+code <- nimbleCode({
+    class ~ dnorm(0, 1)
+})
+
+Rmodel <- nimbleModel(code)
+
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+
+
+
+## comparing WAIC waic of some models
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 100)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:N) {
+        y[i] ~ dnorm(mu, sd = sigma)
+    }
+})
+N <- 50
+set.seed(0)
+y <- rnorm(N, 5, 10)
+constants <- list(N = N)
+data <- list(y = y)
+inits <- list(mu = 0, sigma = 1)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+waic1 <- nimbleMCMC(model = Rmodel,
+                    niter = 10000, nburnin = 1000, nchains = 3,
+                    samples = FALSE, WAIC = TRUE)
+waic1
+
+
+code <- nimbleCode({
+    for(i in 1:N) {
+        mu[i] ~ dnorm(0, sd = 1)
+        sigma[i] ~ dunif(0, 1000)
+        y[i] ~ dnorm(mu[i], sd = sigma[i])
+    }
+})
+N <- 50
+set.seed(0)
+y <- rnorm(N, 5, 10)
+constants <- list(N = N)
+data <- list(y = y)
+inits <- list(mu = rep(0,N), sigma = rep(1,N))
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+waic2 <- nimbleMCMC(model = Rmodel,
+                    niter = 10000, nburnin = 1000, nchains = 3,
+                    samples = FALSE, WAIC = TRUE)
+
+waic2
+
+
+
+xs <- 1:20
+plot(-1, -1, xlim = c(0, 21), ylim = c(0, 1))
+
+a <- .1
+ys <- numeric(20)
+ys[1] <- 1
+ys[2:20] <- a / (a + 2:20 - 1)
+lines(xs, ys, type = 'b', col = 'green')
+
+
+
+library(nimble)
+
+Rnf <- nimbleFunction(
+    run = function(x = double(1)) {  ## CHANGE
+        out <- is.na.vec(x)
+        ##out <- any_na(x)
+        print(out)
+        returnType(logical())
+        return(out)
+    }
+)
+
+Cnf <- compileNimble(Rnf)
+
+set.seed(0)
+x <- runif(10)
+x[2] <- NA
+
+is.na.vec <- nimble:::is.na.vec
+
+Rnf(x)
+Cnf(x)
+
+
+
+
+require(stats); require(graphics)
+n <- 10; nn <- 100
+g <- factor(round(n * runif(n * nn)))
+x <- rnorm(n * nn) + sqrt(as.numeric(g))
+xg <- split(x, g)
+boxplot(xg, col = "lavender", notch = TRUE, varwidth = TRUE)
+sapply(xg, length)
+sapply(xg, mean)
+
+### Calculate 'z-scores' by group (standardize to mean zero, variance one)
+z <- unsplit(lapply(split(x, g), scale), g)
+
+                                        # or
+
+zz <- x
+split(zz, g) <- lapply(split(x, g), scale)
+
+                                        # and check that the within-group std dev is indeed one
+tapply(z, g, sd)
+tapply(zz, g, sd)
+
+
+### data frame variation
+
+## Notice that assignment form is not used since a variable is being added
+
+g <- airquality$Month
+l <- split(airquality, g)
+l <- lapply(l, transform, Oz.Z = scale(Ozone))
+aq2 <- unsplit(l, g)
+head(aq2)
+with(aq2, tapply(Oz.Z,  Month, sd, na.rm = TRUE))
+
+
+### Split a matrix into a list by columns
+ma <- cbind(x = 1:10, y = (-4:5)^2)
+split(ma, col(ma))
+
+split(1:10, 1:2)
+
+
+
+
+## testing of accumulatorSummary function
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    ##for(i in 1:3) {
+    ##    a[i] ~ dnorm(i*5, sd = 3)
+    ##}
+    b ~ dunif(0, 1)
+    ##c ~ dnorm(1000, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(b = 0.5)#a = c(1,1,1))#, b = 0.5, c = 1000)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, accumulators = c('b'))
+conf
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+samplesMean <- apply(samples, 2, mean)
+samplesSD <- apply(samples, 2, sd)
+
+
+accumulatorSummary(Cmcmc)
+rbind(samplesMean, samplesSD)
+
+accumulatorSummary(Cmcmc) - rbind(samplesMean, samplesSD)
+
+
+
 
 ## testing MCMC configuration printing
 
 library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:n) 
+        y[i] ~ dnorm(b0 + inprod(beta[1:p], X[i, 1:p]), 1)
+    for(i in 1:p) 
+        beta[i] ~ dnorm(0, 1)
+    b0 ~ dnorm(0, 1)
+    xx ~ dbeta(1, 1)
+    yy ~ dbern(xx)
+})
+constants <- list(n = 5, p = 3)
+data <- list(y = rnorm(constants$n),
+             X = matrix(rnorm(constants$n * constants$p), constants$n),
+             yy = 1)
+inits <- list(b0 = 1, beta = rnorm(constants$p), xx = 0.5)
+Rmodel <- nimbleModel(code, data = data, constants = constants)
+
+conf <- configureMCMC(Rmodel)
+conf$addSampler('b0', 'RW')
+conf$addSampler('xx', 'RW')
+conf$addSampler('xx', 'slice')
+
+conf
+
+samplerConfs <- conf$samplerConfs
+ind <- seq_along(conf$getSamplers())
+model <- Rmodel
+
+
+
+
+
+##nimbleOptions('verbose')
+##nimbleOptions(verbose = FALSE)
+##nimbleOptions(verbose = TRUE)
+##nimbleOptions('verbose')
 
 code <- nimbleCode({
     for(i in 1:100) {
@@ -12,17 +615,43 @@ code <- nimbleCode({
         b[i] ~ dbern(0.5)
     }
     y ~ dnorm(sum(a[1:25]) + sum(b[1:25]), 1)
+    x1[1:5] ~ ddirch(alpha[1:5])
+    x2[1:5] ~ ddirch(alpha[1:5])
+    x3[1:5] ~ ddirch(alpha[1:5])
+    p ~ dbern(0.5)
 })
 constants <- list()
 data <- list(y = 0)
 inits <- list(
+    p = 0,
     a = rep(0, 100),
-    b = rep(0, 50)
+    b = rep(0, 50),
+    alpha = rep(1,5),
+    x1 = rep(0.2, 5),
+    x2 = rep(0.2, 5),
+    x3 = rep(0.2, 5)
 )
     
 Rmodel <- nimbleModel(code, constants, data, inits); Rmodel$calculate()
 
 conf <- configureMCMC(Rmodel)
+
+conf$addSampler(type = 'RW_block', target = c('a[1]'))
+conf$addSampler(type = 'RW_block', target = c('a[2]'))
+conf$addSampler(type = 'RW_block', target = c('b[1]'))
+conf$addSampler(type = 'RW_block', target = 'p')
+conf$addSampler(type = 'RW_block', target = c('a[1]', 'a[2]'))
+conf$addSampler(type = 'RW_block', target = c('a[1:2]'))
+conf$addSampler(type = 'RW_block', target = c('a[1:2]', 'a[1:2]'))
+
+conf
+
+conf$printSamplers(byType = TRUE)
+conf$printSamplers()
+
+conf$removeSamplers()
+
+conf$printMonitors()
 
 conf
 
