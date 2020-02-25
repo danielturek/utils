@@ -1,4 +1,94 @@
 
+# 343
+## 3f
+### sdf
+
+for(i in 1:3) {
+    sdf
+    #dffd
+    ## 3f
+    ### sdf
+}
+
+load('~/Downloads/dipper_data.Rdata')
+ls()
+df <- cbind(gender, sightings)
+colnames(df)[2:8] <- paste0('T', 1:7)
+write.csv(df, '~/Downloads/dipper.txt', row.names = FALSE)
+
+
+
+x <- 1
+mu0 <- 0
+mu1 <- 1
+s0 <- 1
+s1 <- 0.5
+
+th <- 0.7
+
+dnorm(x, mu0, s0)
+dnorm(x, mu1, s1)
+
+(1-th)*dnorm(x, mu0, s0) + th*dnorm(x, mu1, s1)
+
+muT <- (1-th)*mu0 + th*mu1
+sT <- sqrt((1-th)^2*s0^2 + th^2*s1^2)
+dnorm(x, muT, sT)
+
+
+
+## checking that niter >= nburnin, in compiled execution
+## to not crash R
+
+library(nimble)
+
+code <- nimbleCode({a ~ dnorm(0, 1)})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+Rmcmc <- buildMCMC(Rmodel)
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+samples <- runMCMC(Cmcmc, niter = 20, nburnin = 0)
+samples
+
+samples <- runMCMC(Cmcmc, niter = 20, nburnin = 18)
+samples
+
+samples <- runMCMC(Cmcmc, niter = 20, nburnin = 19)
+samples
+
+samples <- runMCMC(Cmcmc, niter = 20, nburnin = 20)
+samples
+
+samples <- runMCMC(Cmcmc, niter = 0, nburnin = 0)
+samples
+
+samples <- runMCMC(Cmcmc, niter = 20, nburnin = 21)
+samples <- runMCMC(Cmcmc, niter = -2, nburnin = 0)
+samples <- runMCMC(Cmcmc, niter = 0)
+samples <- runMCMC(Cmcmc, niter = -1)
+samples <- runMCMC(Cmcmc, niter = -10)
+samples <- runMCMC(Cmcmc, niter = -10, nburnin = -20)
+
+
+## plotting code for AB
+
+library(ggplot2)
+integrand <- function(mu, tau) mu*exp(-tau/mu)
+mubar <- function(tau) -tau / log(2 * integrate(integrand, 0, 1, tau)$value)
+x <- seq(1E-6, 200, length = 100)
+y <- sapply(x, mubar)
+ggplot(data.frame(tau=x, mubar=y), aes(x=tau, y=mubar)) + geom_line()
+
+
+
 ## example of the non-generality of BNP
 ## that makes it hard to use for CR methods.
 ## putting this example together for Chris and Claudia
@@ -600,7 +690,7 @@ model <- Rmodel
 
 
 
-
+library(nimble)
 
 ##nimbleOptions('verbose')
 ##nimbleOptions(verbose = FALSE)
@@ -2800,16 +2890,21 @@ code <- nimbleCode({
     x[2] ~ dnorm(0, 1)
 })
 
-Rmodel <- nimbleModel(code)
+Rmodel <- nimbleModel(code, inits = list(x=c(0,0)))
+Rmodel$calculate()
 
 conf <- configureMCMC(Rmodel, nodes = NULL)
-conf$addSampler('x[1:2]', 'RW_block')
+conf$addSampler('x[1:2]', 'RW_block', control = list(adaptFactorExponent = 0.8))
 conf$printSamplers()
 
 Rmcmc <- buildMCMC(conf)
 
 Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 1000)
+samples[990:1000, ]
 
 Rmcmc$samplerFunctions$contentsList[[1]]$my_calcAdaptationFactor$gamma1
 

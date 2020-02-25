@@ -123,6 +123,11 @@
 (global-set-key (kbd "C-c t") (quote rmarkdown-tangle-file))
 (global-set-key (kbd "C-c i") (quote rmarkdown-commit))
 
+;; next line is critically important!
+;; makes it that in ESS, lines beginning with a single # comment, e.g.:
+;; # this is a comment
+;; are *not* indented 40 characters!!!  This is a *huge* improvement
+(setq ess-fancy-comments nil)
 
 ;; all this next stuff is for doing LaTeX docs from Aquamacs
 ;;(require 'tex-buf)  ;; causes a load-error when starting emacs from terminal
