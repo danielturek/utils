@@ -1,39 +1,61 @@
 
-# 343
-## 3f
-### sdf
 
-for(i in 1:3) {
-    sdf
-    #dffd
-    ## 3f
-    ### sdf
+
+library(nimble)
+library(basicMCMCplots)
+
+set.seed(0)
+N <- 100
+p <- 5
+X <- array(0, c(N,p))
+X[,1] <- 1
+X[,2:p] <- array(rnorm(N*(p-1)), c(N,p-1))
+beta <- c(40, 20, -10, 14, -3)
+sigma <- 50
+y <- rnorm(N, X %*% beta, sigma)
+
+code <- nimbleCode({
+    sigma ~ dunif(0, 1000)
+    for(i in 1:p) {
+        beta[i] ~ dnorm(0, sd = 10000)
+    }
+    for(i in 1:N) {
+        y[i] ~ dnorm(sum(X[i,1:p]*beta[1:p]), sd = sigma)
+    }
+})
+constants <- list(N = N, p = p , X = X)
+data <- list(y = y)
+inits <- list(beta = rep(0,p), sigma = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, useConjugacy = FALSE)
+conf$printSamplers()
+conf$printMonitors()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+samples <- runMCMC(Cmcmc, 1000)
+
+dim(samples)
+colnames(samples)
+head(samples, 20)
+samplesSummary(samples)
+samplesPlot(samples)
+samplesPlot(samples, ind = 1:500)
+samplesPlot(samples, ind = 1:100)
+
+initsFunction <- function() {
+    list(beta = rnorm(p, 0, 1000),
+         sigma = runif(1, 0, 100))
 }
 
-load('~/Downloads/dipper_data.Rdata')
-ls()
-df <- cbind(gender, sightings)
-colnames(df)[2:8] <- paste0('T', 1:7)
-write.csv(df, '~/Downloads/dipper.txt', row.names = FALSE)
 
 
-
-x <- 1
-mu0 <- 0
-mu1 <- 1
-s0 <- 1
-s1 <- 0.5
-
-th <- 0.7
-
-dnorm(x, mu0, s0)
-dnorm(x, mu1, s1)
-
-(1-th)*dnorm(x, mu0, s0) + th*dnorm(x, mu1, s1)
-
-muT <- (1-th)*mu0 + th*mu1
-sT <- sqrt((1-th)^2*s0^2 + th^2*s1^2)
-dnorm(x, muT, sT)
 
 
 
@@ -678,9 +700,14 @@ inits <- list(b0 = 1, beta = rnorm(constants$p), xx = 0.5)
 Rmodel <- nimbleModel(code, data = data, constants = constants)
 
 conf <- configureMCMC(Rmodel)
-conf$addSampler('b0', 'RW')
-conf$addSampler('xx', 'RW')
-conf$addSampler('xx', 'slice')
+conf$addSampler('b0', 'RW', print = TRUE)
+conf$addSampler('xx', 'RW', print = TRUE)
+conf$addSampler('xx', 'slice', print = TRUE)
+
+conf$printSamplers()
+
+conf$addSampler('y', 'RW', scalarComponents = TRUE, print = TRUE)
+
 
 conf
 
@@ -22029,67 +22056,171 @@ Cmcmc$run(30000, progressBar = progressBarOption)
 
 
 
+library(nimble)
+
+sampler_RW_dirichlet2 <- nimbleFunction(
+    name = 'sampler_RW_dirichlet2',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        adaptive      <- if(!is.null(control$adaptive))      control$adaptive      else TRUE
+        adaptInterval <- if(!is.null(control$adaptInterval)) control$adaptInterval else 200
+        scaleOriginal <- if(!is.null(control$scale))         control$scale         else 1
+        ## node list generation
+        calcNodes <- model$getDependencies(target)
+        depNodes  <- model$getDependencies(target, self = FALSE)
+        targetScalarNodes <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        ## numeric value generation
+        d <- length(targetScalarNodes)
+        thetaVec         <- rep(0, d)
+        alphaVec         <- rep(0, d)    ## NEW
+        scaleVec         <- rep(scaleOriginal, d)
+        timesRan         <- 0
+        timesAcceptedVec <- rep(0, d)
+        timesAdapted     <- 0
+        gamma1           <- 0
+        ## checks
+        if(length(model$expandNodeNames(target)) > 1)    stop('RW_dirichlet sampler only applies to one target node')
+        if(model$getDistribution(target) != 'ddirch')    stop('can only use RW_dirichlet sampler for dirichlet distributions')
+    },
+    run = function() {
+        ##if(thetaVec[1] == 0)   thetaVec <<- values(model, target)   ## initialization
+        thetaVec <<- values(model, target)   ## NEW
+        alphaVec <<- model$getParam(target, 'alpha')
+        for(i in 1:d) {
+            currentValue <- thetaVec[i]
+            propLogScale <- rnorm(1, mean = 0, sd = scaleVec[i])
+            propValue <- currentValue * exp(propLogScale)
+            ##if(propValue != 0) {    ## NEW
+            thetaVecProp <- thetaVec
+            thetaVecProp[i] <- propValue
+            values(model, target) <<- thetaVecProp / sum(thetaVecProp)
+            ##logMHR <- (alphaVec[i]-1)*propLogScale + propLogScale + currentValue - propValue + calculateDiff(model, depNodes)
+            ## TEMP:
+            ##lpTargetCurrent <- getLogProb(model, target)
+            ##lpTargetProp <- calculate(model, target)
+            logMHR <- ##lpTargetProp - lpTargetCurrent + ##(alphaVec[i]-1)*propLogScale +
+                ##calculateDiff(model, depNodes) +
+                calculateDiff(model, calcNodes) +
+                    propLogScale + currentValue - propValue
+            ## end TEMP
+            jump <- decide(logMHR)
+            ##} else jump <- FALSE    ## NEW
+            if(adaptive & jump)   timesAcceptedVec[i] <<- timesAcceptedVec[i] + 1
+            if(jump) { thetaVec <<- thetaVecProp
+                       nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+                   } else   { nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE) }
+            model$calculate(target)                                                         ## update target logProb
+            nimCopy(from = model, to = mvSaved, row = 1, nodes = target, logProb = TRUE)    ##
+        }
+        if(adaptive) {
+            timesRan <<- timesRan + 1
+            if(timesRan %% adaptInterval == 0) {
+                acceptanceRateVec <- timesAcceptedVec / timesRan
+                timesAdapted <<- timesAdapted + 1
+                gamma1 <<- 1/((timesAdapted + 3)^0.8)
+                adaptFactorVec <- exp(10 * gamma1 * (acceptanceRateVec - 0.44))   ## optimalAR = 0.44
+                scaleVec <<- scaleVec * adaptFactorVec
+                timesRan <<- 0
+                timesAcceptedVec <<- numeric(d, 0)
+            }
+        }
+    },
+    methods = list(
+        reset = function() {
+            thetaVec         <<- numeric(d, 0)
+            scaleVec         <<- numeric(d, scaleOriginal)
+            timesRan         <<- 0
+            timesAcceptedVec <<- numeric(d, 0)
+            timesAdapted     <<- 0
+            gamma1           <<- 0
+        }
+    )
+)
+
 
 ## testing new sampler function: RW_dirichlet
 ## for ddirch or ddirich Dirichlet nodes
 library(nimble)
 ##nimbleOptions(showCompilerOutput=TRUE)
 n <- 100
-alpha <- c(10, 30, 15)#, 60, 1)
+##alpha <- c(10, 30, 15)#, 60, 1)
+alpha <- c(0.2, 0.5, 0.9)#, 60, 1)
 K <- length(alpha)
 p <- c(.12, .24, .09)#, .54, .01)
+set.seed(0)
 y <- rmulti(1, n, p)
 code <- quote({
     p[1:K]  ~ ddirch(alpha[1:K])
-    ##p2[1:K] ~ ddirch(alpha[1:K])
+    p2[1:K] ~ ddirch(alpha[1:K])
+    p3[1:K] ~ ddirch(alpha[1:K])
     y[1:K]  ~ dmulti(p[1:K], n)
-    ##y2[1:K] ~ dmulti(p2[1:K], n)
+    y2[1:K] ~ dmulti(p2[1:K], n)
+    y3[1:K] ~ dmulti(p3[1:K], n)
     ##x ~ dnorm(p[1], 1)
     ##x2 ~ dnorm(p2[1],1)
     ##for(i in 1:K) {
     ##    alpha[i] ~ dgamma(.001, .001);
     ##}
 })
-inits <- list(p = rep(1/K, K), alpha = alpha)#, p2 = rep(1/K,K))##, x=0)
+inits <- list(p = rep(1/K, K), alpha = alpha, p2 = rep(1/K,K), p3=rep(1/K,K))##, x=0)
 constants <- list(n=n, K=K)
-data <- list(y = y)#, y2 = y)
+data <- list(y = y, y2 = y, y3=y)
 Rmodel <- nimbleModel(code, constants, data, inits)
-Cmodel <- compileNimble(Rmodel)
+Rmodel$calculate()
 
 ##Rmodel$alpha
 ##Rmodel$alpha2
 ##Rmodel$getParam('p2', 'alpha')
 ##Rmodel$getParam('p[5:6]', 'alpha')
 
-conf <- configureMCMC(Rmodel, nodes=NULL)
-conf$addSampler('p[1:3]',  'RW_dirichlet', print=TRUE)
-conf$addSampler('p2[1:3]', 'conjugate',    print=TRUE)
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$printSamplers()
+##conf$addSampler('p[1:3]',  'RW_dirichlet', print=TRUE)
+##conf$addSampler('p2[1:3]', 'conjugate',    print=TRUE)
+conf$addSampler('p[1:3]', 'conjugate')
+conf$addSampler('p2[1:3]',  'RW_dirichlet')
+conf$addSampler('p3[1:3]',  'RW_dirichlet2')
 conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
 
 Rmodel$alpha
 Rmodel$p
+Rmodel$p2
+Rmodel$p3
 Rmodel$y
+Rmodel$y2
+Rmodel$y3
 
-debug(Rmcmc$run)
-Rmcmc$run(1001)
+##debug(Rmcmc$run)
+##Rmcmc$run(1001)
 
-debug(samplerFunctions[[1]]$reset)
-debug(samplerFunctions[[1]]$run)
+##debug(samplerFunctions[[1]]$reset)
+##debug(samplerFunctions[[1]]$run)
 
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+Cmodel$calculate()
 
 niter <- 100000
 
-set.seed(0)
-Rsamples <- runMCMC(Rmcmc, niter)
+##set.seed(0)
+##Rsamples <- runMCMC(Rmcmc, niter)
 
 set.seed(0)
 Csamples <- runMCMC(Cmcmc, niter)
 
-colnames(Csamples)
-apply(Csamples, 2, mean)
+##colnames(Csamples)
+means <- apply(Csamples, 2, mean)
+round(matrix(means, ncol = 3), 3)
+
+ss <- samplesSummary(Csamples)
+ss[1:3,] - ss[4:6,]
+ss[1:3,] - ss[7:9,]
 
 for(i in 1:5) {
     samplesPlot(Csamples, paste0(c('p[', 'p2['), i, c(']')))
