@@ -26,7 +26,7 @@
 ;;(defun rmarkdown-new-chunk (name)
   "Insert a new R chunk."
   (interactive)
-  (insert "\n```{r }\n")
+  (insert "```{r }\n")
 ;;  (interactive "sChunk name: ")
 ;;  (insert "\n```{r " name "}\n")
   (save-excursion
@@ -37,7 +37,7 @@
 (defun rmarkdown-new-chunk-noeval ()
   "Insert a new R chunk with eval = FALSE."
   (interactive)
-  (insert "\n```{r eval = FALSE}\n")
+  (insert "```{r eval = FALSE}\n")
   (save-excursion
     (newline)
     (insert "```\n")
@@ -55,7 +55,7 @@
 (defun rmarkdown-break-code-chunk ()
   "Insert a break into an Rmarkdown code chunk."
   (interactive)
-  (insert "\n```\n")
+  (insert "```\n")
   (save-excursion
     (newline)
     (insert "```{r }\n")
@@ -64,7 +64,7 @@
 (defun rmarkdown-break-code-chunk-noeval ()
   "Insert a break into an Rmarkdown code chunk with eval = FALSE."
   (interactive)
-  (insert "\n```\n")
+  (insert "```\n")
   (save-excursion
     (newline)
     (insert "```{r eval = FALSE}\n")
