@@ -1,4 +1,42 @@
 
+
+library(nimble)
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('a', 'slice')
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+niter <- 10000
+set.seed(0)
+widthHistory <- numeric(niter)
+
+for(i in 1:niter) {
+    Cmcmc$run(1, reset = (i==1))
+    widthHistory[i] <- Cmcmc$samplerFunctions[[1]]$width
+}
+
+samples <- as.matrix(Cmcmc$mvSamples)
+
+plot(1:niter, widthHistory, type = 'l')
+
+
+
+
 library(nimble)
 set.seed(0)
 x <- rbeta(5, 1, 1)

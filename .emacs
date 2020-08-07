@@ -46,7 +46,7 @@
 (defun rmarkdown-new-comment ()
   "Insert a new Rmarkdown comment."
   (interactive)
-  (insert "\n<!--\n")
+  (insert "<!--\n")
   (save-excursion
     (newline)
     (insert "-->\n")
@@ -73,7 +73,12 @@
 (defun rmarkdown-external-html-link ()
   "Insert template for external HTML link."
   (interactive)
-  (insert "<a href=\"URL\" target=\"_blank\" style=\"color: blue\">LINK_TEXT</a>"))
+  (insert "<a href=\"URL\" target=\"_blank\">TEXT</a>"))
+
+(defun rmarkdown-external-html-link-blue ()
+  "Insert template for external HTML link."
+  (interactive)
+  (insert "<a href=\"URL\" target=\"_blank\" style=\"color: blue\">TEXT</a>"))
 
 (defun rmarkdown-weave-file ()
   "Run knitr on the current file and weave it as MD and HTML."
@@ -118,6 +123,7 @@
 (global-set-key (kbd "C-c b") (quote rmarkdown-break-code-chunk))
 (global-set-key (kbd "C-c B") (quote rmarkdown-break-code-chunk-noeval))
 (global-set-key (kbd "C-c l") (quote rmarkdown-external-html-link))
+(global-set-key (kbd "C-c L") (quote rmarkdown-external-html-link-blue))
 (global-set-key (kbd "C-c w") (quote rmarkdown-weave-file))
 (global-set-key (kbd "C-c p") (quote rmarkdown-preview-file))
 (global-set-key (kbd "C-c t") (quote rmarkdown-tangle-file))
