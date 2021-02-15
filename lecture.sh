@@ -1,5 +1,5 @@
 #!/bin/bash
 
-open ~/github/courses/stat161/lectures/les"$1".docx
+open ~/github/courses/stat161/lectures/lec"$1".docx
 
 
