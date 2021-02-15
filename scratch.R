@@ -1,27 +1,366 @@
 
 
+
+
+
+## run testing for HMC sampler:
+
 1
+
+source('~/temp/test-mcmc.R')
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    a[1] ~ dnorm(0, 1)
+    a[2] ~ dnorm(a[1]+1, 1)
+    a[3] ~ dnorm(a[2]+1, 1)
+    d ~ dnorm(a[3], sd=2)
+})
+constants <- list()
+data <- list(d = 5)
+inits <- list(a = rep(0, 3))
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('a', 'HMC', printM = TRUE, printTimesRan = TRUE)
+Rmcmc <- buildMCMC(conf)
+
+##set.seed(0)
+##samples <- runMCMC(Rmcmc, 160)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+Cmodel$setInits(inits)
+set.seed(0)
+samples <- runMCMC(Cmcmc, 160, progressBar = FALSE)
+
+
+
+
+## testing HMC sampler to correctly converge to
+## a custom distribution (parabola, I hope)
+
+library(nimble)
+
+dmyDist <- nimbleFunction(
+    run = function(x = double(), theta = double(1), a = double(), log = integer(0, default = 0)) {
+        if(theta[2] > 10) return(-99)
+        lp <- -abs(theta[2] - a*theta[1]^2)
+        returnType(double())
+        return(lp)
+    },
+    enableDerivs = TRUE
+)
+rmyDist <- nimbleFunction(
+    run = function(n = integer(), theta = double(1), a = double()) {
+        stop('called rmyDist')
+        returnType(double())
+        return(0)
+    }
+)
+registerDistributions(list(
+    dmyDist = list(BUGSdist = 'dmyDist(theta, a)',
+                   types = c('value = double()', 'theta = double(1)', 'a = double()'))
+))
+
+code <- nimbleCode({
+    for(i in 1:2) {
+        theta[i] ~ dnorm(0, sd = 1000)
+    }
+    x ~ dmyDist(theta = theta[1:2], a = a)
+})
+constants <- list()
+data <- list(x = 0)
+inits <- list(theta = c(0,0), a = 1)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('theta', 'HMC', printM = TRUE, printTimesRan = TRUE, printEpsilon = TRUE)
+Rmcmc <- buildMCMC(conf)
+
+##set.seed(0)
+##samples <- runMCMC(Rmcmc, 160)
+
+Cmodel <- compileNimble(Rmodel)
+##Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+##printErrors()
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+samples <- runMCMC(Cmcmc, 1000)
+
+colnames(samples)
+dim(samples)
+
+indToPlot <- 1:1000
+indToPlot <- 1:500
+indToPlot <- 1:300
+
+x <- samples[indToPlot, 'theta[1]']
+y <- samples[indToPlot, 'theta[2]']
+plot(x, y, type = 'p', pch = 'x')
+
+library(coda)
+effectiveSize(samples)
+## theta[1] theta[2] 
+## 34.03064 18.99514 
+
+
+
+
+
+
+
+
+## trying to use nimble's which(), or nimWhich() in compiled code
+
+library(nimble)
+
+Rnf <- nimbleFunction(
+    run = function(x = double(1)) {
+        w <- which(x == 2)
+        returnType(integer(1))
+        return(w)
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+(x <- c(1:5, 1, 2, 2))
+which(x == 2)
+
+Rnf(x)
+Cnf(x)
+
+
+
+
+
+## Perry's tough case for posterior predictive branches
+
+library(nimble)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, 1) # prior
+    ##y ~ dnorm(mu, 1) # data
+    for(i in 1:N) {
+        ypred[i] ~ dnorm(mu, 1) # predictive depth 1
+        zpred[i] ~ dnorm(ypred[i], 1) # predictive depth 2
+    }
+})
+codeY <- nimbleCode({
+    mu ~ dnorm(0, 1) # prior
+    y ~ dnorm(mu, 1) # data
+    for(i in 1:N) {
+        ypred[i] ~ dnorm(mu, 1) # predictive depth 1
+        zpred[i] ~ dnorm(ypred[i], 1) # predictive depth 2
+    }
+})
+
+
+N <- 10000
+constants <- list(N = N)
+data <- list()
+dataY <- list(y = 0)
+inits <- list(mu = 0, ypred = rep(0,N), zpred = rep(0,N))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+RmodelY <- nimbleModel(codeY, constants, dataY, inits)
+RmodelY$calculate()
+
+system.time(conf <- configureMCMC(Rmodel))
+conf$printSamplers(byType = TRUE)
+
+system.time(confY <- configureMCMC(RmodelY))   ## 20 seconds when N=10000
+confY$printSamplers(byType = TRUE)
+
+nimbleOptions(MCMCjointlySamplePredictiveBranches = FALSE)
+nimbleOptions('MCMCjointlySamplePredictiveBranches')
+
+system.time(confY <- configureMCMC(RmodelY))   ## 21 seconds when N=10000
+confY$printSamplers(byType = TRUE)
+
+system.time(confY <- configureMCMC(RmodelY, useConjugacy=FALSE))   ## 14 seconds when N=10000
+confY$printSamplers(byType = TRUE)
+
+
+
+
+
 
 ## helping Wei with SCR + CAR, making agreement between proper and intrinsic
 ## CAR models
 
-library(nimble)
 
-num <- c(1, 2,    3,       3,       2,    1)
-adj <- c(2, 1, 3, 2, 4, 5, 3, 5, 6, 3, 4, 4)
-(N <- length(num))
-(L <- length(adj))
-(weights <- rep(1, L))
+num <- c(1, 2,    3,       3,       2,    1)     ## for example
+adj <- c(2, 1, 3, 2, 4, 5, 3, 5, 6, 3, 4, 4)     ## for example
+N <- length(num)
+L <- length(adj)
+weights <- rep(1, L)     ## or otherwise, but this is simplest
+
+library(nimble)
+nimble:::CAR_normal_checkAdjWeightsNum(adj, weights, num)    ## safety check
+
+Q <- array(0, c(N,N))
+W <- array(0, c(N,N))
+ind <- 1
+for(i in 1:N) {
+    if(num[i] > 0) {
+        for(j in 1:num[i]) {
+            Q[i,adj[ind]] <- -weights[ind]
+            Q[i,i] <- Q[i,i] + weights[ind]
+            W[i,adj[ind]] <- weights[ind]
+            ind <- ind + 1
+        }
+    }
+}
+
+Q
+W
+(B <- W / apply(W, 2, sum))
+(D <- diag(1/num))
+(Dinv <- solve(D))
+I <- diag(N)
+
+## Q is equal to Dinv %*% (I - B)
+all(Dinv %*% (I - B) == Q)
+
+(eig <- eigen(Q))
+
+v <- eig$vectors
+
+
+t(t(v) / apply(v, 2, function(x) min(abs(x))))
+
 
 
 ## use to check the validity of adj, weights, num for use in dcar_normal:
-nimble:::CAR_normal_checkAdjWeightsNum(adj, weights, num)
 
-(carCM <- as.carCM(adj, weights, num))
+##(carCM <- as.carCM(adj, weights, num))
 
-(C <- CAR_calcC(adj, num))
-(M <- CAR_calcM(num))
+##(C <- CAR_calcC(adj, num))
+##(M <- CAR_calcM(num))
 ##(Cmatrix <- CAR_calcCmatrix(C, adj, num))
+## 
+##(Q <- diag(1/M) %*% (diag(N) - Cmatrix))
+##(diag(N) - Cmatrix) %*% diag(1/M)
+
+eig <- eigen(Q)
+lambda <- eig$values
+lambdaPlus <- ifelse(lambda < 1E-6, 0, 1/lambda)
+Gamma <- eig$vectors
+
+##round(Gamma %*% diag(lambda) %*% t(Gamma), 3)
+
+## Gamma %*% sqrt(Lambda^+) %*% vec
+
+##set.seed(0)
+##n <- 2
+##samp <- array(0, c(n, N))
+##for(i in 1:n) {
+##    z <- rnorm(N)
+##    #samp[i,] <- t(Gamma %*% diag(sqrt(Lambda)) %*% z)
+##    samp[i,] <- t(   Gamma %*% (sqrt(Lambda) * z)    )
+##}
+## 
+##C <- cov(samp)
+##solve(C)
+
+
+
+muTrue <- 1:N   ## for example
+
+set.seed(0)
+z <- rnorm(N)
+Gamma %*% (sqrt(lambdaPlus) * z) + muTrue  ## CAR realization
+
+
+
+alpha <- 2  ## simulation value of overall mean
+## X is a (Nxp) design matrix containing the p spatial covariates, which does *not* include a column of 1's.
+## beta is a (px1) vector of fixed regression coefficient values, which we'll use for simulation
+muTrue <- alpha + X %*% beta
+
+
+##n <- 1000
+##out <- array(0, c(n,N))
+##for(i in 1:n) {
+##    z <- rnorm(N)
+##    out[i,] <- Gamma %*% (sqrt(lambdaPlus) * z) + muTrue  ## CAR realization
+##}
+## 
+##S <- cov(out)
+##S
+##solve(S)
+##solve(Q)
+##eigen(S)
+
+
+
+## here's the code from the (second) email that I sent to Wei:
+
+num <- c(1,   2,      3,         3,         2,      1)     ## or otherwise
+adj <- c(2,   1, 3,   2, 4, 5,   3, 5, 6,   3, 4,   4)     ## or otherwise
+N <- length(num)
+L <- length(adj)
+weights <- rep(1, L)     ## or otherwise, but this is simplest
+
+tau <- 2       ## update: added true value of tau used for simulation
+
+library(nimble)
+nimble:::CAR_normal_checkAdjWeightsNum(adj, weights, num)    ## safety check
+
+## create precision matrix
+Q <- array(0, c(N,N))
+ind <- 1
+for(i in 1:N) {
+    if(num[i] > 0) {
+        for(j in 1:num[i]) {
+            Q[i,adj[ind]] <- -weights[ind]
+            Q[i,i] <- Q[i,i] + weights[ind]
+            ind <- ind + 1
+        }
+    }
+}
+
+eig <- eigen(Q)
+lambda <- eig$values
+lambdaPlus <- ifelse(lambda < 1E-10, 0, 1/lambda)   ## update: lower threshold 1E-10
+Gamma <- eig$vectors
+
+muTrue <- 1:N   ## for example
+
+set.seed(0)
+z <- rnorm(N)
+tau * Gamma %*% (sqrt(lambdaPlus) * z) + muTrue  ## ICAR realization, update: added tau
+
+
+'dcar_normal(adj, weights,           num, tau, c,                                zero_mean = 0)'
+'dcar_normal(adj, weights,           num, tau, c = CAR_calcNumIslands(adj, num), zero_mean    )'
+'dcar_normal(adj, weights,           num, tau, c = CAR_calcNumIslands(adj, num), zero_mean = 0)'
+'dcar_normal(adj, weights = adj/adj, num, tau, c,                                zero_mean    )'
+'dcar_normal(adj, weights = adj/adj, num, tau, c,                                zero_mean = 0)'
+'dcar_normal(adj, weights = adj/adj, num, tau, c = CAR_calcNumIslands(adj, num), zero_mean    )'
+'dcar_normal(adj, weights = adj/adj, num, tau, c = CAR_calcNumIslands(adj, num), zero_mean = 0)'
+
+
+
+
+
+
+
+
+
 
 identical(carCM$C, C)
 identical(carCM$M, M)
@@ -463,13 +802,10 @@ PPbranches 5000 PP branch (using node names) (NO conjugacy check):
 
 
 library(nimble)
-
-
-
-nimbleOptions('MCMCjointlySamplePredictiveBranches')
-nimbleOptions(MCMCjointlySamplePredictiveBranches = TRUE)
-nimbleOptions(MCMCjointlySamplePredictiveBranches = FALSE)
-
+library(testthat)
+##
+expect_true(nimbleOptions('MCMCjointlySamplePredictiveBranches'))
+##
 code <- nimbleCode({
     tau ~ dgamma(0.1, 0.1)
     x[1] ~ dnorm(0, tau)
@@ -480,42 +816,101 @@ code <- nimbleCode({
         x[t] ~ dnorm(x[t-1], tau)
     }
 })
-
-
-##y <- 1:10
-##y <- c(NA, NA, NA, NA, 4, NA, NA, NA, NA, NA)
-
-##N <- 10
 N <-  10
-y <- 1:N
-y <- c(1, 2, 3, NA, 5, 6, 7, 8, NA, NA)
-y <- c(1:(N/2), rep(NA, N/2))
-y <- rep(NA, N)
 constants <- list(N = N)
 inits <- list(tau = 1)
+##
+y <- 1:N
 data <- list(y = y)
 Rmodel <- nimbleModel(code, constants, data, inits)
-model <- Rmodel
-getParentNodes <- nimble:::getParentNodes
+conf <- configureMCMC(Rmodel, print = FALSE)
+##conf$printSamplers()
+expect_true(all(sapply(conf$getSamplers(), function(x) x$name) == c('conjugate_dgamma_dnorm', rep('conjugate_dnorm_dnorm', 10))))
+##
+y <- c(1, 2, 3, NA, 5, 6, 7, 8, NA, NA)
+data <- list(y = y)
+Rmodel <- nimbleModel(code, constants, data, inits)
 conf <- configureMCMC(Rmodel)
-conf$printSamplers()
+##conf$printSamplers()
+expect_true(all(sapply(conf$getSamplers(), function(x) x$name) ==
+                c('conjugate_dgamma_dnorm',
+                  rep('conjugate_dnorm_dnorm', 5),
+                  'posterior_predictive',
+                  rep('conjugate_dnorm_dnorm', 3),
+                  'posterior_predictive_branch')))
+##
+y <- c(1:(N/2), rep(NA, N/2))
+data <- list(y = y)
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+##conf$printSamplers()
+expect_true(all(sapply(conf$getSamplers(), function(x) x$name) ==
+                c('conjugate_dgamma_dnorm',
+                  rep('conjugate_dnorm_dnorm', 5),
+                  'posterior_predictive_branch')))
+##
+y <- rep(NA, N)
+data <- list(y = y)
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+##conf$printSamplers()
+expect_true(all(sapply(conf$getSamplers(), function(x) x$name) ==
+                'posterior_predictive_branch'))
+##
+y <- c(NA, NA, NA, NA, 4, NA, NA, NA, NA, NA)
+data <- list(y = y)
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+##conf$printSamplers()
+expect_true(all(sapply(conf$getSamplers(), function(x) x$name) ==
+                c('conjugate_dgamma_dnorm',
+                  rep('conjugate_dnorm_dnorm', 2),
+                  'posterior_predictive',
+                  'conjugate_dnorm_dnorm',
+                  'posterior_predictive',
+                  'conjugate_dnorm_dnorm',
+                  'posterior_predictive',
+                  'conjugate_dnorm_dnorm',
+                  'posterior_predictive',
+                  'posterior_predictive_branch')))
+##
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    y ~ dnorm(a, 1)
+    b[1] ~ dnorm(a, 1)
+    b[2] ~ dnorm(a, 1)
+    c ~ dnorm(b[1] + b[2], 1)
+})
+Rmodel <- nimbleModel(code)
+conf <- configureMCMC(Rmodel)
+##conf$printSamplers()
+expect_true(sapply(conf$getSamplers(), function(x) x$name) == 'posterior_predictive_branch')
+##
+Rmodel <- nimbleModel(code, data = list(y = 1))
+conf <- configureMCMC(Rmodel)
+##conf$printSamplers()
+expect_true(all(sapply(conf$getSamplers(), function(x) x$name) ==
+                c('conjugate_dnorm_dnorm',
+                  rep('posterior_predictive_branch', 2))))
+##
+Rmodel <- nimbleModel(code, data = list(y = 1))
+conf <- configureMCMC(Rmodel, nodes = c('a', 'b[1]', 'c'))
+##conf$printSamplers()
+expect_true(all(sapply(conf$getSamplers(), function(x) x$name) ==
+                c('conjugate_dnorm_dnorm',
+                  rep('posterior_predictive_branch', 1))))
+##
+Rmodel <- nimbleModel(code, data = list(y = 1))
+conf <- configureMCMC(Rmodel, nodes = c('a', 'b[1]', 'b[2]'))
+##conf$printSamplers()
+expect_true(all(sapply(conf$getSamplers(), function(x) x$name) ==
+                c('conjugate_dnorm_dnorm',
+                  rep('conjugate_dnorm_dnorm', 2))))
 
 
-system.time(conf <- configureMCMC(Rmodel))
-system.time(conf <- configureMCMC(Rmodel, useConjugacy = FALSE))
-
-conf$printSamplers()
-
-model$isEndNode('y[1]')
-model$isEndNode(1:10)
 
 
 
-library(nimble)
-
-nimbleOptions('MCMCjointlySamplePredictiveBranches')
-nimbleOptions(MCMCjointlySamplePredictiveBranches = TRUE)
-nimbleOptions(MCMCjointlySamplePredictiveBranches = FALSE)
 
 code <- nimbleCode({
     tau ~ dgamma(0.1, 0.1)
@@ -534,11 +929,6 @@ code <- nimbleCode({
     k ~ dnorm(y[70], 1)
     L ~ dnorm(x[60], 1)
 })
-
-##y <- 1:10
-##y <- c(NA, NA, NA, NA, 4, NA, NA, NA, NA, NA)
-
-##N <- 10
 N <-  100
 y <- c(1:(N-6), NA, NA, 7, NA, NA, NA)
 constants <- list(N = N)

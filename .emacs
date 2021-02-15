@@ -1,3 +1,12 @@
+;; ____________________________________________________________________________
+;; Aquamacs custom-file warning:
+;; Warning: After loading this .emacs file, Aquamacs will also load
+;; customizations from `custom-file' (customizations.el). Any settings there
+;; will override those made here.
+;; Consider moving your startup settings to the Preferences.el file, which
+;; is loaded after `custom-file':
+;; ~/Library/Preferences/Aquamacs Emacs/Preferences
+;; _____________________________________________________________________________
 (setq backup-directory-alist `(("." . "~/.emacssave")))
 
 ;; this would allow aquamacs to detect rmd-mode automatically,
@@ -10,6 +19,9 @@
 ;;(require 'poly-markdown)
 ;;(add-to-list 'auto-mode-alist '("\\.Rmd\\'" . poly-markdown+r-mode))
 ;;(add-to-list 'auto-mode-alist '("\\.rmd\\'" . poly-markdown+r-mode))
+
+(custom-set-variables
+ '(one-buffer-one-frame-mode nil nil (aquamacs-frame-setup)))
 
 (defun rmd-mode ()
   "ESS Markdown mode for rmd files"

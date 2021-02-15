@@ -76,8 +76,11 @@ function g() {
 alias e=emacs
 alias ex=exit
 alias o='open -a "Google Chrome"'
+alias textbook=~/github/utils/textbook.sh
 alias rmm=~/github/utils/move_to_trash.sh
 alias ls='ls -F'
+alias cv='open ~/github/private/CV/Turek\ -\ CV.tex'
+alias cvcommit='cd ~/github/private; commit'
 alias backup=~/github/utils/backup.sh
 alias cleanup=~/github/utils/cleanup.sh
 alias build=~/github/utils/build.sh
