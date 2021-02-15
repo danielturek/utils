@@ -77,6 +77,7 @@ alias e=emacs
 alias ex=exit
 alias o='open -a "Google Chrome"'
 alias textbook=~/github/utils/textbook.sh
+alias lecture=~/github/utils/lecture.sh
 alias rmm=~/github/utils/move_to_trash.sh
 alias ls='ls -F'
 alias cv='open ~/github/private/CV/Turek\ -\ CV.tex'
