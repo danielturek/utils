@@ -54,6 +54,12 @@
 # continue holding them down until computer starts up,
 # then release.
 
+# to turn off "red notification circle" appearing on
+# the Systems Preferences icon in the Dock
+# (which is reminding you to upgrade the OS):
+# $ defaults write com.apple.systempreferences AttentionPrefBundleIDs 0
+# $ killall Dock
+
 # in PS1 variable to define prompt:
 # see: http://www.funtoo.org/Prompt_Magic
 # "\a" makes a little bell noise
@@ -81,7 +87,7 @@ alias lecture=~/github/utils/lecture.sh
 alias rmm=~/github/utils/move_to_trash.sh
 alias ls='ls -F'
 alias cv='open ~/github/private/CV/Turek\ -\ CV.tex'
-alias cvcommit='cd ~/github/private; commit'
+alias cvcommit='dir=$(pwd); cd ~/github/private; commit; cd $dir'
 alias backup=~/github/utils/backup.sh
 alias cleanup=~/github/utils/cleanup.sh
 alias build=~/github/utils/build.sh

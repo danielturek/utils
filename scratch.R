@@ -1,5 +1,791 @@
 
 
+code <- nimbleCode({
+    sigma ~ dunif(0, 100)
+    for(i in 1:nSubjects) {
+        for(j in 1:(nPredictors+1)) {   ## number of predictors, plus 1 for intercept
+            beta[i,j] ~ dnorm(0, sd = 100)
+        }
+        for(k in 1:nObservationsOfEachSubject[i]) {
+            y[i,k] ~ dnorm(beta[i,nPredictors+1] + inprod(beta[i,1:nPredictors], X[i,1:nPredictors]), sd = sigma)
+        }
+    }
+})
+
+
+
+
+
+f <- function(s) {
+    sp <- strsplit(s, ',')
+    sp2 <- paste(sp[[1]], collapse = '\n')
+    cat(sp2)
+    cat('\n')
+}
+
+f(s)
+
+s <- '2544, 2553, 2557, 2563'
+
+
+
+
+
+
+set.seed(0)
+Rmodel <- nimbleModel(code, constants, data, inits = inits())
+
+conf <- configureMCMC(Rmodel)
+conf$setMonitors(c('sigma', 'lambda', 'psi', 'Nhat', 'z'))
+
+conf$removeSamplers('X')
+for(i in 1:M) conf$addSampler(target = paste0('X[', i, ', 1:2]'), type = 'myX', control = list(xlim = limits$xlim, ylim = limits$ylim, J = nrow(traps)))
+
+conf$removeSamplers('z')
+conf$addSampler('z', type = 'myDemo', scalarComponents = TRUE)
+
+conf$removeSamplers('ID')
+conf$addSampler('ID', type = 'myCategorical', scalarComponents = TRUE)
+
+conf$printSamplers()
+conf$printSamplers('z')
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+samples <- runMCMC(Cmcmc, 100)
+
+samplesSummary(samples)
+
+
+
+
+
+
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    for(i in 1:2) {
+        b[i] ~ dnorm(0, 1)
+        for(j in 1:2) {
+            c[i,j] ~ dnorm(0, 1)
+            ##for(k in 1:2) {
+            ##    d[i,j,k] ~ dnorm(0, 1)
+            ##}
+        }
+    }
+    y ~ dnorm(a, 1)
+    yx ~ dcat(p[1:5])
+})
+constants <- list()
+data <- list(y = 0)
+inits <- list(a = 0,
+              b = rep(0, 2),
+              c = array(0, c(2,2)),
+              ##p = (1:5) / sum(1:5),
+              p = (1:5),
+              yx = 1)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()    ## -13.78408
+
+Rmodel$p
+Rmodel$yx
+exp(Rmodel$calculate('yx'))
+Rmodel$yx <- 2
+exp(Rmodel$calculate('yx'))
+Rmodel$yx <- 5
+exp(Rmodel$calculate('yx'))
+
+Rmodel$p
+Rmodel$p[5] <- 10
+
+set.seed(0); out <- nimbleMCMC(code, constants, data, inits,
+                               niter = 10,
+                               nchains = 1,
+                               samplesAsList = FALSE,
+                               summary = TRUE)
+
+##lapply(out, round, digits = 3)
+lapply(out$summary, round, 3)
+$chain1
+          Mean Median St.Dev. 95%CI_low 95%CI_upp
+a        0.052 -0.121   0.552    -0.776     0.875
+b[1]    -0.112 -0.089   0.539    -0.828     0.829
+b[2]     0.060  0.003   1.290    -1.986     2.163
+c[1, 1]  0.047 -0.300   1.314    -1.389     2.178
+c[2, 1] -0.039 -0.033   1.120    -1.472     1.623
+c[1, 2] -0.179  0.040   0.710    -1.392     0.488
+c[2, 2] -0.064 -0.079   0.660    -0.938     0.808
+
+$chain2
+          Mean Median St.Dev. 95%CI_low 95%CI_upp
+a        0.007  0.016   0.503    -0.673     0.913
+b[1]    -0.049  0.018   0.687    -1.198     0.927
+b[2]    -0.323 -0.765   1.143    -1.626     1.484
+c[1, 1] -0.312 -0.388   0.725    -1.195     0.951
+c[2, 1] -0.025 -0.118   0.731    -1.059     1.027
+c[1, 2]  0.299  0.392   1.106    -1.083     1.641
+c[2, 2]  0.254  0.319   1.036    -1.095     1.552
+
+$all.chains
+          Mean Median St.Dev. 95%CI_low 95%CI_upp
+a        0.029 -0.034   0.515    -0.804     0.980
+b[1]    -0.081  0.001   0.601    -1.106     0.994
+b[2]    -0.132 -0.306   1.202    -1.966     2.035
+c[1, 1] -0.133 -0.388   1.049    -1.348     1.886
+c[2, 1] -0.032 -0.033   0.921    -1.396     1.472
+c[1, 2]  0.060  0.239   0.937    -1.353     1.599
+c[2, 2]  0.095  0.105   0.861    -1.055     1.521
+
+lapply(out$samples, round, 3)
+$chain1
+           a   b[1]   b[2] c[1, 1] c[2, 1] c[1, 2] c[2, 2]
+ [1,]  0.893 -0.326  1.330   1.272  -1.540   0.415  -0.929
+ [2,] -0.208 -0.006  2.405   0.764  -1.148  -0.799  -0.289
+ [3,] -0.212 -0.412  0.252  -0.892  -1.238   0.436  -0.224
+ [4,]  0.267  0.133  0.804  -0.057   1.086   0.504  -0.691
+ [5,] -0.908  0.047 -0.236  -0.543  -0.649  -0.433   0.727
+ [6,]  0.815  0.992 -0.430   1.238   1.758  -0.279   0.561
+ [7,] -0.320 -0.832 -1.167  -1.066   1.157  -1.564   0.832
+ [8,] -0.161  0.266 -0.377   2.441  -0.055  -0.795   0.250
+ [9,]  0.437 -0.173 -2.224  -1.264  -0.011   0.359  -0.941
+[10,] -0.082 -0.815  0.242  -1.425   0.248   0.366   0.065
+
+$chain2
+           a   b[1]   b[2] c[1, 1] c[2, 1] c[1, 2] c[2, 2]
+ [1,]  0.014  0.257 -0.649  -0.119   1.101   0.664   0.144
+ [2,] -0.083 -0.912 -1.438  -0.797   0.772   1.254  -0.220
+ [3,] -0.300 -0.419  0.997  -0.276   0.647   1.256   1.299
+ [4,] -0.617  0.008 -0.881   0.596  -0.282   0.120   1.456
+ [5,]  0.162  0.997  0.782  -0.777   0.047  -0.616  -1.130
+ [6,]  0.408 -1.281  1.625  -0.501  -0.413   1.678  -0.972
+ [7,]  0.018  0.027 -1.680   1.054   0.336  -1.120   0.495
+ [8,]  0.098 -0.119  0.198  -1.069  -1.114  -0.803   1.580
+ [9,]  1.059  0.263 -1.233  -0.004  -0.476   1.512   0.798
+[10,] -0.689  0.689 -0.956  -1.232  -0.870  -0.957  -0.911
+
+
+set.seed(0); out <- nimbleMCMC(code, constants, data, inits,
+                               niter = 10,
+                               nchains = 3,
+                               samplesAsList = TRUE,
+                               summary = TRUE)
+
+round(out$summary, 3)
+
+out$samples
+length(out$samples)
+names(out$samples)
+
+out$samples[[1]]
+out$samples[[2]]
+
+round(out$samples$b, 3)
+round(out$samples$c[1,,], 3)
+round(out$samples$c[10,,], 3)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printSamplers(byType = TRUE)
+conf$printMonitors()
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+Cmcmc$run(10)
+
+mvSamp <- Cmcmc$mvSamples
+x <- mvSamp
+class(mvSamp)
+
+nimble:::as.list.CmodelValues
+nimble:::as.list.modelValuesBaseClass
+
+mn <- as.matrix(mvSamp)
+mn
+mn[,1] <- 1
+mn[,4] <- 4
+mn
+nimble:::matrix2mv(mn, mvSamp)
+mvSamp
+
+ln <- as.list(mvSamp)
+ln
+
+niter <- 10
+monitorVars <- c('a', 'b', 'c', 'd')
+
+constsAndData <- c(constants, data)
+modelfile <- file.path(tempdir(), 'model.txt')
+writeLines(paste0('model\n', paste0(deparse(code, width.cutoff=500L), collapse='\n')), con=modelfile)
+
+## alternate, using jagsUI::jags
+library(jagsUI)
+set.seed(0)
+
+out <- jags(
+    model.file = modelfile,
+    data = constsAndData,
+    inits = list(inits),   ## a list, of length = n.chains
+    parameters.to.save = monitorVars,
+    n.iter = niter,
+    n.chains = 1,
+    n.burnin = 0,
+    n.thin = 1)
+
+## out$sims.list is a *named list* of samples for each parameter
+class(out)
+ls(out)
+out$samples
+class(out$samples)
+
+l <- out$sims.list
+
+class(l)
+class(ln)
+
+length(l)
+length(ln)
+
+names(l)
+names(ln)
+
+l$a
+ln$a
+length(l$a)
+length(ln$a)
+
+dim(l$b)
+dim(ln$b)
+
+dim(l$c)
+dim(ln$c)
+
+dim(l$d)
+dim(ln$d)
+
+
+
+## testing new ess elliptical slice sampler
+## allowing it to work on univariate normal nodes, also
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(4, sd = 10)
+    b ~ dgamma(1, 1)
+    c ~ dunif(2, 10)
+    d[1:3] ~ dmnorm(mu[1:3], cov = C[1:3,1:3])
+    e[1:3,1:3] ~ dwish(R = C[1:3,1:3], df = 5)
+})
+##constants <- list(mu=rep(0,3), C=diag(3))
+constants <- list(mu=1:3, C=diag(c(1,4,9)))
+data <- list()
+U <- matrix(c(.2,2,4,0,1,1,0,0,4), nrow=3, byrow=TRUE)
+eInit <- t(U) %*% U
+inits <- list(a=0, b=1, c=5, d=rep(0,3), e=eInit)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+type <- 'ess'
+conf$addSampler(target = 'a', type = type)   ## normal
+conf$addSampler(target = 'd', type = type)   ## multivariate-normal
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc)); Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+
+##set.seed(0)
+##samples <- runMCMC(Cmcmc, 3)
+
+## a only
+samples[c(500, 1000), 'a']
+
+## d only
+samples[c(500, 1000), 'd[1]']
+
+## a and d both
+samples[c(500, 1000), c('a','d[1]')]
+
+aSamp <- samples[, 'a']
+mean(aSamp)
+sd(aSamp)
+
+dSamp <- samples[, c('d[1]', 'd[2]', 'd[3]')]
+apply(dSamp, 2, mean)
+cov(dSamp)
+
+
+## testing HMC sampler
+## now using double-taping
+## what results come?  different from exact results in test-mcmc
+
+1
+library(nimble)
+library(testthat)
+
+
+nimbleOptions(experimentalEnableDerivs = TRUE)
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+code <- nimbleCode({
+    a[1] ~ dnorm(0, 1)
+    a[2] ~ dnorm(a[1]+1, 1)
+    a[3] ~ dnorm(a[2]+1, 1)
+    d ~ dnorm(a[3], sd=2)
+})
+constants <- list()
+data <- list(d = 5)
+inits <- list(a = rep(0, 3))
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('a', 'HMC', control = list(nwarmup = 1000))
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+##
+round(as.numeric(samples[1000,]), 5)
+## -0.83500  1.14365  1.13153
+round(as.numeric(apply(samples, 2, mean)), 7)
+##  0.4163956 1.8431886 3.2691439
+round(as.numeric(apply(samples, 2, sd)), 7)
+##  0.9367285 1.2115729 1.3101386
+
+
+> round(as.numeric(samples[1000,]), 5)
+[1] -0.11556  0.88505  2.89503
+> round(as.numeric(apply(samples, 2, mean)), 7)
+[1] 0.4136721 1.8417534 3.2569954
+> round(as.numeric(apply(samples, 2, sd)), 7)
+[1] 0.9268822 1.2033593 1.3179108
+> 
+
+set.seed(0)
+N <- 10
+x <- rnorm(N)
+y <- 2 - 0.2*x  + rnorm(N, 0, 0.1)
+m <- lm(y ~ x)
+coef(m)
+##(Intercept)           x 
+##  1.9687161  -0.2138309 
+
+
+library(nimble)
+
+# generating fake data
+sim_probit = function(N,beta){
+    set.seed(1)
+    X = matrix(rnorm(N*length(beta),0,1),N,length(beta))
+    Y = X%*%beta
+    Y = Y+rnorm(N,0,0.75)		    
+    for (i in 1:N) Y[i] = ifelse(pnorm(Y[i])>runif(1),1,0)
+    return(list(Y=Y,X=X,N=N))
+}
+
+data = sim_probit(N = 100,beta = c(0.5,0.6))
+
+##spp_code <- nimbleCode({
+##    for (i in 1:K){
+##        beta[i] ~ dnorm(0,0.01)
+##    }
+##    epsilon ~ dnorm(0,1)
+##    y_star[1:N] <- x[1:N,1:K]%*%beta[1:K]+epsilon
+##    for (j in 1:N){
+##        y[j] ~ dbern(phi(y_star[j]))
+##    }
+##})
+
+spp_code <- nimbleCode({
+    for (i in 1:K){
+        beta[i] ~ dnorm(0,0.01)
+    }
+    y_star[1:N] <- x[1:N,1:K]%*%beta[1:K]
+    for (j in 1:N){
+        epsilon[j] ~ dnorm(0,1)
+        y[j] ~ dbern(phi(y_star[j] + epsilon[j]))
+    }
+})
+
+spp_code <- nimbleCode({
+    for (i in 1:K){
+        beta[i] ~ dnorm(0,0.01)
+    }
+    y_star[1:N] <- x[1:N,1:K]%*%beta[1:K]
+    for (j in 1:N){
+        y_p[j] ~ dnorm(y_star[j], 1)
+        y[j] ~ dbern(phi(y_p[j]))
+    }
+})
+
+
+spp_Model <- nimbleModel(code=spp_code,constants=list(N = data$N,K=ncol(data$X)),
+                         data=list(y = as.numeric(data$Y),x = apply(data$X,2,scale) ),#winbugs examples suggest scaling data_X 
+                         inits=list(epsilon=rep(0,data$N),beta=rep(0,ncol(data$X)))
+                         )
+
+
+spp_Model <- nimbleModel(code=spp_code,constants=list(N = data$N,K=ncol(data$X)),
+                         data=list(y = as.numeric(data$Y),x = apply(data$X,2,scale) ),#winbugs examples suggest scaling data_X 
+                         inits=list(y_p=rep(0,data$N),beta=rep(0,ncol(data$X)))
+                         )
+
+spp_Model <- nimbleModel(code=spp_code,constants=list(N = data$N,K=ncol(data$X)),
+                         data=list(y = as.numeric(data$Y),x = data$X ),
+                         inits=list(y_p=rep(0,data$N),beta=rep(0,ncol(data$X)))
+                         )
+
+
+spp_md = nimbleMCMC(spp_Model,summary = TRUE,niter=5000, nburnin=100)
+
+##printErrors()
+
+round(spp_md$summary, 3)
+
+#### results
+####            mean     sd   t_val
+#### beta[1] -0.6423 0.1652 -3.8875
+#### beta[2]  0.8101 0.1796  4.5114
+#### epsilon -0.1653 0.1447 -1.1427
+
+
+
+
+https://williams.zoom.us/j/2979251765
+
+
+
+
+(1/4) This email
+(2/4) Deposition (day 1) transcripts, which is a 38 MB file
+(3/4) Deposition (day 2) transcripts, which is a 15 MB file
+(4/4) The records subpoenaed from Williams College, which is a 22 MB file
+'
+ 
+
+set.seed(0)
+
+n = 20                              # 'n' is assumed to be even
+x1 = c(rep(0,n/2), rep(1,n/2))      # two groups: x1=0, and x1=1
+x2 = rnorm(n, mean=10, sd=3)
+y = rnorm(n, mean = 3*x1 + 0.1*x2)  # data generation
+
+x1 = factor(x1)
+m1 = glm(y ~ x1)                    # using 'glm' provides AIC values.
+m2 = glm(y ~ x1 + x2)               # using 'lm' doesn't.
+aic = c(m1$aic, m2$aic)
+delta.aic = aic - min(aic)
+model.weights = exp(-0.5*delta.aic) / sum(exp(-0.5*delta.aic))
+residual.dfs = c(m1$df.residual, m2$df.residual)
+
+p1 = predict(m1, se=TRUE, newdata=list(x1=factor(1), x2=15))
+p2 = predict(m2, se=TRUE, newdata=list(x1=factor(1), x2=15))
+theta.hats = c(p1$fit, p2$fit)
+se.theta.hats = c(p1$se.fit, p2$se.fit)
+
+#  AIC model weights
+model.weights
+
+#  95% Wald confidence interval for theta (under Model 1)
+theta.hats[1] + c(-1,1)*qt(0.975, residual.dfs[1])*se.theta.hats[1]
+
+#  95% Wald confidence interval for theta (under Model 2)
+theta.hats[2] + c(-1,1)*qt(0.975, residual.dfs[2])*se.theta.hats[2]
+
+#  95% MATA-Wald confidence interval for theta (model-averaging)
+mata.wald(theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+ci <- mata.wald(theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+ci
+
+dmata.wald(4, theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+
+pmata.wald(5, theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+
+pmata.wald(ci[1], theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+pmata.wald(ci[2], theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+
+ci <- mata.wald(theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs, alpha = 0.25)
+ci
+pmata.wald(ci[1], theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+pmata.wald(ci[2], theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+
+pmata.wald(theta.hats[1]+1, theta.hats, c(0, 0), model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+
+
+myf <- function(e) dmata.wald(e, theta.hats, se.theta.hats, model.weights, mata.t = TRUE, residual.dfs = residual.dfs)
+myfvec <- Vectorize(myf)
+
+##myf(0)
+##myfvec(0)
+##myfvec(0:5)
+## 
+##for(i in seq(-10, 10, by = 0.1)) print(myf(i))
+
+integrate(f = myfvec, lower = -100, upper = 100)
+integrate(f = myfvec, lower = ci[1], upper = ci[2])
+
+myf <- function(x) dt(x, df = 17)
+integrate(f = myf, lower = -100, upper = 100)
+
+
+pmata.wald(ci[1], theta.hats, se.theta.hats, model.weights, mata.t = 1, residual.dfs = residual.dfs)
+
+
+dmata.wald(4, theta.hats, se.theta.hats, model.weights, residual.dfs = residual.dfs)
+dmata.wald(4, theta.hats, se.theta.hats, model.weights, mata.t = FALSE)
+dmata.wald(4, theta.hats, se.theta.hats, model.weights, mata.t = TRUE)
+
+mata.wald(theta.hats, se.theta.hats, model.weights, mata.t = FALSE)
+mata.wald(theta.hats, se.theta.hats, c(-.5, 1.5), mata.t = FALSE)
+
+
+
+
+
+max <- 1000
+res <- 0.1
+a <- seq(-max, max, by = res)
+pos <- 1/2 * (a + sqrt(a^2+16))
+neg <- 1/2 * (a - sqrt(a^2+16))
+##ylim <- c(min(c(pos, neg)), max(c(pos, neg)))
+ylim <- c(-1, 1) * 2
+plot(a, pos, type = 'l', ylim=ylim)
+lines(a, neg)
+abline(h = c(-1, 1), lty = 2)
+abline(v = c(-3, 3), col = 'red')
+abline(h = 0, col = 'grey')
+
+
+
+
+code <- nimbleCode({
+    b0 ~ dnorm(0, 1)
+    b1 ~ dnorm(0, 1)
+    b2 ~ dnorm(0, 1)
+    ### priors, etc....
+    for(t in 1:T) {
+        y[t] ~ dpois(exp(b0 + b1*x1[t]*S1[t] + b2*x2[t]*S2[t]))
+    }
+})
+
+T <- 10
+set.seed(0)
+x1 <- rnorm(T, 0, 1)
+x2 <- rnorm(T, 0, 1)
+S1 <- rbinom(T, 1, prob = 0.5)
+S2 <- rbinom(T, 1, prob = 0.5)
+y <- rpois(T, 2)
+
+constants <- list(T=T, x1=x1, x2=x2, S1=S1, S2=S2)
+data <- list(y=y)
+inits <- list(b0=0, b1=0, b2=0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()   ## -20.49922
+
+#' \item llFunction. A specialized nimbleFunction that accepts no arguments and returns a scalar double number.  The return value must be the total log-likelihood of all stochastic dependents of the target nodes -- and, if includesTarget = TRUE, of the target node(s) themselves --  or whatever surrogate is being used for the total log-likelihood.  This is a required element with no default.
+#' \item includesTarget. Logical variable indicating whether the return value of llFunction includes the log-likelihood associated with target.  This is a required element with no default.
+#' }
+
+llFunction_general <- nimbleFunction(
+    setup = function(targetNode, indicatorNodes) {
+    },
+    run = function() {
+        returnType(double())
+        return(lp)
+    }
+)
+
+conf <- configureMCMC(Rmodel)
+
+conf$removeSamplers('b1')
+conf$addSampler(target = 'b1', type = 'RW_llFunction', control = list(llFunction = xxx, includesTarget = FALSE))
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+
+
+
+
+## implenting hamiltonian dynamics and HMC,
+## to see what metric M is optimal, and make
+## sure the calculations are correct.
+library(mvtnorm)
+library(numDeriv)
+
+## rmvnorm = function(n, mean = rep(0, nrow(sigma)), sigma = diag(length(mean)), 
+##     method = c("eigen", "svd", "chol"), pre0.9_9994 = FALSE, 
+##     checkSymmetry = TRUE) 
+## dmvnorm = function(x, mean = rep(0, p), sigma = diag(p), log = FALSE,
+##     checkSymmetry = TRUE)
+
+## target density: MVN(mean=0, cov=Sigma)
+##Sigma <- diag(2)
+##Sigma <- array(c(3, -.2, -.2, 1), c(2, 2))
+##L <- array(c(2, 0.9, 0, 5), c(2,2))
+##L
+##Sigma <- L %*% t(L)
+##Sigma
+##U <- chol(Sigma)
+##U
+rho <- 0.7
+sx <- 1
+sy <- 1
+Sigma <- array(c(sx^2, rho*sx*sy, rho*sx*sy, sy^2), c(2,2))
+
+U1 <- function(q) -dmvnorm(q, sigma = Sigma, log = TRUE)
+U2 <- function(q) log(2*pi) + 1/2*log(det(Sigma)) + 1/2*(t(q) %*% solve(Sigma) %*% q)[1,1]
+U3 <- function(q) 1/2*(t(q) %*% solve(Sigma) %*% q)[1,1]
+U <- U3
+##q <- c(1, 1)
+##q <- c(1, 3)
+##q <- c(2, 1)
+##U1(q)
+##U2(q)
+
+dUdq <- function(qArg) grad(func = U, x = qArg)
+##q <- c(0, 0)
+##q <- c(0, 1)
+##q <- c(1, 0)
+##q <- c(1, 1)
+##q <- c(1, 3)
+##q <- c(2, 1)
+##dUdq(q)
+
+## metric M
+M <- diag(2)
+##M <- diag(c(1, 2))
+## M <- Sigma
+## M <- solve(Sigma)
+
+K <- function(p) 1/2*(t(p) %*% solve(M) %*% p)[1,1]
+
+## Hamiltonian H
+H <- function(q, p) U(q) + K(p)
+
+epsilon <- 0.3
+
+leapfrog <- function(q, p) {
+    p1 <- p - epsilon/2 * dUdq(q)
+    q2 <- q + epsilon * p1/diag(M)
+    p2 <- p1 - epsilon/2 * dUdq(q2)
+    return(list(q=q2, p=p2))
+}
+
+
+run <- function(n, q, p) {
+    out <- array(NA, c(n+1,5))
+    out[1,1:2] <- q
+    out[1,3] <- H(q,p)
+    out[1,4:5] <- p
+    for(i in 1:n) {
+        nextQP <- leapfrog(q, p)
+        q <- nextQP$q
+        p <- nextQP$p
+        out[i+1,1:2] <- q
+        out[i+1,3] <- H(q,p)
+        out[i+1,4:5] <- p
+    }
+    return(out)
+}
+
+q <- c(0, 0)
+p <- c(1, 3)
+
+
+n <- 500
+out <- run(n, q, p)
+
+
+
+
+max <- 20
+lims <- c(-max, max)
+plot(x = out[,1], y = out[,2], type = 'p', pch = 'x', xlim=lims, ylim=lims)
+
+##out[,3]
+pplot(x = 1:(n+1), y = out[,3], type = 'l')
+
+apply(out[,4:5], 2, mean)
+cov(out[,4:5])
+solve(M)
+
+sample <- function(its, pM, n = 100) {
+    samps <- array(NA, c(its, 4))
+    q <- c(0, 0)
+    p <- 1:2
+    for(i in 1:its) {
+        ##cat(i, '\n')
+        ##p[1] <- rnorm(1, 0, sd = sqrt(pM[1,1]))
+        ##p[2] <- rnorm(1, 0, sd = sqrt(pM[2,2]))
+        p <- rmvnorm(1, sigma = pM)[,]
+        out <- run(n, q, p)
+        qProp <- out[n+1,1:2]
+        pProp <- out[n+1,4:5]
+        ##loga <- -(U(qProp) - U(q))
+        loga <- H(qProp,pProp) - H(q,p)
+        u <- runif(1, 0, 1)
+        if(u < exp(loga)) q <- qProp
+        samps[i,1:2] <- q
+    }
+    return(samps)
+}
+
+##samps <- sample(1000, pM, n = 10)
+##samps
+
+
+sampList <- list()
+for(i in 1:3) {
+    if(i == 1) pM <- diag(2)
+    if(i == 2) pM <- Sigma
+    if(i == 3) pM <- solve(Sigma)
+    print(pM)
+    sampList[[i]] <- sample(1000, pM, n = 10)
+}
+
+
+max <- 5
+lims <- c(-max, max)
+par(mfrow = c(1,3))
+for(i in 1:3) {
+    samps <- sampList[[i]]
+    plot(x = samps[,1], y = samps[,2], type = 'p', pch = 'x', xlim=lims, ylim=lims)
+}
+
+
+
+
+
 
 
 
@@ -15,15 +801,19 @@ library(nimble)
 
 code <- nimbleCode({
     a[1] ~ dnorm(0, 1)
-    a[2] ~ dnorm(a[1]+1, 1)
-    a[3] ~ dnorm(a[2]+1, 1)
-    d ~ dnorm(a[3], sd=2)
+    a[2] ~ dnorm(a[1], 1)
+    ##a[3] ~ dnorm(a[2]+1, 1)
+    ##d ~ dnorm(a[3], sd=2)
+    d ~ dnorm(a[2], sd=2)
 })
 constants <- list()
 data <- list(d = 5)
-inits <- list(a = rep(0, 3))
+inits <- list()##a = rep(0, 3))
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmodel$calculate()
+
+Rmodel$getNodeNames()
+Rmodel$getNodeNames(latentOnly = TRUE)
 
 conf <- configureMCMC(Rmodel, nodes = NULL)
 conf$addSampler('a', 'HMC', printM = TRUE, printTimesRan = TRUE)
@@ -166,7 +956,7 @@ codeY <- nimbleCode({
 })
 
 
-N <- 10000
+N <- 10
 constants <- list(N = N)
 data <- list()
 dataY <- list(y = 0)
@@ -175,8 +965,24 @@ inits <- list(mu = 0, ypred = rep(0,N), zpred = rep(0,N))
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmodel$calculate()
 
+Rmodel$getDependenciesList()
+Rmodel$getConditionallyIndependentSets()
+
+
 RmodelY <- nimbleModel(codeY, constants, dataY, inits)
 RmodelY$calculate()
+
+RmodelY$getConditionallyIndependentSets(type = 'fromTop')
+RmodelY$getConditionallyIndependentSets(type = 'fromBottom')
+RmodelY$getConditionallyIndependentSets(type = 'both')
+
+nodes <- 'mu'
+
+RmodelY$getConditionallyIndependentSets(nodes = nodes, type = 'fromTop')
+RmodelY$getConditionallyIndependentSets(nodes = nodes, type = 'fromBottom')
+RmodelY$getConditionallyIndependentSets(nodes = nodes, type = 'both')
+
+
 
 system.time(conf <- configureMCMC(Rmodel))
 conf$printSamplers(byType = TRUE)
@@ -388,9 +1194,9 @@ nimble::carBounds(C, adj, num, M)
 
 'dcar_proper(gamma)'
 Rdist    = 'dcar_proper(mu, C,                       adj, num, M,                  tau, gamma)'
-           'dcar_proper(mu, C = CAR_calcC(adj, num), adj, num, M = CAR_calcM(num), tau, gamma)'
+'dcar_proper(mu, C = CAR_calcC(adj, num), adj, num, M = CAR_calcM(num), tau, gamma)'
 types    = c('value = double(1)', 'mu = double(1)', 'C = double(1)', 'adj = double(1)', 'num = double(1)', 'M = double(1)', 'tau = double(0)', 'gamma = double(0)', 'evs = double(1)')
-   
+
 rcar_proper(mu = mu, adj = adj, num = num, tau = tau, gamma = gamma)
 
 ## model fitting using CAR normal:
@@ -399,15 +1205,15 @@ rcar_proper(mu = mu, adj = adj, num = num, tau = tau, gamma = gamma)
 ## weights
 ## zero_mean
 
-    dcar_normal = list(BUGSdist = 'dcar_normal(weights, zero_mean)',
-                       Rdist    = c('dcar_normal(adj, weights,           num, tau, c,                                zero_mean = 0)',
-                                    'dcar_normal(adj, weights,           num, tau, c = CAR_calcNumIslands(adj, num), zero_mean    )',
-                                    'dcar_normal(adj, weights,           num, tau, c = CAR_calcNumIslands(adj, num), zero_mean = 0)',
-                                    'dcar_normal(adj, weights = adj/adj, num, tau, c,                                zero_mean    )',
-                                    'dcar_normal(adj, weights = adj/adj, num, tau, c,                                zero_mean = 0)',
-                                    'dcar_normal(adj, weights = adj/adj, num, tau, c = CAR_calcNumIslands(adj, num), zero_mean    )',
-                                    'dcar_normal(adj, weights = adj/adj, num, tau, c = CAR_calcNumIslands(adj, num), zero_mean = 0)'),
-                       types    = c('value = double(1)', 'adj = double(1)', 'weights = double(1)', 'num = double(1)', 'tau = double(0)', 'c = double(0)', 'zero_mean = double(0)'),
+##dcar_normal = list(BUGSdist = 'dcar_normal(weights, zero_mean)',
+##                   Rdist    = c('dcar_normal(adj, weights,           num, tau, c,                                zero_mean = 0)',
+##                                'dcar_normal(adj, weights,           num, tau, c = CAR_calcNumIslands(adj, num), zero_mean    )',
+##                                'dcar_normal(adj, weights,           num, tau, c = CAR_calcNumIslands(adj, num), zero_mean = 0)',
+##                                'dcar_normal(adj, weights = adj/adj, num, tau, c,                                zero_mean    )',
+##                                'dcar_normal(adj, weights = adj/adj, num, tau, c,                                zero_mean = 0)',
+##                                'dcar_normal(adj, weights = adj/adj, num, tau, c = CAR_calcNumIslands(adj, num), zero_mean    )',
+##                                'dcar_normal(adj, weights = adj/adj, num, tau, c = CAR_calcNumIslands(adj, num), zero_mean = 0)'),
+##                   types    = c('value = double(1)', 'adj = double(1)', 'weights = double(1)', 'num = double(1)', 'tau = double(0)', 'c = double(0)', 'zero_mean = double(0)'),
 
 dcar_normal(adj = adj, weights = weights, num = num, tau = tau, zero-mean = 1) 
 
@@ -730,7 +1536,7 @@ theta.hats[2] + c(-1,1)*qt(0.975, residual.dfs[2])*se.theta.hats[2]
 
 #  95% MATA-Wald confidence interval for theta (model-averaging)
 mata.wald(theta.hats=theta.hats, se.theta.hats=se.theta.hats, 
-         model.weights=model.weights, mata.t=TRUE, residual.dfs=residual.dfs)
+          model.weights=model.weights, mata.t=TRUE, residual.dfs=residual.dfs)
 
 
 
@@ -1193,6 +1999,13 @@ data <- list(y = y)
 inits <- list(a=0, b=0, sigmaOE=1, sigmaPN=1, x=y)
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmodel$calculate()    ## -41884.41
+
+
+Rmodel$getConditionallyIndependentSets(type = 'fromTop')
+Rmodel$getConditionallyIndependentSets(type = 'fromBottom')
+Rmodel$getConditionallyIndependentSets(type = 'both')
+
+
 
 conf <- configureMCMC(Rmodel)
 
@@ -2538,7 +3351,6 @@ calcNodesDepStageStoch <- calcNodesNoSelf[isStochCalcNodesDepStage]
 
 ## run
 jump <- FALSE
-} else {
 ##jump <- my_decideAndJump$run(lpMHR, 0, 0, 0) ## will use lpMHR - 0
 lpD <- lpD + calculateDiff(model, calcNodesDepStage)
 jump <- decide(lpD)
