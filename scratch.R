@@ -1,36 +1,259 @@
 
 
+
+
+
+library(nimble)
+##library(testthat)
+##source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
+
+
 code <- nimbleCode({
-    sigma ~ dunif(0, 100)
-    for(i in 1:nSubjects) {
-        for(j in 1:(nPredictors+1)) {   ## number of predictors, plus 1 for intercept
-            beta[i,j] ~ dnorm(0, sd = 100)
-        }
-        for(k in 1:nObservationsOfEachSubject[i]) {
-            y[i,k] ~ dnorm(beta[i,nPredictors+1] + inprod(beta[i,1:nPredictors], X[i,1:nPredictors]), sd = sigma)
-        }
-    }
+    mu ~ dnorm(0, sd = 10000)
+    sigma ~ dunif(0, 10000)
+    a[1] ~ dnorm(mu^2, sd = sigma)
+    a[2] ~ dnorm(mu^2+2, sd = sigma)
+    b[1] ~ dexp(a[1]^2 + 1)
+    b[2] ~ dexp(a[2]^2 + 5)
+    c ~ dnorm(a[1]*10, sd=5)
+    d ~ dnorm(c+10, sd=5)
+})
+constants <- list()
+data <- list(b = c(2,8))
+inits <- list(mu=0, sigma=1, a = c(0,0), c = 0, d = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()  ## -70.62481
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printSamplers(byType = TRUE)
+
+conf$addMonitors(c('a', 'c', 'd'))
+conf$printMonitors()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 100000)
+
+samples[100000,]
+samplesSummary(samples[50000:100000,])
+
+## branch devel
+## > samples[100000,]
+##        a[1]        a[2]           c           d          mu       sigma 
+##   0.5060952   0.4910526   9.3548261  10.9298099   5.8341620 114.8942274 
+## > samplesSummary(samples[50000:100000,])
+##              Mean      Median    St.Dev.   95%CI_low  95%CI_upp
+## a[1]   0.01773183  0.01816631  0.5548802  -1.0470413   1.090166
+## a[2]   0.01485304  0.01427474  0.2564717  -0.4842142   0.518676
+## c      0.16462794  0.16826691  7.5118462 -14.5143838  14.883786
+## d     10.15348819 10.17230460  9.0367442  -7.5201718  27.779056
+## mu    -0.12858800 -0.01538397  3.4359320  -8.1073382   6.802403
+## sigma 37.01073534  7.49272316 81.2813620   1.1700615 322.464166
+
+## brach fix_branch_sampler
+##       a[1]       a[2]          c          d         mu      sigma 
+## -0.8060100 -0.4963937 -7.1665608 -6.3892081  1.0216706  2.1517848 
+## > samplesSummary(samples[50000:100000,])
+##               Mean        Median    St.Dev.   95%CI_low   95%CI_upp
+## a[1]   0.003552936  0.0004581347  0.5800597  -1.0991101   1.1355456
+## a[2]   0.018408512  0.0189662061  0.2527198  -0.4827817   0.5027816
+## c      0.029654583 -0.0122686371  7.6565885 -14.8579708  14.9954170
+## d      9.986257186 10.0026238788  9.1293478  -7.7959684  27.9113570
+## mu     0.041767240  0.0120247808  3.1742998  -6.6389445   7.0322747
+## sigma 31.305371970  7.2700164173 65.6323183   1.1249063 239.6054252
+
+## tag v0.10.0
+## > samples[100000,]
+##         a[1]         a[2]            c            d           mu        sigma 
+## -0.366567838  0.008521444 -6.675530985  2.220264920 -0.474935944  1.182694774 
+## > samplesSummary(samples[50000:100000,])
+##              Mean      Median     St.Dev.   95%CI_low   95%CI_upp
+## a[1]   0.02267568  0.03165027   0.5877712  -1.1199887   1.1516129
+## a[2]   0.01574952  0.01567895   0.2566325  -0.4844158   0.5255772
+## c      0.22944162  0.26597533   7.7768887 -15.0033144  15.2814874
+## d     10.23523897 10.29308717   9.3121554  -8.1231644  28.1264256
+## mu     0.10288208 -0.02298010   4.2562221  -8.0229928   9.1713724
+## sigma 57.03919821  7.97214005 165.5391144   1.1867615 667.0841599
+
+
+
+## investingating some user's question
+## about 0 * -Inf = NaN
+library(nimble)
+
+code <- nimbleCode({
+    x <- step(N-0.1) * log(N)
+    y <- N * log(N)
 })
 
+Rmodel <- nimbleModel(code)
+
+Rmodel$N
+Rmodel$N <- 0
+Rmodel$N <- 3
+Rmodel$N
+
+Rmodel$calculate()
+
+Rmodel$x
+Rmodel$y
+
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printSamplers(byType = TRUE)
+conf$printMonitors()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
 
 
 
 
-f <- function(s) {
-    sp <- strsplit(s, ',')
-    sp2 <- paste(sp[[1]], collapse = '\n')
-    cat(sp2)
-    cat('\n')
+library(testthat)
+
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    y ~ dexp(a^2+1)
+    b ~ dnorm(a, 1)
+    c ~ dnorm(b, 1)
+})
+constants <- list()
+data <- list(y = 3)
+inits <- list(a = 0, b = 1, c = 1)
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+set.seed(0)
+Rmcmc$run(10)
+set.seed(0)
+Cmcmc$run(10)
+for(node in Rmodel$getNodeNames(stochOnly = TRUE)) {
+    rLP <- Rmodel$getLogProb(node)
+    cLP <- Cmodel$getLogProb(node)
+    expect_equal(rLP, Rmodel$calculate(node))
+    expect_equal(cLP, Cmodel$calculate(node))
+    expect_equal(rLP, cLP)
 }
 
-f(s)
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
 
-s <- '2544, 2553, 2557, 2563'
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+samplesSummary(samples)
+samplesPlot(samples)
+apply(samples, 2, effectiveSize)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        returnType()
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
 
 
 
 
 
+## testing if we can do MH updates to only
+## some (unobseved) dimensions of a MV node
+## (not necessarily multivariate normal)
+## when other dimensions are observed.
+## do the "data" flags support this?
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(4, sd = 10)
+    b ~ dgamma(1, 1)
+    c ~ dunif(2, 10)
+    d[1:3] ~ dmnorm(mu[1:3], cov = C[1:3,1:3])
+    e[1:3,1:3] ~ dwish(R = C[1:3,1:3], df = 5)
+})
+##constants <- list(mu=rep(0,3), C=diag(3))
+constants <- list(mu=1:3, C=diag(c(1,4,9)))
+data <- list(a = 1, d = c(NA,2,5))
+U <- matrix(c(.2,2,4,0,1,1,0,0,4), nrow=3, byrow=TRUE)
+eInit <- t(U) %*% U
+inits <- list(b=1, c=5, e=eInit)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+Rmodel$initializeInfo()
+
+node <- 'a'
+Rmodel[[node]]
+Rmodel$isData(node)
+Rmodel$isStoch(node)
+
+node <- 'b'
+Rmodel[[node]]
+Rmodel$isData(node)
+Rmodel$isStoch(node)
+
+node <- 'e'
+Rmodel[[node]]
+Rmodel$isData(node)
+Rmodel$isStoch(node)
+
+node <- 'd'
+Rmodel[[node]]
+Rmodel$isData(node)
+Rmodel$isStoch(node)
+Rmodel$isMultivariate(node)
+Rmodel$isDataEnv[[node]]
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+type <- 'ess'
+conf$addSampler(target = 'a', type = type)   ## normal
+conf$addSampler(target = 'd', type = type)   ## multivariate-normal
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+
+
+
+# some testing for Paul VDB paul van der-bates
 
 set.seed(0)
 Rmodel <- nimbleModel(code, constants, data, inits = inits())
@@ -58,11 +281,6 @@ Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 samples <- runMCMC(Cmcmc, 100)
 
 samplesSummary(samples)
-
-
-
-
-
 
 
 
