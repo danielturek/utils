@@ -3,6 +3,224 @@
 
 
 
+##library(nimble)
+## 
+### Sampler to condition on my capture history for time of arrival and to speed things up.
+## 
+##dnorm_vector <- nimbleFunction(
+##    run = function( x = double(1),
+##                   mean = double(0),
+##                   sd = double(0),
+##                   y = double(1),
+##                   log = integer(0, default = 0)
+##                   ) {
+##        returnType(double(0))
+##        logProb <- sum(y*dnorm(x, mean = mean, sd = sd, log = TRUE))
+##        if(log) return(logProb) else return(exp(logProb))
+##    })
+## 
+##rnorm_vector <- nimbleFunction(
+##    run = function( n = integer(0, default = 1),
+##                   mean = double(0),
+##                   sd = double(0),
+##                   y = double(1)
+##                   ) {
+##        returnType(double(1))
+##        return(rnorm(length(y), mean = mean, sd = sd))
+##    })
+## 
+##registerDistributions(
+##    list(dnorm_vector = list(BUGSdist = 'dnorm_vector()',
+##                             types = c('value = double(1)'))))
+## 
+### Within my nimble code:
+## 
+##y[i,1:J] ~ dbinom_vector(size = trials[1:J],pkj[ID[i],1:J])
+## 
+### Time of arrival, depends on which traps actually recorded it.
+##toa[i, 1:J] ~ dnorm_vector(mu = tcall[i], sd = sigmatoa, y = y[i,1:J])
+##tcall[i] ~ dunif(0, Time)
+## 
+## 
+##What does this mean???? I can't figure out what I'm doing wrong here.
+##image.png
+## 
+##Thanks so much!!!
+
+
+
+    
+
+
+
+
+
+
+
+
+
+library(nimble)
+
+code <- P.lat.sv.mod <- nimble::nimbleCode({
+    
+    psi ~ dbeta(1, 1)
+    
+    for(k in 1:13){
+        beta.lam[k] ~ dunif(-1,1)
+        sigma.lam[k] ~ dbern(psi)}
+    #var.beta.lam[k] ~ dunif(-1,1)}
+
+    beta0.lam ~ dnorm(1,.01)
+    # var.beta0.lam ~ dunif(1,2)
+
+    #Detection Priors
+    for(j in 1:5){
+        beta.p[j] ~ dnorm(0,.01)}
+
+    beta0.p ~ dnorm(-4,.01)
+    tau.p <- pow(sd.p, -2)
+    sd.p ~ dunif(1,4) 
+    
+    
+    for(i in 1:Id.sv){
+        #loop through sites
+
+        for(y in 1:n_Year.sv[i]){
+            #loop through years
+
+            for(s in 1:n_Season.sv[i,y]){
+                #loop through seasons
+                
+                omega.sv[i,y,s] ~ dbeta(1,1)
+
+                #state model
+                N.sv[i,y,s] ~ dZIP(lambda = lambda.sv[i,y,s], zeroProb = omega.sv[i,y,s])
+
+                log(lambda.sv[i,y,s]) <- beta0.lam + sigma.lam[1]*beta.lam[1]*lam.var.sv[i,y,s,1] + sigma.lam[2]*beta.lam[2]*lam.var.sv[i,y,s,2] + sigma.lam[3]*beta.lam[3]*lam.var.sv[i,y,s,3] + sigma.lam[4]*beta.lam[4]*lam.var.sv[i,y,s,4] + sigma.lam[5]*beta.lam[5]*lam.var.sv[i,y,s,5] + sigma.lam[6]*beta.lam[6]*lam.var.sv[i,y,s,6] + sigma.lam[7]*beta.lam[7]*lam.var.sv[i,y,s,7] + sigma.lam[8]*beta.lam[8]*lam.var.sv[i,y,s,8] + sigma.lam[9]*beta.lam[9]*lam.var.sv[i,y,s,9] + sigma.lam[10]*beta.lam[10]*lam.var.sv[i,y,s,10] + sigma.lam[11]*beta.lam[11]*lam.var.sv[i,y,s,11] + sigma.lam[12]*beta.lam[12]*lam.var.sv[i,y,s,12] + sigma.lam[13]*beta.lam[13]*lam.var.sv[i,y,s,13] #+ sigma.eps.lam[i]*eps.lam[i]
+                
+                logit(p.sv[i,y,s])  ~ dnorm(mu.p.sv[i,y,s], tau.p)
+                
+                mu.p.sv[i,y,s] <- beta0.p + beta.p[1]*p.var.sv[i,y,s,1] + beta.p[2]*p.var.sv[i,y,s,2] + beta.p[3]*p.var.sv[i,y,s,3] + beta.p[4]*p.var.sv[i,y,s,4] + beta.p[5]*p.var.sv[i,y,s,5]
+                
+                Count.sv[i,y,s] ~ dbin(p.sv[i,y,s], N.sv[i,y,s])
+                
+                #expected count
+                ex.sv[i,y,s] <- N.sv[i,y,s] * p.sv[i,y,s]
+                
+                #discrepancy
+                E.sv[i,y,s] <- pow((Count.sv[i,y,s] - ex.sv[i,y,s]), 2) / (ex.sv[i,y,s] + 0.1)
+                
+                #simulated new count
+                rep.sv[i,y,s] ~ dbin(p.sv[i,y,s], N.sv[i,y,s])
+                
+                #discrepancy
+                E.rep.sv[i,y,s] <- pow((rep.sv[i,y,s] - ex.sv[i,y,s]), 2) / (ex.sv[i,y,s] + 0.1)
+
+                
+            }}}
+    
+    for(l in 1:Id.rv){
+        #loop through sites
+
+        for(t in 1:n_Year.rv[l]){
+            #loop through years
+
+            for(m in 1:n_Season.rv[l,t]){
+                #loop through seasons
+                
+                omega.rv[l,t,m] ~ dbeta(1,1)
+
+                #state model
+                N.rv[l,t,m] ~ dZIP(lambda = lambda.rv[l,t,m], zeroProb = omega.rv[l,t,m])
+
+                log(lambda.rv[l,t,m]) <- beta0.lam + sigma.lam[1]*beta.lam[1]*lam.var.rv[l,t,m,1] + sigma.lam[2]*beta.lam[2]*lam.var.rv[l,t,m,2] + sigma.lam[3]*beta.lam[3]*lam.var.rv[l,t,m,3] + sigma.lam[4]*beta.lam[4]*lam.var.rv[l,t,m,4] + sigma.lam[5]*beta.lam[5]*lam.var.rv[l,t,m,5] + sigma.lam[6]*beta.lam[6]*lam.var.rv[l,t,m,6] + sigma.lam[7]*beta.lam[7]*lam.var.rv[l,t,m,7] + sigma.lam[8]*beta.lam[8]*lam.var.rv[l,t,m,8] + sigma.lam[9]*beta.lam[9]*lam.var.rv[l,t,m,9] + sigma.lam[10]*beta.lam[10]*lam.var.rv[l,t,m,10] + sigma.lam[11]*beta.lam[11]*lam.var.rv[l,t,m,11] + sigma.lam[12]*beta.lam[12]*lam.var.rv[l,t,m,12] + sigma.lam[13]*beta.lam[13]*lam.var.rv[l,t,m,13] #+ sigma.eps.lam[i]*eps.lam[i]
+
+                for(v in 1:n_Survey.rv[l,t,m]){
+                    
+                    Count.rv[l,t,m,v] ~ dbin(p.rv[l,t,m,v], N.rv[l,t,m])
+                    
+                    logit(p.rv[l,t,m,v])  ~ dnorm(mu.p.rv[l,t,m,v], tau.p)
+                    
+                    mu.p.rv[l,t,m,v] <- beta0.p + beta.p[1]*p.var.rv[l,t,m,v,1] + beta.p[2]*p.var.rv[l,t,m,v,2] + beta.p[3]*p.var.rv[l,t,m,v,3] + beta.p[4]*p.var.rv[l,t,m,v,4] + beta.p[5]*p.var.rv[l,t,m,v,5]
+                    
+                    
+                    #expected count
+                    ex.rv[l,t,m,v] <- N.rv[l,t,m] * p.rv[l,t,m,v]
+                    
+                    #discrepancy
+                    E.rv[l,t,m,v] <- pow((Count.rv[l,t,m,v] - ex.rv[l,t,m,v]), 2) / (ex.rv[l,t,m,v] + 0.1)
+                    
+                    #simulated new count
+                    rep.rv[l,t,m,v] ~ dbin(p.rv[l,t,m,v], N.rv[l,t,m])
+                    
+                    #discrepancy
+                    E.rep.rv[l,t,m,v] <- pow((rep.rv[l,t,m,v] - ex.rv[l,t,m,v]), 2) / (ex.rv[l,t,m,v] + 0.1)
+
+                }}}}
+    
+    fit <- fit.rv + fit.sv
+    fit.rep <- fit.rep.rv + fit.rep.sv
+
+    fit.rv <- sum(fit.i.rv[1:Id.rv])
+    fit.rep.rv <- sum(fit.rep.i.rv[1:Id.rv])
+    
+    for(l in 1:Id.rv){
+        #loop through sites
+
+        fit.i.rv[l] <- sum(fit.y.rv[l,1:n_Year.rv[l]]) 
+        fit.rep.i.rv[l] <- sum(fit.rep.y.rv[l,1:n_Year.rv[l]])
+
+        for(t in 1:n_Year.rv[l]){
+            #loop through years
+
+            fit.y.rv[l,t] <- sum(fit.s.rv[l,t,1:n_Season.rv[l,t]]) 
+            fit.rep.y.rv[l,t] <- sum(fit.rep.s.rv[l,t,1:n_Season.rv[l,t]])
+
+            for(m in 1:n_Season.rv[l,t]){
+                #loop through seasons
+
+                fit.s.rv[l,t,m] <- sum(E.rv[l,t,m,1:n_Survey.rv[l,t,m]]) 
+                fit.rep.s.rv[l,t,m] <- sum(E.rep.rv[l,t,m,1:n_Survey.rv[l,t,m]]) 
+            }
+        }
+    }
+    
+    fit.sv <- sum(fit.i.sv[1:Id.sv])
+    fit.rep.sv  <- sum(fit.rep.i.sv[1:Id.sv])
+    
+    for(i in 1:Id.sv){
+        #loop through sites
+
+        fit.i.sv[i] <- sum(fit.y.sv[i,1:n_Year.sv[i]]) 
+        fit.rep.i.sv[i] <- sum(fit.rep.y.sv[i,1:n_Year.sv[i]])
+
+        for(y in 1:n_Year.sv[i]){
+            #loop through years
+
+            fit.y.sv[i,y] <- sum(fit.s.sv[i,y,1:n_Season.sv[i,y]]) 
+            fit.rep.y.sv[i,y] <- sum(fit.rep.s.sv[i,y,1:n_Season.sv[i,y]])
+        }
+    }
+})
+
+
+
+##I keep getting : Error in checkForRemoteErrors(val) : 
+##  3 nodes produced errors; first error: Could not evaluate loop syntax: is indexing information provided via 'constants'?
+## 
+##However, I have all the indexing constants in the constants already. 
+
+constants <- Constants <- list(Id.rv = n_Id.rv,
+                               n_Year.rv = Year_Iterator.rv,
+                               n_Season.rv = Season_Iterator.rv,
+                               n_Survey.rv = Survey_Iterator.rv,
+                               Id.sv = n_Id.sv,
+                               n_Year.sv = Year_Iterator.sv,
+                               n_Season.sv = Season_Iterator.sv)
+
+
+
+
 library(nimble)
 ##library(testthat)
 ##source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
