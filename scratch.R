@@ -1,303 +1,774 @@
 
+1
 
 
-
-
-##library(nimble)
-## 
-### Sampler to condition on my capture history for time of arrival and to speed things up.
-## 
-##dnorm_vector <- nimbleFunction(
-##    run = function( x = double(1),
-##                   mean = double(0),
-##                   sd = double(0),
-##                   y = double(1),
-##                   log = integer(0, default = 0)
-##                   ) {
-##        returnType(double(0))
-##        logProb <- sum(y*dnorm(x, mean = mean, sd = sd, log = TRUE))
-##        if(log) return(logProb) else return(exp(logProb))
-##    })
-## 
-##rnorm_vector <- nimbleFunction(
-##    run = function( n = integer(0, default = 1),
-##                   mean = double(0),
-##                   sd = double(0),
-##                   y = double(1)
-##                   ) {
-##        returnType(double(1))
-##        return(rnorm(length(y), mean = mean, sd = sd))
-##    })
-## 
-##registerDistributions(
-##    list(dnorm_vector = list(BUGSdist = 'dnorm_vector()',
-##                             types = c('value = double(1)'))))
-## 
-### Within my nimble code:
-## 
-##y[i,1:J] ~ dbinom_vector(size = trials[1:J],pkj[ID[i],1:J])
-## 
-### Time of arrival, depends on which traps actually recorded it.
-##toa[i, 1:J] ~ dnorm_vector(mu = tcall[i], sd = sigmatoa, y = y[i,1:J])
-##tcall[i] ~ dunif(0, Time)
-## 
-## 
-##What does this mean???? I can't figure out what I'm doing wrong here.
-##image.png
-## 
-##Thanks so much!!!
-
-
-
-    
-
-
-
-
-
-
-
-
+rm(ppp, pppp, qqq)
 
 library(nimble)
+##build(browser)
 
-code <- P.lat.sv.mod <- nimble::nimbleCode({
-    
-    psi ~ dbeta(1, 1)
-    
-    for(k in 1:13){
-        beta.lam[k] ~ dunif(-1,1)
-        sigma.lam[k] ~ dbern(psi)}
-    #var.beta.lam[k] ~ dunif(-1,1)}
-
-    beta0.lam ~ dnorm(1,.01)
-    # var.beta0.lam ~ dunif(1,2)
-
-    #Detection Priors
-    for(j in 1:5){
-        beta.p[j] ~ dnorm(0,.01)}
-
-    beta0.p ~ dnorm(-4,.01)
-    tau.p <- pow(sd.p, -2)
-    sd.p ~ dunif(1,4) 
-    
-    
-    for(i in 1:Id.sv){
-        #loop through sites
-
-        for(y in 1:n_Year.sv[i]){
-            #loop through years
-
-            for(s in 1:n_Season.sv[i,y]){
-                #loop through seasons
-                
-                omega.sv[i,y,s] ~ dbeta(1,1)
-
-                #state model
-                N.sv[i,y,s] ~ dZIP(lambda = lambda.sv[i,y,s], zeroProb = omega.sv[i,y,s])
-
-                log(lambda.sv[i,y,s]) <- beta0.lam + sigma.lam[1]*beta.lam[1]*lam.var.sv[i,y,s,1] + sigma.lam[2]*beta.lam[2]*lam.var.sv[i,y,s,2] + sigma.lam[3]*beta.lam[3]*lam.var.sv[i,y,s,3] + sigma.lam[4]*beta.lam[4]*lam.var.sv[i,y,s,4] + sigma.lam[5]*beta.lam[5]*lam.var.sv[i,y,s,5] + sigma.lam[6]*beta.lam[6]*lam.var.sv[i,y,s,6] + sigma.lam[7]*beta.lam[7]*lam.var.sv[i,y,s,7] + sigma.lam[8]*beta.lam[8]*lam.var.sv[i,y,s,8] + sigma.lam[9]*beta.lam[9]*lam.var.sv[i,y,s,9] + sigma.lam[10]*beta.lam[10]*lam.var.sv[i,y,s,10] + sigma.lam[11]*beta.lam[11]*lam.var.sv[i,y,s,11] + sigma.lam[12]*beta.lam[12]*lam.var.sv[i,y,s,12] + sigma.lam[13]*beta.lam[13]*lam.var.sv[i,y,s,13] #+ sigma.eps.lam[i]*eps.lam[i]
-                
-                logit(p.sv[i,y,s])  ~ dnorm(mu.p.sv[i,y,s], tau.p)
-                
-                mu.p.sv[i,y,s] <- beta0.p + beta.p[1]*p.var.sv[i,y,s,1] + beta.p[2]*p.var.sv[i,y,s,2] + beta.p[3]*p.var.sv[i,y,s,3] + beta.p[4]*p.var.sv[i,y,s,4] + beta.p[5]*p.var.sv[i,y,s,5]
-                
-                Count.sv[i,y,s] ~ dbin(p.sv[i,y,s], N.sv[i,y,s])
-                
-                #expected count
-                ex.sv[i,y,s] <- N.sv[i,y,s] * p.sv[i,y,s]
-                
-                #discrepancy
-                E.sv[i,y,s] <- pow((Count.sv[i,y,s] - ex.sv[i,y,s]), 2) / (ex.sv[i,y,s] + 0.1)
-                
-                #simulated new count
-                rep.sv[i,y,s] ~ dbin(p.sv[i,y,s], N.sv[i,y,s])
-                
-                #discrepancy
-                E.rep.sv[i,y,s] <- pow((rep.sv[i,y,s] - ex.sv[i,y,s]), 2) / (ex.sv[i,y,s] + 0.1)
-
-                
-            }}}
-    
-    for(l in 1:Id.rv){
-        #loop through sites
-
-        for(t in 1:n_Year.rv[l]){
-            #loop through years
-
-            for(m in 1:n_Season.rv[l,t]){
-                #loop through seasons
-                
-                omega.rv[l,t,m] ~ dbeta(1,1)
-
-                #state model
-                N.rv[l,t,m] ~ dZIP(lambda = lambda.rv[l,t,m], zeroProb = omega.rv[l,t,m])
-
-                log(lambda.rv[l,t,m]) <- beta0.lam + sigma.lam[1]*beta.lam[1]*lam.var.rv[l,t,m,1] + sigma.lam[2]*beta.lam[2]*lam.var.rv[l,t,m,2] + sigma.lam[3]*beta.lam[3]*lam.var.rv[l,t,m,3] + sigma.lam[4]*beta.lam[4]*lam.var.rv[l,t,m,4] + sigma.lam[5]*beta.lam[5]*lam.var.rv[l,t,m,5] + sigma.lam[6]*beta.lam[6]*lam.var.rv[l,t,m,6] + sigma.lam[7]*beta.lam[7]*lam.var.rv[l,t,m,7] + sigma.lam[8]*beta.lam[8]*lam.var.rv[l,t,m,8] + sigma.lam[9]*beta.lam[9]*lam.var.rv[l,t,m,9] + sigma.lam[10]*beta.lam[10]*lam.var.rv[l,t,m,10] + sigma.lam[11]*beta.lam[11]*lam.var.rv[l,t,m,11] + sigma.lam[12]*beta.lam[12]*lam.var.rv[l,t,m,12] + sigma.lam[13]*beta.lam[13]*lam.var.rv[l,t,m,13] #+ sigma.eps.lam[i]*eps.lam[i]
-
-                for(v in 1:n_Survey.rv[l,t,m]){
-                    
-                    Count.rv[l,t,m,v] ~ dbin(p.rv[l,t,m,v], N.rv[l,t,m])
-                    
-                    logit(p.rv[l,t,m,v])  ~ dnorm(mu.p.rv[l,t,m,v], tau.p)
-                    
-                    mu.p.rv[l,t,m,v] <- beta0.p + beta.p[1]*p.var.rv[l,t,m,v,1] + beta.p[2]*p.var.rv[l,t,m,v,2] + beta.p[3]*p.var.rv[l,t,m,v,3] + beta.p[4]*p.var.rv[l,t,m,v,4] + beta.p[5]*p.var.rv[l,t,m,v,5]
-                    
-                    
-                    #expected count
-                    ex.rv[l,t,m,v] <- N.rv[l,t,m] * p.rv[l,t,m,v]
-                    
-                    #discrepancy
-                    E.rv[l,t,m,v] <- pow((Count.rv[l,t,m,v] - ex.rv[l,t,m,v]), 2) / (ex.rv[l,t,m,v] + 0.1)
-                    
-                    #simulated new count
-                    rep.rv[l,t,m,v] ~ dbin(p.rv[l,t,m,v], N.rv[l,t,m])
-                    
-                    #discrepancy
-                    E.rep.rv[l,t,m,v] <- pow((rep.rv[l,t,m,v] - ex.rv[l,t,m,v]), 2) / (ex.rv[l,t,m,v] + 0.1)
-
-                }}}}
-    
-    fit <- fit.rv + fit.sv
-    fit.rep <- fit.rep.rv + fit.rep.sv
-
-    fit.rv <- sum(fit.i.rv[1:Id.rv])
-    fit.rep.rv <- sum(fit.rep.i.rv[1:Id.rv])
-    
-    for(l in 1:Id.rv){
-        #loop through sites
-
-        fit.i.rv[l] <- sum(fit.y.rv[l,1:n_Year.rv[l]]) 
-        fit.rep.i.rv[l] <- sum(fit.rep.y.rv[l,1:n_Year.rv[l]])
-
-        for(t in 1:n_Year.rv[l]){
-            #loop through years
-
-            fit.y.rv[l,t] <- sum(fit.s.rv[l,t,1:n_Season.rv[l,t]]) 
-            fit.rep.y.rv[l,t] <- sum(fit.rep.s.rv[l,t,1:n_Season.rv[l,t]])
-
-            for(m in 1:n_Season.rv[l,t]){
-                #loop through seasons
-
-                fit.s.rv[l,t,m] <- sum(E.rv[l,t,m,1:n_Survey.rv[l,t,m]]) 
-                fit.rep.s.rv[l,t,m] <- sum(E.rep.rv[l,t,m,1:n_Survey.rv[l,t,m]]) 
-            }
-        }
-    }
-    
-    fit.sv <- sum(fit.i.sv[1:Id.sv])
-    fit.rep.sv  <- sum(fit.rep.i.sv[1:Id.sv])
-    
-    for(i in 1:Id.sv){
-        #loop through sites
-
-        fit.i.sv[i] <- sum(fit.y.sv[i,1:n_Year.sv[i]]) 
-        fit.rep.i.sv[i] <- sum(fit.rep.y.sv[i,1:n_Year.sv[i]])
-
-        for(y in 1:n_Year.sv[i]){
-            #loop through years
-
-            fit.y.sv[i,y] <- sum(fit.s.sv[i,y,1:n_Season.sv[i,y]]) 
-            fit.rep.y.sv[i,y] <- sum(fit.rep.s.sv[i,y,1:n_Season.sv[i,y]])
-        }
-    }
-})
-
-
-
-##I keep getting : Error in checkForRemoteErrors(val) : 
-##  3 nodes produced errors; first error: Could not evaluate loop syntax: is indexing information provided via 'constants'?
-## 
-##However, I have all the indexing constants in the constants already. 
-
-constants <- Constants <- list(Id.rv = n_Id.rv,
-                               n_Year.rv = Year_Iterator.rv,
-                               n_Season.rv = Season_Iterator.rv,
-                               n_Survey.rv = Survey_Iterator.rv,
-                               Id.sv = n_Id.sv,
-                               n_Year.sv = Year_Iterator.sv,
-                               n_Season.sv = Season_Iterator.sv)
-
-
-
-
-library(nimble)
-##library(testthat)
-##source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
-
+library(rstan)
 
 code <- nimbleCode({
-    mu ~ dnorm(0, sd = 10000)
-    sigma ~ dunif(0, 10000)
-    a[1] ~ dnorm(mu^2, sd = sigma)
-    a[2] ~ dnorm(mu^2+2, sd = sigma)
-    b[1] ~ dexp(a[1]^2 + 1)
-    b[2] ~ dexp(a[2]^2 + 5)
-    c ~ dnorm(a[1]*10, sd=5)
-    d ~ dnorm(c+10, sd=5)
+    # priors
+    sigma ~ dgamma(2, 2)   
+    prec <- 1 / sigma^2
+    rho ~ dunif(0, 1)
+    # latent process
+    s[1:N] ~ dcar_proper(mu[1:N],
+                         C = C[1:L],
+                         adj = adj[1:L],
+                         num = num[1:N],
+                         M = M[1:N],
+                         tau = prec, 
+                         gamma = rho)    
+    # likelihood
+    for(i in 1:N) {
+        lambda[i] <- exp(s[i])
+        y[i] ~ dpois(lambda[i])
+    }
 })
-constants <- list()
-data <- list(b = c(2,8))
-inits <- list(mu=0, sigma=1, a = c(0,0), c = 0, d = 0)
+
+adj <- c(2, 1, 3, 2, 4, 3)
+num <- c(1, 2, 2, 1)
+N <- length(num)
+L <- length(adj)
+weights <- rep(1, L)
+CM <- as.carCM(adj, weights, num)
+C <- CM$C
+M <- CM$M
+Cmatrix <- CAR_calcCmatrix(C, adj, num)
+y <- c(4, 17, 18, 26)
+    
+##mu <- rep(10, N)
+mu <- c(.2, 1, 1.9, 4)
+
+constants <- list(N = N, L = L, C = C, M = M, adj = adj, num = num, mu = mu)
+data <- list(y = y)
+inits <- list(sigma = 1, rho = 0.5, s = rep(0, 4))
 
 Rmodel <- nimbleModel(code, constants, data, inits)
-Rmodel$calculate()  ## -70.62481
+Rmodel$calculate()
 
 conf <- configureMCMC(Rmodel)
-conf$printSamplers()
-conf$printSamplers(byType = TRUE)
-
-conf$addMonitors(c('a', 'c', 'd'))
-conf$printMonitors()
+conf$addMonitors('s')
 
 Rmcmc <- buildMCMC(conf)
 
-compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
-Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 set.seed(0)
-samples <- runMCMC(Cmcmc, 100000)
+##nimble_samples <- runMCMC(Cmcmc, 20000, nburnin = 10000)
+nimble_samples <- runMCMC(Cmcmc, 100000, nburnin = 50000)
 
-samples[100000,]
-samplesSummary(samples[50000:100000,])
+file <- '~/temp/nimble_samples.RData'
+##file <- '~/temp/nimble_samples_browser.RData'
 
-## branch devel
-## > samples[100000,]
-##        a[1]        a[2]           c           d          mu       sigma 
-##   0.5060952   0.4910526   9.3548261  10.9298099   5.8341620 114.8942274 
-## > samplesSummary(samples[50000:100000,])
-##              Mean      Median    St.Dev.   95%CI_low  95%CI_upp
-## a[1]   0.01773183  0.01816631  0.5548802  -1.0470413   1.090166
-## a[2]   0.01485304  0.01427474  0.2564717  -0.4842142   0.518676
-## c      0.16462794  0.16826691  7.5118462 -14.5143838  14.883786
-## d     10.15348819 10.17230460  9.0367442  -7.5201718  27.779056
-## mu    -0.12858800 -0.01538397  3.4359320  -8.1073382   6.802403
-## sigma 37.01073534  7.49272316 81.2813620   1.1700615 322.464166
+save(nimble_samples, file = file)
 
-## brach fix_branch_sampler
-##       a[1]       a[2]          c          d         mu      sigma 
-## -0.8060100 -0.4963937 -7.1665608 -6.3892081  1.0216706  2.1517848 
-## > samplesSummary(samples[50000:100000,])
-##               Mean        Median    St.Dev.   95%CI_low   95%CI_upp
-## a[1]   0.003552936  0.0004581347  0.5800597  -1.0991101   1.1355456
-## a[2]   0.018408512  0.0189662061  0.2527198  -0.4827817   0.5027816
-## c      0.029654583 -0.0122686371  7.6565885 -14.8579708  14.9954170
-## d      9.986257186 10.0026238788  9.1293478  -7.7959684  27.9113570
-## mu     0.041767240  0.0120247808  3.1742998  -6.6389445   7.0322747
-## sigma 31.305371970  7.2700164173 65.6323183   1.1249063 239.6054252
 
-## tag v0.10.0
-## > samples[100000,]
-##         a[1]         a[2]            c            d           mu        sigma 
-## -0.366567838  0.008521444 -6.675530985  2.220264920 -0.474935944  1.182694774 
-## > samplesSummary(samples[50000:100000,])
-##              Mean      Median     St.Dev.   95%CI_low   95%CI_upp
-## a[1]   0.02267568  0.03165027   0.5877712  -1.1199887   1.1516129
-## a[2]   0.01574952  0.01567895   0.2566325  -0.4844158   0.5255772
-## c      0.22944162  0.26597533   7.7768887 -15.0033144  15.2814874
-## d     10.23523897 10.29308717   9.3121554  -8.1231644  28.1264256
-## mu     0.10288208 -0.02298010   4.2562221  -8.0229928   9.1713724
-## sigma 57.03919821  7.97214005 165.5391144   1.1867615 667.0841599
+
+stan_code <- "
+data {
+  // mortality data
+  int n;
+  int y[n];
+  // CAR data
+  vector[n] M_inv;
+  matrix[n, n] Cmatrix;
+  // NEW: mean data
+  vector[n] mu;
+}
+
+transformed data {
+  matrix[n, n] I = diag_matrix(rep_vector(1, n));
+}
+
+parameters {
+  vector[n] phi;
+  real<lower=0> sigma;
+  real<lower=0, upper=1> rho;
+}
+
+model {
+  matrix[n, n] Sigma_inv = diag_pre_multiply(1/sigma^2 * M_inv, (I - rho * Cmatrix));
+  vector[n] mu_y = exp(phi);
+  target += poisson_lpmf(y | mu_y);
+  target += multi_normal_prec_lpdf(phi | mu, Sigma_inv);
+  target += gamma_lpdf(sigma | 2, 2);
+}
+
+"
+
+
+stan_car <- stan_model(model_code = stan_code)
+
+stan_car
+
+library(nimble)
+
+adj <- c(2, 1, 3, 2, 4, 3)
+num <- c(1, 2, 2, 1)
+N <- length(num)
+L <- length(adj)
+weights <- rep(1, L)
+CM <- as.carCM(adj, weights, num)
+C <- CM$C
+M <- CM$M
+Cmatrix <- CAR_calcCmatrix(C, adj, num)
+y <- c(4, 17, 18, 26)
+    
+##mu <- rep(10, N)
+mu <- c(.2, 1, 1.9, 4)
+
+stan_data <- list(n = N, M_inv = 1 / CM$M, Cmatrix = Cmatrix, y = y, mu = mu)
+
+
+S <- rstan::sampling(stan_car, data = stan_data, chains = 1, iter = 1e3, pars = c('sigma', 'rho', 'phi'))
+
+stan_samples <- as.matrix(S)[, c('sigma', 'rho', paste0('phi[', 1:4, ']'))]
+
+file_stan <- '~/temp/stan_samples.RData'
+save(stan_samples, file = file_stan)
+
+load(file_stan)
+
+
+
+file <- '~/temp/nimble_samples.RData'
+load(file)
+
+dimnames(nimble_samples)
+dimnames(stan_samples)
+
+nimble_samples <- nimble_samples[, c('sigma', 'rho', paste0('s[', 1:4, ']'))]
+
+dimnames(nimble_samples)[[2]]
+dimnames(stan_samples)[[2]]
+
+nimble_mean <- apply(nimble_samples, 2, mean)
+stan_mean <- apply(stan_samples, 2, mean)
+
+cbind(nimble=nimble_mean, stan=stan_mean)
+
+## using library(nimble) and the non-constant 'mu'
+##         nimble      stan
+##sigma 1.3293882 1.3661132
+##rho   0.5456801 0.5432431
+##s[1]  1.3209221 1.2228884
+##s[2]  2.6663483 2.7099522
+##s[3]  2.7739355 2.8173598
+##s[4]  3.1932055 3.2779449
+
+
+
+
+
+ <- (as.matrix(S, pars = "beta"))
+
+# fit lm
+fit.lm <- lm(log(y/E) ~ x)
+lm.res <- coefficients(fit.lm)["x"]
+
+# write results to disk
+res <- matrix(c(nimble = nimble.res, stan = stan.res, lm = lm.res), nrow = 1)
+write.table(as.data.frame(res),
+            file = "sim-study-res.txt",
+            append = TRUE,
+            row.names = FALSE,
+            col.names = FALSE
+            )
+
+
+##results = do.call("rbind", res)
+results <- read.table("sim-study-res.txt", header = FALSE)
+names(results) <- c("nimble", "stan", "lm")
+
+
+
+
+
+
+## demo how to debug samplers for Paul VDB
+
+library(nimble)
+library(basicMCMCplots)
+library(coda)
+
+mysamp <- nimbleFunction(
+    name = 'mysamp',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        x <- 1
+    },
+    run = function() {
+        x <<- x + 1
+        print("variable x is: ", x)
+        print("model node a[1]: ", model$a[1])
+        print("model variable a: ", model$a)   ## prints all of a[]
+        print("model logProb of a[1]: ", model$logProb_a[1])
+    },
+    methods = list(
+        reset = function() {
+            x <<- 1
+        }
+    )
+)
+
+
+N <- 10
+code <- nimbleCode({
+    for(i in 1:N) {
+        a[i] ~ dnorm(0, 1)
+    }
+})
+constants <- list(N = N)
+data <- list()
+inits <- list(a = rep(0, N))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+conf <- configureMCMC(Rmodel)
+## identify the sampler number that you want to debug and step through:
+conf$printSamplers()
+conf$addSampler(type = 'mysamp', target = 'a[1]')
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+## say you want to debug sampler #7:
+##debug(Rmcmc$samplerFunctions[[7]]$run)
+Rmcmc$run(10)
+
+
+## testing STAT202 class data set
+
+
+f <- '~/Downloads/STAT202.csv'
+f <- '~/github/courses/stat202/data/STAT202.csv'
+##f <- '~/Downloads/fl_student_survey.csv'
+
+df <- read.csv(f)
+##df <- read.csv(f, stringsAsFactors = TRUE)
+
+str(df)
+
+df$Gender
+
+table(df$Gender)
+table(df$Class)
+table(df$Chocolate)
+table(df$Phone)
+
+summary(df$Minutes)
+summary(df$Friends)
+
+boxplot(df$Friends ~ df$Class)
+
+## installing rstan package
+
+1
+
+install.packages('rstan')
+remove.packages('rstan')
+
+install.packages("StanHeaders",type="source")
+
+
+
+## testing using Stan and rstan
+
+
+1
+
+library(rstan)
+
+rm('ppp', 'pppp', 'qqq')
+qqq
+ppp
+pppp
+
+fn <- '~/Downloads/stan_demo.stan'
+stan_code <- readLines('~/Downloads/stan_demo.stan')
+
+debug(stan_model)
+
+stan_mod <- stan_model(model_code = stan_code)
+
+set.seed(0)
+N <- 100
+stan_data <- list(N = N, y = rnorm(N, 5, 2))
+
+S <- rstan::sampling(stan_mod, data = stan_data)
+S
+stan.res <- mean(as.matrix(S, pars = "beta"))
+
+
+
+
+example(stan_model, package = "rstan", run.dontrun = TRUE)
+
+
+
+
+## NIMBLE & Stan (using a CAR model)
+## example from Connor Donegan on Nimble users list
+
+
+
+library(nimble)
+library(CARBayesdata, quietly = TRUE)
+library(sp, quietly = TRUE)
+library(spdep, quietly = TRUE)
+library(rstan)
+
+Nsim <- 30
+
+# draw from simultaneous autoregressive (SAR) model
+sim_sar <- function (m = 1, mu = rep(0, nrow(w)), w, rho, sigma = 1, ...) {
+    stopifnot(inherits(w, "matrix"))
+    stopifnot(ncol(w) == nrow(w))
+    N <- nrow(w)
+    if (missing(mu)) {
+        mu <- rep(0, N)
+    }
+    I <- diag(N)
+    S <- sigma^2 * solve( (I - rho * t(w)) %*% (I - rho * w) )
+    x <- MASS::mvrnorm(n = m, mu = mu, Sigma = S, ...)
+    return(x)
+}
+
+nimble_code <- nimbleCode({
+    # priors
+    alpha ~ dnorm(0, sd = 10) #/#
+    beta ~ dnorm(0, sd = 10)
+    sigma ~ dgamma(2, 2)   
+    prec <- 1 / sigma^2
+    rho ~ dunif(0, 1)
+    # latent process
+    s[1:N] ~ dcar_proper(mu[1:N],
+                         C = C[1:nC],
+                         adj = adj[1:L],
+                         num = num[1:N],
+                         M = M[1:N],
+                         tau = prec, 
+                         gamma = rho)    
+    # likelihood
+    for(i in 1:N) {
+        mu[i] <- alpha + beta * x[i]
+        lambda[i] <- E[i] * exp(s[i])
+        y[i] ~ dpois(lambda[i])
+    }
+})
+
+stan_code <- "
+data {
+  // mortality data
+  int n;
+  int y[n];
+  vector[n] x;  
+  vector[n] E;
+  // CAR data
+  vector[n] M_inv;
+  matrix[n, n] C;
+}
+
+transformed data {
+  matrix[n, n] I = diag_matrix(rep_vector(1, n));
+}
+
+parameters {
+  real alpha;
+  real beta;  
+  vector[n] phi;
+  real<lower=0> sigma;
+  real<lower=0, upper=1> rho;
+}
+
+model {
+  matrix[n, n] Sigma_inv = diag_pre_multiply(1/sigma^2 * M_inv, (I - rho * C));
+  vector[n] mu_y = E .* exp(phi);
+  vector[n] mu_phi = alpha + x * beta;
+  target += poisson_lpmf(y | mu_y);
+  target += multi_normal_prec_lpdf(phi | mu_phi, Sigma_inv);
+  target += gamma_lpdf(sigma | 2, 2);
+  target += normal_lpdf(alpha | 0, 10);
+  target += normal_lpdf(beta | 0, 10);  
+  // implicit uniform(0,1) on rho
+}
+
+"
+
+
+ppp
+pppp
+
+rm(ppp, pppp)
+
+ppp
+pppp
+
+
+stan_car <- stan_model(model_code = stan_code)
+stan_car <- rstan::stan_model(model_code = stan_code)
+
+# the data
+data(GGHB.IG)
+data(respiratorydata)
+respiratorydata_spatial <- merge(x = GGHB.IG, y = respiratorydata, by = "IG", all.x = FALSE)
+E <- respiratorydata_spatial$expected
+N <- length(E)
+
+# Nimble data
+W.nb <- poly2nb(respiratorydata_spatial, row.names =  rownames(respiratorydata_spatial@data))
+nbInfo <- nb2WB(W.nb)
+CM <- as.carCM(nbInfo$adj, nbInfo$weights, nbInfo$num)
+constants <- list(N = N,
+                  L = length(nbInfo$adj),
+                  C = CM$C,
+                  M = CM$M,
+                  nC = length(CM$C),
+                  adj = nbInfo$adj,
+                  num = nbInfo$num, 
+                  E = E
+                  )
+nimble_data <- list()
+inits <- list(alpha = rnorm(1, 0, 1), beta = rnorm(1, 0, 1), prec = 4, s = rnorm(N))
+
+# Stan data
+C <- spdep::nb2mat(spdep::poly2nb(respiratorydata_spatial), style = "W")
+stan_data <- list(
+    n = nrow(C),
+    E = respiratorydata_spatial$expected,
+    M_inv = 1 / CM$M,
+    C = C
+    )
+
+# Sim data
+rho.x <- 0.75
+rho.y <- 0.6
+beta <- -1
+alpha <-  0
+
+res <- lapply(1:Nsim, function(i) {
+    # draw data
+    x <- sim_sar(w = C, rho = rho.x, sigma = 0.2)
+    phi <- sim_sar(w = C, mu = alpha + x * beta, rho = rho.y, sigma = 0.2)
+    y <- rpois(n = N, lambda = E * exp(phi))
+    stan_data$x <- constants$x <- x 
+    stan_data$y <- nimble_data$y <- y
+    # par(mfrow=c(1,3)); hist(x); hist(y/E); plot(x, log(y/E))
+    # sample Nimble
+    model <- nimbleModel(nimble_code, constants = constants, data = nimble_data, inits = inits)
+    cModel <- compileNimble(model)
+    conf <- configureMCMC(model, monitors = c('alpha', 'beta', 'sigma', 's'))
+    MCMC <- buildMCMC(conf)
+    cMCMC <- compileNimble(MCMC, project = cModel)
+    nimble.samples <- runMCMC(cMCMC, niter = 15000, nburnin = 7500)
+    nimble.res <- mean(nimble.samples[,"beta"])
+    
+    # sample Stan
+    S <- rstan::sampling(stan_car, data = stan_data, chains = 1, iter = 1e3, pars = "beta")
+    stan.res <- mean(as.matrix(S, pars = "beta"))
+    
+    # fit lm
+    fit.lm <- lm(log(y/E) ~ x)
+    lm.res <- coefficients(fit.lm)["x"]
+
+    # write results to disk
+    res <- matrix(c(nimble = nimble.res, stan = stan.res, lm = lm.res), nrow = 1)
+    write.table(as.data.frame(res),
+                file = "sim-study-res.txt",
+                append = TRUE,
+                row.names = FALSE,
+                col.names = FALSE
+                )
+    return (res)
+}
+)
+
+##results = do.call("rbind", res)
+results <- read.table("sim-study-res.txt", header = FALSE)
+names(results) <- c("nimble", "stan", "lm")
+
+message("Sampling from log-linear Poisson model with beta = -1 (nsim = ",nrow(results), ")")
+message("Sample mean of Nimble estimates: ", mean(results[,"nimble"]))
+message("Sample mean of Stan estimates: ", mean(results[,"stan"]))
+message("Sample mean of lm estimates: ", mean(results[,"lm"]))
+
+par(mfrow = c(1,3))
+hist(results[,1])
+hist(results[,2])
+hist(results[,3])
+
+Results:
+
+> message("Sampling from log-linear Poisson model with beta = -1 (nsim = ",nrow(results), ")")
+Sampling from log-linear Poisson model with beta = -1 (nsim = 34)
+> message("Sample mean of Nimble estimates: ", mean(results[,"nimble"]))
+Sample mean of Nimble estimates: -0.784268517370144
+> message("Sample mean of Stan estimates: ", mean(results[,"stan"]))
+Sample mean of Stan estimates: -0.999127910957048
+> message("Sample mean of lm estimates: ", mean(results[,"lm"]))
+Sample mean of lm estimates: -1.02010261324937
+-0.869454220869161 -1.11441602278424 -1.10393272798944
+-0.84119625465296 -1.11071508243597 -1.12079492982895
+-0.800128392734161 -0.988316639931817 -1.06258154392354
+-0.776819840463203 -0.938352608682106 -0.986763487133298
+-0.792577668122557 -1.02208182896783 -0.979232853530182
+-0.976453894222416 -1.19158695522661 -1.12225311022952
+-0.740169374376679 -0.954207779781052 -1.07013744151004
+-0.873376679996589 -1.0648919424246 -1.04558067401789
+-0.724048339785209 -1.0080065846679 -1.00920131855944
+-0.807474986904927 -0.996162062869756 -0.960728447973934
+-0.73303293118834 -0.940479203284062 -0.994227107364423
+-0.854968287498536 -0.985146857240806 -0.966415127323065
+-0.776805521594512 -0.971800018628652 -1.01006883960142
+-0.828408968073413 -1.0570795949291 -1.18683690272438
+-0.79767688270586 -1.00572965600818 -1.00901297746585
+-0.687822171652225 -0.902619838933142 -0.895493864956022
+-0.772841193385266 -0.968033844390289 -0.936703309471773
+-0.838221630553068 -1.05991583300346 -1.15261358649034
+-0.816355511186022 -1.00201745889098 -0.948745638150729
+-0.789788879631268 -1.10169418202533 -1.11972871406528
+-0.767592460964726 -0.976893644419625 -0.900424789914287
+-0.769887361464003 -0.982048088264885 -1.07134848049032
+-0.837946145938048 -1.06072124415297 -1.11658243355564
+-0.808884993812324 -1.00108613803788 -0.972081210171968
+-0.710107378303388 -0.873966797825023 -0.796884219728618
+-0.756694078375703 -1.01565550444563 -0.936535262319068
+-0.812711014652591 -1.00041841936907 -1.13257559911405
+-0.679599909649094 -0.883041246176913 -0.871967739230857
+-0.757009048237822 -0.971855632286032 -1.05090172762642
+-0.677675951799145 -0.876468795237584 -0.938243921290235
+-0.664339061520318 -0.881208093005099 -0.95184423510215
+-0.646853416369382 -0.821342599368114 -0.948134618193292
+-0.813473539665214 -1.05308365560774 -1.01175369500405
+-0.864733600236752 -1.18930511923717 -1.30315831642805
+
+
+
+
+## questions of memory usage
+## from Henry Scharf on Nimble users list
+
+library(pryr)
+mem_1 <- rep(NA, 10)
+
+for(i in 1:length(mem_1)){
+    a <- rnorm(1e7)
+    mem_1[i] <- mem_used()
+    var_list <- ls(all.names = T)
+    rm(list = var_list[-which(var_list == "mem_1")])
+    gc()
+}
+
+plot(mem_1)
+
+
+mem_2 <- rep(NA, 4)
+
+for(i in 1:length(mem_2)){
+    library(nimble)
+    code <- nimbleCode({
+        mu ~ dnorm(mean = 0, sd = 1)
+        for(i in 1:N){
+            y[i] ~ dnorm(mean = mu, sd = 1)
+        }
+    })
+    constants <- list(N = 1e3)
+    data <- list(y = rnorm(constants$N))
+    model <- nimbleModel(code = code, constants = constants, data = data)
+    Cmodel <- compileNimble(model)
+    conf <- configureMCMC(model = model, resetFunctions = TRUE)
+    mcmc <- buildMCMC(conf = conf)
+    Cmcmc <- compileNimble(mcmc, project = model, resetFunctions = TRUE)
+    Cmcmc$run(niter = 1e3)
+    samples <- as.matrix(Cmcmc$mvSamples)
+    mem_2[i] <- mem_used()
+    nimble:::clearCompiled(Cmodel)
+    var_list <- ls(all.names = T)
+    rm(list = var_list[-which(var_list == "mem_2")])
+    gc()
+}
+
+plot(mem_2)
+
+
+## user Luca's question about posterior_predictive and
+## posterior_predictive_branch samplers, and the need
+## for the rX() function for the branch sampler
+
+library(nimble)
+
+dmymnorm <- nimbleFunction(
+    run = function(x=double(1), mean=double(1), prec=double(2), log=integer(0, default=0)){
+        lp <- -sum(asRow(x-mean) %*% prec %*% asCol(x-mean))/2
+        if(log) return(lp)
+        else return(exp(lp))
+        returnType(double(0))
+    })
+assign('dmymnorm',dmymnorm,envir=.GlobalEnv)
+
+code <- nimbleCode({
+    mean ~ dgamma(shape=2, rate=2) ## just to make sure to avoid conjugacy
+    means[1:2] <- c(mean, mean)
+    prec[1:2,1:2] <- diag(c(1/1^2, 1/0.1^2))
+    x[1:2] ~ dmymnorm(mean=means[1:2], prec=prec[1:2,1:2])
+})
+
+constants <- list()
+inits <- list()
+modeldata <- list()
+
+model <- nimbleModel(code=code, name='model', constants=constants, inits=inits, data=modeldata)
+
+Cmodel <- compileNimble(model, showCompilerOutput = TRUE, resetFunctions = TRUE)
+
+conf <- configureMCMC(model)
+
+## Does not work with the default sampler for 'mean'
+confmodel <- configureMCMC(Cmodel, nodes=NULL)
+confmodel$addSampler(target=c('mean'), type='posterior_predictive', control=list())
+confmodel$addSampler(target='x', type='AF_slice', control=list(sliceAdaptFactorMaxIter=5000, sliceAdaptFactorInterval=500, sliceAdaptWidthMaxIter=500, sliceMaxSteps=100, maxContractions=100))
+confmodel$setMonitors(c('mean','x','logProb_x'))
+confmodel
+## ===== Monitors =====
+## thin = 1: mean, x, logProb_x
+## ===== Samplers =====
+## posterior_predictive sampler (1)
+##   - mean
+## AF_slice sampler (1)
+##   - x
+##
+
+mcmc <- buildMCMC(confmodel)
+Cmcmc <- compileNimble(mcmc)
+
+samples <- runMCMC(mcmc=Cmcmc, niter=10000, nburnin=5000, thin=5, inits=list(x=1:2))
+
+
+
+
+
+## User's question about calculating WAIC
+## (using old calculateWAIC)
+## from multiple chains of samples, but when
+## the chains were run in parallel using 
+
+library(nimble)
+
+library(parallel)
+
+
+# I have to run this first to get a CmyMCMC object in global environment
+myCode <- nimbleCode({
+    a ~ dunif(0, 100)
+    b ~ dunif(0, 100)
+    for (i in 1:length_y) {
+        y[i] ~ dgamma(shape = a, rate = b)
+    }
+})
+
+N <- 1000
+set.seed(0)
+y <- rgamma(N, shape = 2, rate = 5)
+
+
+myModel <- nimbleModel(code = myCode,
+                       data = list(y = y),
+                       constants = list(length_y = N),
+                       inits = list(a = 0.5, b = 0.5))
+
+CmyModel <- compileNimble(myModel)
+
+myMCMC <- buildMCMC(CmyModel)
+CmyMCMC <- compileNimble(myMCMC)##, project = myModel)
+
+## then I have to run it all again in parallel
+# make cluster
+this_cluster <- makeCluster(2)
+seed <- set.seed(1234)
+
+# Create a function with all the needed code
+run_MCMC_allcode <- function(seed, data) {
+    library(nimble)
+    ##
+    myCode <- nimbleCode({
+        a ~ dunif(0, 100)
+        b ~ dunif(0, 100)
+        for (i in 1:length_y) {
+            y[i] ~ dgamma(shape = a, rate = b)
+        }
+    })
+    ##
+    myModel <- nimbleModel(code = myCode,
+                           data = list(y = data),
+                           constants = list(length_y = length(data)),
+                           inits = list(a = 0.5, b = 0.5))
+    ##
+    CmyModel <- compileNimble(myModel)
+    ##
+    myMCMC <- buildMCMC(CmyModel)
+    CmyMCMC <- compileNimble(myMCMC)##, project = myModel)
+    ##
+    results <- runMCMC(CmyMCMC, niter = 10000, setSeed = seed)
+    ##
+    return(results)
+}
+
+my.data <- y
+
+chain_output <- parLapply(cl = this_cluster, X = 1:2,
+                          fun = run_MCMC_allcode,
+                          data = my.data)
+
+stopCluster(this_cluster)
+
+posteriorSamplesMatrix <- rbind(chain_output[[1]], chain_output[[2]])
+
+samplesSummary(chain_output[[1]])
+samplesSummary(chain_output[[2]])
+samplesSummary(posteriorSamplesMatrix)
+
+
+colnames(posteriorSamplesMatrix) <- colnames(chain_output[[1]])
+dim(posteriorSamplesMatrix)
+colnames(posteriorSamplesMatrix)
+
+set.seed(0)
+posteriorSamplesMatrix <- array(rnorm(20)^2+1, c(10,2))
+colnames(posteriorSamplesMatrix) <- c('a', 'b')
+posteriorSamplesMatrix
+
+nimble:::matrix2mv(posteriorSamplesMatrix, CmyMCMC$mvSamples)
+
+as.matrix(CmyMCMC$mvSamples)
+
+CmyMCMC$run(5)
+
+CmyMCMC$calculateWAIC()
+
+CmyMCMC$enableWAIC
+CmyMCMC$enableWAIC <- TRUE
+CmyMCMC$enableWAIC
+
+CmyMCMC$calculateWAIC()
+
+
+
+
+nimble:::matrix2mv(posteriorSamplesMatrix, myMCMC$mvSamples)
+
+as.matrix(myMCMC$mvSamples)
+
+myMCMC$calculateWAIC()
+
+myMCMC$enableWAIC
+myMCMC$enableWAIC <- TRUE
+myMCMC$enableWAIC
+
+myMCMC$calculateWAIC()
+
+myMCMC$run(5)
 
 
 
@@ -432,7 +903,7 @@ data <- list(a = 1, d = c(NA,2,5))
 U <- matrix(c(.2,2,4,0,1,1,0,0,4), nrow=3, byrow=TRUE)
 eInit <- t(U) %*% U
 inits <- list(b=1, c=5, e=eInit)
-
+o
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmodel$calculate()
 
@@ -20293,8 +20764,11 @@ cClustermodel <- compileNimble(Clustermodel, showCompilerOutput = TRUE)       ##
 
 ## test case of dcar_proper()
 
+1
 
 library(nimble)
+
+build(browser)
 
 code <- nimbleCode({
     mu0 ~ dnorm(0, 0.0001)
@@ -20315,6 +20789,16 @@ data <- list(y = c(1, 0, 1, 1))
 inits <- list(mu0 = 0, tau = 1, gamma = 0, s = rep(0, 4))
 
 Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+
+Rmcmc <- buildMCMC(conf)
+
+set.seed(0)
+Rmcmc$run(1)
+
+
 
 
 ## testing expansion of vars / node names for use in samplesPlot() and/or chainsPlot()

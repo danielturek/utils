@@ -20,8 +20,11 @@ options(scipen=999)  ## turns off scientific notation display
 ##roundSig <- function(x) round(x, -floor(log10(abs(x))))
 
 build <- function(x) {
+    if('nimble' %in% .packages())   return(invisible())    ## return if nimble already loaded
+    x <- as.character(substitute(x))
     buildDir <- paste0('~/temp/builds/', x)
     if(!file.exists(buildDir)) stop(paste0('no build: ', buildDir), call. = FALSE)
+    message(paste0('loading nimble build: ', x))
     library(nimble, lib.loc = buildDir)
 }
 
@@ -38,5 +41,15 @@ makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c(
                                                                            'qqq',
                                                                            'rrr'
                                                                        )))), envir = .GlobalEnv), .GlobalEnv)
+
+##stan_model <- function(...) {
+##    suppressWarnings(rm(ppp, pppp, qqq, envir = .GlobalEnv))
+##    out <- rstan::stan_model(...)
+##    makeActiveBinding('ppp', function() conf$printSamplers(byType = TRUE), .GlobalEnv)
+##    makeActiveBinding('pppp', function() conf$printSamplers(), .GlobalEnv)
+##    makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
+##    invisible(out)
+##}
+
 
 
