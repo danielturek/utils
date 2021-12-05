@@ -79,10 +79,11 @@ function g() {
   cd ~/github/$1
 }
 
-alias e=emacs
+alias e='emacs -nw'
 alias ex=exit
 alias o='open -a "Google Chrome"'
 alias textbook=~/github/utils/textbook.sh
+alias solutions='open ~/github/courses/klingenberg_textbook/v5_textbook_solutions/v5_solutions.pdf'
 alias lecture=~/github/utils/lecture.sh
 alias rmm=~/github/utils/move_to_trash.sh
 alias ls='ls -F'
