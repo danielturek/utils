@@ -5,9 +5,9 @@ R CMD build nimbleHMC
 
 rm -rf Documents/nimble
 
-## now, in github/nimble/nimble repo,
-## checkout branch ADoak_without_HMC, and run:
-## build ADoak_without_HMC
+cd ~/github/nimble/nimble/
+git checkout ADoak_without_HMC
+build ADoak_without_HMC
 
 cp -r ~/temp/builds/ADoak_without_HMC/nimble Documents/
 
