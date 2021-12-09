@@ -1,5 +1,7 @@
 cd ~/github/nimble/nimbleHMC/
 
+git pull
+
 rm -f nimbleHMC_*.tar.gz
 
 R CMD build nimbleHMC
