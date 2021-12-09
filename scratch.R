@@ -1,41 +1,105 @@
 
-## STAT202 Lecture 24
-## Two-Way ANOVA (Two-Factor ANOVA)
 
-cars <- read.csv('~/github/courses/stat202/data/UsedCars.csv')
-cars
 
-Power <- c('gas', 'hybrid', 'diesel', 'hybrid', 'hybrid', 'gas', 'hybrid', 'gas', 'diesel', 'diesel', 'diesel', 'hybrid', 'diesel', 'gas', 'diesel', 'hybrid', 'hybrid', 'hybrid', 'gas')
 
-cars$Power <- as.factor(Power)
+library(nimble)
+nimbleOptions(MCMCmultivariateNodesAsScalars = TRUE)
 
-cars$Type <- as.factor(ifelse(cars$Type, 'foreign', 'domestic'))
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
 
-cars$Type
+conf <- configureMCMC(Rmodel)
+conf <- configureMCMC(Rmodel, onlySlice = TRUE)
 
-## look at the data:
+conf <- configureMCMC(Rmodel, nodes = NULL)
+nonDataStoch <- model$getNodeNames(stochOnly = TRUE, includeData = FALSE)
+conf$addSampler(type = 'HMC', target = nonDataStoch)
+conf
 
-library(ggplot2) 
-ggplot(cars, aes(x = Price, y = Power, color = Type)) + geom_point(size = 3) 
 
-## multiple regression with (categorical) Power variable
-m <- lm(Price ~ Power + Type, data = cars)    # DELETE THIS, DO IT IN CLASS
-summary(m)                                    # DELETE THIS, DO IT IN CLASS
+conf$printSamplers()
+conf$printSamplers(byType = TRUE)
+conf$printMonitors()
 
-## ANOVA
-anova(m)                                      # DELETE THIS, DO IT IN CLASS
+Rmcmc <- buildMCMC(conf)
 
-## Important and interesting:
-## if we *only* consider Type (foreign / domestic),
-## then it's highly significant:
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
 
-ggplot(cars, aes(x = Price, y = Type, color = Type)) + geom_point(size = 3)
+set.seed(0)
+samples <- runMCMC(Cmcmc, 500)
 
-m2 <- lm(Price ~ Type, data = cars)
+samplesSummary(samples)
 
-summary(m2)
 
-anova(m2)
+
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b <- (a < 0) * 3 + (a > 0) * 4
+})
+
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$a <- -02
+Rmodel$calculate()
+c(Rmodel$a, Rmodel$b)
+
+
+Cmodel <- compileNimble(Rmodel)
+
+Cmodel$a <- 0
+Cmodel$calculate()
+c(Cmodel$a, Cmodel$b)
+
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+samplesSummary(samples)
+samplesPlot(samples)
+apply(samples, 2, effectiveSize)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        returnType()
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
+
 
 
 
@@ -301,6 +365,12 @@ Cmcmc <- compiledList[[2]]
 
 set.seed(0)
 
+samples <- runMCMC(Cmcmc, 10000, nburnin=5000)
+
+library(coda)
+cor(samples)
+crosscorr(samples)
+crosscorr.plot(as.mcmc(samples))
 
 
 runMCMC(Cmcmc, 100000, samples=FALSE, WAIC=TRUE, nchains=3, nburnin=20000)
