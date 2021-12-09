@@ -1,4 +1,4 @@
-cd ~/github/nimble/nimbleHMC/nimbleHMC/
+cd ~/github/nimble/nimbleHMC/
 
 rm -f nimbleHMC_*.tar.gz
 
