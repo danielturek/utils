@@ -11,6 +11,7 @@ build ADoak_without_HMC
 
 cp -r ~/temp/builds/ADoak_without_HMC/nimble Documents/
 
+cd ~/github/nimble/nimbleHMC/
 R CMD INSTALL nimbleHMC_*.tar.gz -l ~/Documents/
 
 ## use in R scripts:
