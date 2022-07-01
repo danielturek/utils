@@ -1,4 +1,4 @@
 #!/bin/bash
 
-R CMD BATCH --vanilla "$@" &
+R CMD BATCH --no-save "$@" &
 

@@ -1,7 +1,7 @@
 ---
 title: TITLE
 author: Daniel Turek
-date: DD MONTH YYYY
+date: DD MONTH YYYY ---or---"`r Sys.Date()`"
 output: html_document
 ---
 

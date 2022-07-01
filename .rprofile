@@ -1,13 +1,15 @@
 
-## TEMPORARY
-## (for STAT359 projects)
+#### TEMPORARY
+#### (for STAT319 projects)
 ##files <- c(
-##    '~/github/courses/stat359/projects/trading/trading_code.R',
-##    '~/github/courses/stat359/projects/global_demographics/global_code.R',
-##    '~/github/courses/stat359/projects/spam_classification/spam_code.R'
+##    '~/github/courses/stat319/projects/trading/trading_code.R',
+##    '~/github/courses/stat319/projects/baseball_statistics/baseball_code.R',
+##    '~/github/courses/stat319/projects/global_demographics/global_code.R',
+##    '~/github/courses/stat319/projects/spam_classification/spam_code.R'
 ##)
 ##for(f in files) source(f)
-##
+####
+####
 
 options(device = 'quartz')
 
@@ -24,7 +26,9 @@ build <- function(x) {
     x <- as.character(substitute(x))
     buildDir <- paste0('~/temp/builds/', x)
     if(!file.exists(buildDir)) stop(paste0('no build: ', buildDir), call. = FALSE)
+    message('==============================================')
     message(paste0('loading nimble build: ', x))
+    message('==============================================')
     library(nimble, lib.loc = buildDir)
 }
 

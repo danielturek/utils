@@ -75,7 +75,7 @@ if [ -r "$1" ]; then
 	(
 	    rm -f ${mdfile}.R       ## remove existing .R file, if one exists
 	    /usr/local/bin/Rscript -e "require(knitr); purl('${mdfile}.rmd', documentation = 0)"
-	    gsed -i "s/^## //" ${mdfile}.R     ## uncomment any R lines (generated from eval = FALSE code blocks)
+	    gsed -i "s/^## //" "${mdfile}.R"     ## uncomment any R lines (generated from eval = FALSE code blocks)
 ) > /dev/null 2>&1
     fi
 else

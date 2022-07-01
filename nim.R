@@ -58,3 +58,9 @@ Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
 Rnf()
 Cnf()
 
+stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
+for(v in stochVars) {
+    lp <- Rmodel$calculate(v)
+    cat(v, ': ', lp, '\n')
+}
+
