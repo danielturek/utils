@@ -1,4 +1,3 @@
-
 # to permanently mute OSX startup chime, run this once from shell:
 # $ cd ~/github/utils/nobootsound
 # $ sudo sh install.sh
@@ -121,14 +120,14 @@ set -o noclobber
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-#__conda_setup="$('/Users/dturek/anaconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+#__conda_setup="$('/Users/dturek/opt/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
 #if [ $? -eq 0 ]; then
 #    eval "$__conda_setup"
 #else
-#    if [ -f "/Users/dturek/anaconda3/etc/profile.d/conda.sh" ]; then
-#        . "/Users/dturek/anaconda3/etc/profile.d/conda.sh"
+#    if [ -f "/Users/dturek/opt/miniconda3/etc/profile.d/conda.sh" ]; then
+#        . "/Users/dturek/opt/miniconda3/etc/profile.d/conda.sh"
 #    else
-#        export PATH="/Users/dturek/anaconda3/bin:$PATH"
+#        export PATH="/Users/dturek/opt/miniconda3/bin:$PATH"
 #    fi
 #fi
 #unset __conda_setup

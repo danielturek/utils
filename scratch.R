@@ -1,4 +1,429 @@
 
+1
+df <- read.csv('~/Downloads/Lab Study Data.csv')
+
+dim(df)
+names(df)
+
+grep('provider', names(df), value = TRUE)
+
+head(df[,grep('provider', names(df), value = TRUE)], 20)
+
+library(nimble)
+
+code <- nimbleCode({
+    logit(y) ~ dlogis(0, 1)
+})
+
+Rmodel <- nimbleModel(code)
+
+Rmodel$getNodeNames()
+
+ns <- ls(Rmodel$nodes)
+
+i <- 2
+ns[i]
+Rmodel$nodes[[ns[i]]]$simulate
+Rmodel$nodes[[ns[i]]]$calculate
+
+x ~ T(dnorm(0, sd = 10), 0, a)
+
+3106724
+Lopetrone Goldflam, Luca Jaden
+ljl3@williams.edu
+Computer Science
+
+
+
+3106794
+Mortarelli, Milvano Graham (Mel)
+mgm4@williams.edu
+Computer Science
+
+
+
+3107981
+Leavy, Asher Morgan
+aml19@williams.edu
+Computer Science
+
+
+
+x <- 1:50
+
+case_when(
+       x %% 35 == 0 ~ "fizz buzz",
+       x %% 5 == 0 ~ "fizz",
+       x %% 7 == 0 ~ "buzz",
+       TRUE ~ as.character(x)
+     )
+     
+     # Like an if statement, the arguments are evaluated in order, so you must
+     # proceed from the most specific to the most general. This won't work:
+     case_when(
+       TRUE ~ as.character(x),
+       x %%  5 == 0 ~ "fizz",
+       x %%  7 == 0 ~ "buzz",
+       x %% 35 == 0 ~ "fizz buzz"
+     )
+     
+     # If none of the cases match, NA is used:
+     case_when(
+       x %%  5 == 0 ~ "fizz",
+       x %%  7 == 0 ~ "buzz",
+       x %% 35 == 0 ~ "fizz buzz"
+     )
+     
+     # Note that NA values in the vector x do not get special treatment. If you want
+     # to explicitly handle NA values you can use the `is.na` function:
+     x[2:4] <- NA_real_
+     case_when(
+       x %% 35 == 0 ~ "fizz buzz",
+       x %% 5 == 0 ~ "fizz",
+       x %% 7 == 0 ~ "buzz",
+       is.na(x) ~ "nope",
+       TRUE ~ as.character(x)
+     )
+     
+     # All RHS values need to be of the same type. Inconsistent types will throw an error.
+     # This applies also to NA values used in RHS: NA is logical, use
+     # typed values like NA_real_, NA_complex, NA_character_, NA_integer_ as appropriate.
+     case_when(
+       x %% 35 == 0 ~ NA_character_,
+       x %% 5 == 0 ~ "fizz",
+       x %% 7 == 0 ~ "buzz",
+       TRUE ~ as.character(x)
+     )
+     case_when(
+       x %% 35 == 0 ~ 35,
+       x %% 5 == 0 ~ 5,
+       x %% 7 == 0 ~ 7,
+       TRUE ~ NA_real_
+     )
+     
+     # case_when() evaluates all RHS expressions, and then constructs its
+     # result by extracting the selected (via the LHS expressions) parts.
+     # In particular NaN are produced in this case:
+     y <- seq(-2, 2, by = .5)
+     case_when(
+       y >= 0 ~ sqrt(y),
+       TRUE   ~ y
+     )
+     
+     # This throws an error as NA is logical not numeric
+     ## Not run:
+     
+     case_when(
+       x %% 35 == 0 ~ 35,
+       x %% 5 == 0 ~ 5,
+       x %% 7 == 0 ~ 7,
+       TRUE ~ NA
+     )
+     ## End(Not run)
+     
+     
+     # case_when is particularly useful inside mutate when you want to
+     # create a new variable that relies on a complex combination of existing
+     # variables
+     starwars %>%
+       select(name:mass, gender, species) %>%
+       mutate(
+         type = case_when(
+           height > 200 | mass > 200 ~ "large",
+           species == "Droid"        ~ "robot",
+           TRUE                      ~ "other"
+         )
+       )
+
+
+
+
+
+library(nimble)
+library(dplyr)
+library(posterior)
+library(bayesplot)
+
+dlatentnorm <- nimbleFunction(
+    run = function(
+                   x = double(0), mean = double(0, default = 0), y = integer(0), log = integer(0, default = 0)
+                   ) {
+        returnType(double(0))
+        if ( x < 0 & y == 1 ) {
+            logProb <- -Inf
+        } else if ( x > 0 & y == 0) {
+            logProb <- -Inf
+        } else {
+            logProb <- dnorm(x, mean = mean, sd = 1, log = 1) - pnorm(0, mean = mean, sd = 1, lower.tail = (1-y), log.p = 1)
+        }
+        if ( log )
+            return(logProb)
+        return(exp(logProb))
+    }
+)
+platentnorm <- nimbleFunction(
+    run = function(
+                   q = double(0), mean = double(0, default = 0), y = integer(0)
+                 , lower.tail = integer(0, default = 1)
+                 , log.p = integer(0, default = 0)
+                   ) {
+        returnType(double(0))
+        if ( y == 0 ) {
+            if ( q >= 0 ) {
+                logProb <- Inf
+            } else {
+                logProb <- pnorm(q, mean, 1, log.p = 1) - pnorm(0, mean, 1, log.p = 1)
+            }
+        } else {
+            if ( q < 0 ) {
+                logProb <- -Inf
+            } else {
+                lowerProb <- pnorm(0, mean = mean, sd = 1)
+                logProb <- log( pnorm(q, mean) - lowerProb ) - log(1 - lowerProb)
+            }
+        }
+        if ( lower.tail ) {
+            if ( log.p )
+                return(logProb)
+            else
+                return(exp(logProb))
+        } else {
+            prob <- 1 - exp(logProb)
+            if ( log.p ) {
+                return(log(prob))
+            } else {
+                return(prob)
+
+            }
+        }
+        return(0) ## never reached
+    }
+)
+
+qlatentnorm = nimbleFunction(
+    run = function(
+                   p = double(0), mean = double(0, default = 0), y = integer(0)
+                 , lower.tail = integer(0, default = 1)
+                 , log.p = integer(0, default = 0)
+                   ) {
+        returnType(double(0))
+        if (log.p)
+            p <- exp(p)
+        if (!lower.tail)
+            p <- 1 - p
+        if ( y == 0 ) {
+            logp <- log(p) + pnorm(0, mean = mean, log.p = 1)
+            return( qnorm(logp, mean = mean, log.p = 1) )
+        } else {
+            lowProb <- pnorm(0, mean = mean)
+            return( qnorm( p + lowProb * (1 - p), mean = mean ) )
+        }
+        return(0)  ## never reached
+    }
+)
+
+rlatentnorm = nimbleFunction(
+    run = function(
+                   n = integer(0), mean = double(0, default = 0), y = integer(0)
+                   ) {
+        returnType(double(0))
+        return( qlatentnorm(runif(1), mean = mean, y = y) )
+    }
+)
+
+cdlatentnorm <- compileNimble(dlatentnorm)
+cplatentnorm <- compileNimble(platentnorm)
+cqlatentnorm <- compileNimble(qlatentnorm)
+crlatentnorm <- compileNimble(rlatentnorm)
+
+
+latentNormalSampler <- nimbleFunction(
+    name = 'latentNormalSampler',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## Get mean parameters
+        means <- model$getParents(target)
+        ## Get corresponding binary variables
+        ybin <- model$getDependencies(target, stochOnly = TRUE, self = FALSE)
+        ## Get number of latent variables to update
+        nupdates <- length(ybin)
+    },
+    run = function() {
+        ## Empty vector for draws
+        draw <- rep(0, nupdates)
+        for ( i in 1:nupdates ) {
+            mean_i  <- values(model, means[i])[1]
+            ybin_i  <- values(model, ybin[i])[1]
+            draw[i] <- rlatentnorm(1, mean_i, ybin_i)
+        }
+        model[[target]] <<- draw
+        model$calculate(target)
+        nimCopy(from = model, to = mvSaved, row = 1, nodes = target, logProb = TRUE)
+        
+    },
+    methods = list(
+        reset = function() { }
+    )
+)
+
+code <- nimbleCode({
+    for ( i in 1:n ) {
+        mean[i]  <- beta0 + beta1 * x[i]
+        ystar[i] ~ dnorm(mean[i], sd = 1)
+        y[i]     ~ dinterval(ystar[i], 0)
+    }
+    beta0 ~ dnorm(0, sd = 10)
+    beta1 ~ dnorm(0, sd = 10)
+})
+
+## Simulate data
+n     = 100
+x     = rnorm(n, sd = 2)
+ystar = rnorm(n, -1 + x, sd = 1)
+y     = ifelse(ystar < 0, 0, 1)
+
+## Run nimble code
+const  <- list('n' = n)
+data   <- list('y' = y, 'x' = x)
+init   <- list('beta0' = 0, 'beta1' = 0, 'ystar' = rnorm(const$n, ifelse(data$y == 0, -1, 1), sd = 0.2) )
+model  <- nimbleModel(code, constants = const, data = data, inits = init)
+cmodel <- compileNimble(model)
+conf   <- configureMCMC(model, monitors = c('beta0', 'beta1'))
+conf$removeSampler('ystar')
+conf$addSampler('ystar', 'latentNormalSampler')
+mcmc   <- buildMCMC(conf)
+cmcmc  <- compileNimble(mcmc, project = model)
+smpl   <- runMCMC(cmcmc)
+summ   <- smpl %>% summarize_draws()
+summ
+summary(glm(y ~ x, family = binomial('probit')))
+
+
+
+
+
+
+s <- c(4,3,1,2)
+identical(sort(s), as.numeric(1:length(s)))
+
+longestLoop <- function(s) {
+    s <- as.numeric(s)
+    if(!identical(sort(s), as.numeric(1:length(s)))) stop()
+    visited <- rep(FALSE, length(s))
+    longest <- 0
+    while(any(!visited)) {
+        start <- which(!visited)[1]
+        current <- start
+        thisLength <- 1
+        visited[current] <- TRUE
+        while(s[current] != start) {
+            current <- s[current]
+            thisLength <- thisLength + 1
+            visited[current] <- TRUE
+        }
+        if(thisLength > longest)   longest <- thisLength
+    }
+    return(longest)
+}
+
+
+
+nreps <- 100000
+n <- 100
+
+1 - mean(replicate(nreps, longestLoop(sample(1:n))) > (n/2))
+
+
+
+
+
+
+
+#simulate data
+require(mgcv)
+set.seed(2) 
+n <- 400
+dat <- gamSim(1,n=n,dist="normal",scale=2)
+
+#get spline code
+jd <- jagam(y~s(x0)+s(x1)+s(x2)+s(x3),data=dat,
+            file="jagam.txt",
+            sp.prior="gamma")
+
+#first fit using jags as standard
+library(rjags)
+library(jagsUI)
+
+out <- jags(data = jd$jags.data,
+            parameters.to.save = c("mu"),
+            model.file = "jagam.txt",
+            n.thin=2, n.chains=3, n.burnin=1000,n.iter=2000,
+            parallel=T)
+#works ok
+
+#also using NIMBLE
+library(nimble)
+library(igraph)
+library(coda)
+
+#sort data
+nimbleConstants <- jd$jags.data[c("n","zero")]
+nimbleData <- jd$jags.data[c("y","X","S1","S2","S3","S4")]
+
+#model code - using jagam.txt above - except adding in indices
+mynimbleCode <- nimbleCode({
+    
+    for (i in 1:n) {
+        y[i] ~ dnorm(mu[i],tau)
+        ##mu[i] <- X[i,1:37] * b[1:37]
+        mu[i] <- sum(X[i,1:37] * b[1:37])
+    }
+    tau ~ dgamma(.05,.005)
+    
+    ## Parametric effect
+    for (i in 1:1) {
+        b[i] ~ dnorm(0,0.01)
+    }
+    
+    ## prior for s(x0)...
+    K1[1:9,1:9] <- S1[1:9,1:9] * lambda[1]  + S1[1:9,10:18] * lambda[2]
+    b[2:10] ~ dmnorm(zero[2:10],K1[1:9,1:9])
+    ## prior for s(x1)...
+    K2[1:9,1:9] <- S2[1:9,1:9] * lambda[3]  + S2[1:9,10:18] * lambda[4]
+    b[11:19] ~ dmnorm(zero[11:19],K2[1:9,1:9])
+    ## prior for s(x2)...
+    K3[1:9,1:9] <- S3[1:9,1:9] * lambda[5]  + S3[1:9,10:18] * lambda[6]
+    b[20:28] ~ dmnorm(zero[20:28],K3[1:9,1:9])
+    ## prior for s(x3)...
+    K4[1:9,1:9] <- S4[1:9,1:9] * lambda[7]  + S4[1:9,10:18] * lambda[8]
+    b[29:37] ~ dmnorm(zero[29:37],K4[1:9,1:9])
+    
+    ## smoothing parameter priors
+    for (i in 1:8) {
+        lambda[i] ~ dgamma(.05,.005)
+        rho[i] <- log(lambda[i])
+    }
+    
+})
+
+nimbleInits <- list(lambda = rep(1, 8))
+
+#fit model
+Rmodel <- nimbleModel(mynimbleCode, constants = nimbleConstants)
+Rmodel <- nimbleModel(mynimbleCode, constants = nimbleConstants, data = nimbleData, inits = nimbleInits)
+#error here:
+#Error in chol.default(model$K1[1:9, 1:9]) :
+#  the leading minor of order 1 is not positive definite
+
+Rmodel$calculate()
+Rmodel$initializeInfo()
+
+
+nimbleData$S1[1:9,1:9]
+
+
+
+            
 ## I am trying to define a model that uses all available covariates at each time period. For example in time period t=1, there are two available and complete variables, x1 and x2. In time period t=2, x1, x2, and x3 are available.
 ## I am trying to use the following model to accomplish this (only the highlighted bits are relevant to the issue):
 
@@ -85,6 +510,9 @@ model <- nimbleModel(model_code, constants = constants, data = data, inits = ini
 
 library(nimble)
 
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+nimbleOptions(MCMCsaveHistory = TRUE)
+
 code <- nimbleCode({
     for(i in 1:5) {
         a[i] ~ dnorm(0, 1)
@@ -102,14 +530,29 @@ Rmodel$calculate()
 conf <- configureMCMC(Rmodel)
 
 conf$addSampler(c('x[1:3]', 'a[1]'), 'RW_block')
-conf$addSampler(c('a[1:5]'), 'RW_block')
-conf$addSampler(paste0('a[', 1:5, ']'), 'RW_block')
+##conf$addSampler(c('a[1:5]'), 'RW_block')
+##conf$addSampler(paste0('a[', 1:5, ']'), 'RW_block')
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Cmcmc$run(1000)
+
+pppp
+
+Cmcmc$samplerFunctions[[6]]$getScaleHistory()
+Cmcmc$samplerFunctions[[6]]$getAcceptanceHistory()
 
 pppp
 ppp
 
 debug(conf$printSamplersByType)
 ppp
+
+
+
 
               
 
