@@ -1,4 +1,1776 @@
 
+
+## update a new MCMC testing gold file
+## to remove the "Test passed" messages from test_that testthat package
+## to compare gold file
+1
+
+path <- '~/github/nimble/nimble/packages/nimble/tests/testthat/'
+infile <- 'mcmcTestLog_Correct_NEW.Rout'
+outfile <- 'mcmcTestLog_Correct_NEW2.Rout'
+
+t <- readLines(paste0(path, infile))
+##t <- t[1:800]
+##t[570:577]
+
+i <- 1
+tot <- length(t)
+while(i <= tot) {
+    if(grepl('Test passed', t[i])) {
+        t[i] <- gsub('Test passed .', '', t[i])
+        if(i < tot) {
+            t[i] <- paste0(t[i], t[i+1])
+            t <- t[-(i+1)]
+        } else {
+            if(t[i] == '') t <- t[-i]
+        }
+        tot <- length(t)
+    } else {
+        i <- i+1
+    }
+}
+
+grep('Test passed', t, value = TRUE)
+
+writeLines(t, con = paste0(path, outfile))
+
+
+
+
+## working on posterior_predictive_revamp ppb branch nodes
+
+
+nimbleOptions('determinePredictiveNodesInModel')
+nimbleOptions(determinePredictiveNodesInModel = TRUE)
+nimbleOptions(determinePredictiveNodesInModel = FALSE)
+nimbleOptions('determinePredictiveNodesInModel')
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    for(i in 1:8) {
+        b[i] ~ dnorm(a, 1)
+        c[i] ~ dnorm(b[i], 1)
+        d[i] ~ dnorm(c[i], 1)
+    }
+})
+
+Rmodel <- nimbleModel(code)
+
+Rmodel$resetData()
+
+Rmodel$setData(list(b = 1:8))
+
+Rmodel$getPredictiveNodeIDs()
+Rmodel$getPredictiveBranchPointNodeIDs()
+
+
+conf <- configureMCMC(Rmodel)
+conf$setSamplers(c(8, 9, 1:9))
+pppp
+conf$removeSampler('c')
+
+Rmcmc <- buildMCMC(conf)
+
+
+
+
+## orig:
+sampleVals = list(x = c(3.950556165467749, 1.556947815895538, 1.371834934033851, 2.036442813764752, 2.247416118159410, 2.537131924778210, 2.382184991769738, 2.653737836857812, 2.934255734970981, 3.007873553270551),
+                  c = c(0.010341199485849559, 0.010341199485849559, 0.003846483017887228, 0.003846483017887228, 0.003846483017887228, 0.006269117826484087, 0.009183580181658716, 0.009183580181658716, 0.006361841408434201, 0.006361841408434201))
+
+
+## new:
+sampleVals = list(x = c(3.9505561655, 2.0475815875, 1.6434823847, 1.3639509750, 1.2026040395, 0.7809965060, 1.0238211270, 0.9245529610, 0.7592556898, 0.4670729702),
+                  c = c(0.015855585146, 0.010426702596, 0.010426702596, 0.014013991556, 0.001477657554, 0.001477657554, 0.001477657554, 0.001477657554, 0.001477657554, 0.006195021298))
+
+
+
+
+c(0.015855585146, 0.010426702596, 0.010426702596, 0.014013991556, 0.001477657554, 0.001477657554, 0.001477657554, 0.001477657554, 0.001477657554, 0.006195021298)
+
+
+
+exactSample <- sampleVals
+
+exactSample
+
+
+
+varName <- 'x'
+varName <- 'c'
+
+expect_equal(round(C_samples[seq_along(exactSample[[varName]]), varName], 8), round(exactSample[[varName]], 8))
+
+
+
+C_samples[seq_along(exactSample[[varName]]), varName]
+
+round(exactSample[[varName]], 8)
+
+modelDef$nodeName2GraphIDs
+
+
+
+##> buildMCMC(mConf)
+##Error in samplerFunction(model = model, mvSaved = mvSaved, target = target,  : 
+##  sampler_CRP: Detected that the CRP variable is used in some way not as an index: y[i] ~ dnorm(mean = xi[i], sd = 1). NIMBLE's CRP sampling not set up to handle this case.
+
+
+
+1
+
+library(nimble)
+
+##build(devel)
+##build(ppr)
+
+source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
+
+
+context("Testing of default MCMC")
+
+RwarnLevel <- options('warn')$warn
+options(warn = 1)
+
+
+
+t <- readLines('~/github/nimble/nimble/packages/nimble/tests/testthat/mcmcTestLog_Correct_NEW.Rout')
+
+t[1:100]
+
+t[93]
+
+grep('^Test passed ....$', t[93], value = TRUE)
+grep('^Test passed ', t, value = TRUE)
+
+
+
+library(nimble)
+library(testthat)
+
+
+test_that('mcmc_determineCalcAndCopyNodes works correctly in different situations', {
+    nimbleOptions(MCMCusePosteriorPredictiveSampler = TRUE)
+    code <- nimbleCode({
+        x[1] ~ dnorm(0, 1)
+        for(i in 2:10) x[i] ~ dnorm(x[i-1], 1)
+    })
+    Rmodel <- nimbleModel(code)
+    conf <- configureMCMC(Rmodel)
+    expect_identical(conf$getUnsampledNodes(), character())
+    conf$removeSamplers()
+    expect_identical(conf$getUnsampledNodes(), paste0('x[', 1:10, ']'))
+    conf$addSampler('x[3]', 'posterior_predictive')
+    expect_identical(conf$getUnsampledNodes(), paste0('x[', 1:2, ']'))
+    conf$addSampler('x[1]', 'RW')
+    expect_identical(conf$getUnsampledNodes(), 'x[2]')
+    conf$addSampler('x[1]', 'posterior_predictive')
+    expect_identical(conf$getUnsampledNodes(), character())
+    conf$removeSamplers()
+    Rmodel$setData(x = c(rep(NA,5), rep(0,5)))
+    expect_identical(conf$getUnsampledNodes(), paste0('x[', 1:5, ']'))
+    conf$addSampler(c('x[1]', 'x[3]'), 'RW_block')
+    expect_identical(conf$getUnsampledNodes(), paste0('x[', c(2,4,5), ']'))
+})
+
+
+
+
+
+
+##save(code, data, const, inits, file = '~/temp/tempp.RData')
+load('~/temp/tempp.RData')
+
+m <- nimbleModel(code, data = data, constants = const, inits = inits)
+
+m <- nimbleModel(code, data = c(data, list(z = 0)), constants = const, inits = inits)
+
+conf <- configureMCMC(m)
+
+##debug(sampler_CRP)
+
+getNimbleOption('getDependenciesIncludesPredictiveNodes')
+
+
+
+
+
+
+codeTest <- nimbleCode ({
+    X[1:nGroups] ~ dmultinom(size=N, prob=pVecX[1:nGroups])
+    Y[1:nGroups] ~ dmultinom(size=N, prob=pVecY[1:nGroups])
+    for (ii in 1:nGroups) {
+        Z[ii] ~ dbeta(1 + X[ii], 1 + Y[ii])
+    }
+})
+set.seed(0)
+nGroups   <- 5
+N         <- 1E6
+pVecX     <- rdirch(1, rep(1, nGroups))
+pVecY     <- rdirch(1, rep(1, nGroups))
+X         <- rmultinom(1, N, pVecX)[,1]
+Y         <- rmultinom(1, N, pVecY)[,1]
+Z         <- rbeta(nGroups, 1+X, 1+Y)
+## Hard code in the results of sample() since output from sample
+## changed as of R 3.6.0 to fix a long-standing bug in R.
+smpX <- pVecX[c(2,1,4,3,5)]
+smpY <- pVecY[c(1,4,2,3,5)]
+fakeSample <- sample(pVecX)  # to keep random number stream as before
+Xini      <- rmultinom(1, N, smpX)[,1]
+fakeSample <- sample(pVecY)  # to keep random number stream as before
+Yini      <- rmultinom(1, N, smpY)[,1]
+Constants <- list(nGroups=nGroups)
+Inits     <- list(X=Xini, Y=Yini, pVecX=pVecX, pVecY=pVecY, N=N)
+Data      <- list(Z=Z)
+modelTest <- nimbleModel(codeTest, constants=Constants, inits=Inits, data=Data, check=TRUE)
+cModelTest <- compileNimble(modelTest)
+mcmcTestConfig <- configureMCMC(cModelTest, print = nimbleOptions('verbose'))
+samplers <- mcmcTestConfig$getSamplers()
+test_that('assign RW_multinomial sampler', expect_equal(samplers[[1]]$name, 'RW_multinomial'))
+test_that('assign RW_multinomial sampler', expect_equal(samplers[[2]]$name, 'RW_multinomial'))
+mcmcTest  <- buildMCMC(mcmcTestConfig)
+cMcmcTest <- compileNimble(mcmcTest, project=modelTest)
+## Optionally resample data
+cModelTest$N      <- N <- 1E3
+(cModelTest$pVecX <- sort(rdirch(1, rep(1, nGroups))))
+(cModelTest$pVecY <- sort(rdirch(1, rep(1, nGroups))))
+simulate(cModelTest, "X", includeData=TRUE); (X <- cModelTest$X)
+simulate(cModelTest, "Y", includeData=TRUE); (Y <- cModelTest$Y)
+simulate(cModelTest, "Z", includeData=TRUE); (Z <- cModelTest$Z)
+niter  <- 1E4
+cMcmcTest$run(niter)
+samples <- as.matrix(cMcmcTest$mvSamples)
+
+as.numeric(samples[10000,])
+
+
+mcmcTest$samplerFunctions[[1]]$my_setAndCalculateDiff$targetNodesAsScalar
+mcmcTest$samplerFunctions[[1]]$my_setAndCalculateDiff$calcNodes
+
+
+mcmcTest$samplerFunctions[[2]]$my_setAndCalculateDiff$targetNodesAsScalar
+mcmcTest$samplerFunctions[[2]]$my_setAndCalculateDiff$calcNodes
+
+
+expect_identical(as.numeric(samples[10000,]), c(8, 25, 31, 115, 821, 25,19, 84, 510, 362), info = 'exact results of RW_multinomial sampler')
+
+
+
+
+buildMCMC(conf)
+
+## on devel:
+##Error in samplerFunction(model = model, mvSaved = mvSaved, target = target,  : 
+##  sampler_CRP: Only the variables being clustered can depend on the cluster parameters.
+
+expect_error(mcmc <- buildMCMC(conf), "Only the variables being clustered")
+
+  
+
+library(testthat)
+
+
+
+
+
+set.seed(1)
+code <- nimbleCode({
+    xi[1:6] ~ dCRP(conc0, 6)
+    conc0 ~ dgamma(1, 1)
+    for(i in 1:6){
+        y[i] ~ dnorm(xi[i], 1)
+    }
+})
+Inits <- list(xi = c(1,1,2,1,1,2),  conc0 = 1)
+Data <- list( y =  rnorm(6))
+m <- nimbleModel(code, data=Data, inits=Inits)
+mConf <- configureMCMC(m)
+
+debug(buildMCMC)
+
+buildMCMC(mConf)
+
+expect_error(buildMCMC(mConf), 'sampler_CRP: Detected that the CRP variable is used in some way not as an index')
+
+
+
+
+
+library(nimble); library(testthat)
+
+
+source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
+
+RwarnLevel <- options('warn')$warn
+options(warn = 1)
+## verbose: set to FALSE
+nimbleVerboseSetting <- nimbleOptions('verbose')
+###########nimbleOptions(verbose = FALSE)
+## MCMC progress bar: set to FALSE
+nimbleProgressBarSetting <- nimbleOptions('MCMCprogressBar')
+nimbleOptions(MCMCprogressBar = FALSE)
+## MCMC orderSamplersPosteriorPredictiveLast - save current setting
+nimbleReorderPPsamplersSetting <- getNimbleOption('MCMCorderPosteriorPredictiveSamplersLast')
+## MCMC use usePosteriorPredictiveSampler - save current setting
+nimbleUsePosteriorPredictiveSamplerSetting <- getNimbleOption('MCMCusePosteriorPredictiveSampler')
+## MCMC calculation include predictive dependencies - save current setting
+nimbleUsePredictiveDependenciesSetting <- nimbleOptions('MCMCusePredictiveDependenciesInCalculations')
+## MCMC warn about unsampled nodes - save current setting
+nimbleWarnUnsampledNodesSetting <- nimbleOptions('MCMCwarnUnsampledStochasticNodes')
+
+
+
+nimbleOptions('MCMCusePredictiveDependenciesInCalculations')
+nimbleOptions(MCMCusePredictiveDependenciesInCalculations = TRUE)
+nimbleOptions(MCMCusePredictiveDependenciesInCalculations = FALSE)
+
+nimbleOptions('getDependenciesIncludesPredictiveNodes')
+nimbleOptions(getDependenciesIncludesPredictiveNodes = TRUE)
+nimbleOptions(getDependenciesIncludesPredictiveNodes = FALSE)
+
+
+
+####source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
+##RwarnLevel <- options('warn')$warn
+##options(warn = 1)
+#### verbose: set to FALSE
+##nimbleVerboseSetting <- nimbleOptions('verbose')
+##nimbleOptions(verbose = FALSE)
+#### MCMC progress bar: set to FALSE
+##nimbleProgressBarSetting <- nimbleOptions('MCMCprogressBar')
+##nimbleOptions(MCMCprogressBar = FALSE)
+#### MCMC orderSamplersPosteriorPredictiveLast - save current setting
+##nimbleReorderPPsamplersSetting <- getNimbleOption('MCMCorderPosteriorPredictiveSamplersLast')
+#### MCMC use posteriorPredictiveBranch sampler - save current setting
+##nimblePPBranchSamplerSetting <- getNimbleOption('MCMCjointlySamplePredictiveBranches')
+#### MCMC calculation include predictive dependencies - save current setting
+##nimbleUsePredictiveDependenciesSetting <- nimbleOptions('MCMCusePredictiveDependenciesInCalculations')
+##nimbleWarnUnsampledNodesSetting <- nimbleOptions('MCMCwarnUnsampledStochasticNodes')
+
+
+samplerConfs <- conf$samplerConfs
+model <- Rmodel
+
+
+node <- 'a'
+node <- 'y'
+node <- 'b'
+node <- 'c'
+
+
+set.seed(0)
+Rmcmc$run(10)
+node <- 'b'
+
+
+Rmodel$getLogProb(node)
+Rmodel$calculate(node)
+
+Cmodel$getLogProb(node)
+Cmodel$calculate(node)
+
+
+Rmcmc$samplerFunctions[[2]]$calcNodes
+
+
+
+
+
+
+
+
+
+
+
+
+
+message("  [Note] safeDeparse: truncating deparse output to ", nlines, " lines.")
+
+nlines <- 1
+
+message("  [Note] safeDeparse: truncating deparse output to ", nlines, " line", if(nlines>1) "s" else "")
+
+
+
+
+
+requireNamespace("sf", quietly = TRUE)
+requireNamespace("spdep", quietly = TRUE)
+library(spdep)
+
+nc.sids <- sf::st_read(system.file("shapes/sids.shp", package="spData")[1])
+nc.sids <- as(nc.sids, "Spatial")
+proj4string(nc.sids) <- CRS("+proj=longlat +ellps=clrk66")
+row.names(nc.sids) <- as.character(nc.sids$FIPS)
+rn <- row.names(nc.sids)
+ncCC89_nb <- read.gal(system.file("weights/ncCC89.gal", package="spData")[1],
+                      region.id=rn)
+ncCR85_nb <- read.gal(system.file("weights/ncCR85.gal", package="spData")[1],
+                      region.id=rn)
+
+plot(nc.sids, border="grey")
+plot(ncCR85_nb, coordinates(nc.sids), add=TRUE, col="blue")
+plot(nc.sids, border="grey")
+plot(ncCC89_nb, coordinates(nc.sids), add=TRUE, col="blue")
+
+library(nimble)
+
+
+nc.sids.code = nimbleCode({
+    for (i in 1:k){
+      theta[i] ~ dnorm(mu, tau)
+      y[i] ~ dpois(n[i] *exp(theta[i]))
+    }
+    #prior for hyperparameters
+    mu ~ dnorm(-6, 0.001)
+    tau ~ dgamma(1, 0.001)
+  }
+)
+ 
+k= 100
+n= nc.sids$BIR79
+y= nc.sids$SID79
+ 
+nc.sids.Consts = list(k = k, n = n)
+nc.sids.Data= list(y = y)
+nc.sids.Inits = list(mu = -2, tau = 12, theta = rep(0.002, k))
+ 
+nc.sids.Model = nimbleModel( nc.sids.code,
+                             data= nc.sids.Data,
+                             constants = nc.sids.Consts,
+                             inits= nc.sids.Inits)
+ 
+ 
+compile.nc.sids.Model = compileNimble(nc.sids.Model)
+
+nc.sids.Model$getNodeNames()
+
+str(nc.sids.Model)
+str(compile.nc.sids.Model)
+ 
+ 
+nc.sids.conf = configureMCMC(nc.sids.Model, print= T)
+nc.sids.conf$addMonitors(c("mu", "tau", "theta"))
+ 
+ 
+nc.sids.MCMC = buildMCMC(nc.sids.conf)
+compile.nc.sids.MCMC = compileNimble(nc.sids.MCMC, project= nc.sids.Model)
+ 
+ 
+niter = 5500
+nburn = 0
+ 
+set.seed(1)
+ 
+inits = list(mu = -2, tau =12, theta = rep(0.002, k))
+start.time = proc.time()
+samples = runMCMC( compile.nc.sids.MCMC, niter = niter, nburnin = nburn,
+                   inits = inits, nchains = 1, samplesAsCodaMCMC = TRUE)
+ 
+stop.time = proc.time()
+
+time.elapsed = stop.time - start.time
+
+ 
+
+print(time.elapsed)
+
+
+
+
+
+
+library(nimble)
+
+mcmc_determineCalcAndCopyNodes_NEW <- function(model, target, includePPDeps) {
+    if(missing(includePPDeps)) stop('need to provide includePPDeps')
+    optionIncludePPDeps <- includePPDeps
+    ## if this sampler is operating on a posterior-predictive node,
+    ## the we're doing non-standard sampler assignment here, so
+    ## skip over the option of 'MCMCincludePredictiveDependencies':
+    if(!length(model$getDependencies(target, includePosteriorPred = optionIncludePPDeps)))   optionIncludePPDeps <- TRUE
+    calcNodes <- model$getDependencies(target, includePosteriorPred = optionIncludePPDeps)
+    calcNodesNoSelf <- model$getDependencies(target, self = FALSE, includePosteriorPred = optionIncludePPDeps)
+    calcNodesPPskipped <- if(optionIncludePPDeps) character() else model$getDependencies(target, posteriorPredOnly = TRUE)
+    copyNodes <- model$getDependencies(target, self = FALSE)
+    isStochCopyNodes <- model$isStoch(copyNodes)
+    copyNodesDeterm <- copyNodes[!isStochCopyNodes]
+    copyNodesStoch <- copyNodes[isStochCopyNodes]
+    ccLst <- list(
+        calcNodes = calcNodes,
+        calcNodesNoSelf = calcNodesNoSelf,
+        calcNodesPPskipped = calcNodesPPskipped,
+        copyNodesDeterm = copyNodesDeterm,
+        copyNodesStoch = copyNodesStoch
+    )
+    return(ccLst)
+}
+
+sampler_RW_NEW <- nimbleFunction(
+    name = 'sampler_RW_NEW',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        adaptive            <- extractControlElement(control, 'adaptive',            TRUE)
+        adaptInterval       <- extractControlElement(control, 'adaptInterval',       200)
+        adaptFactorExponent <- extractControlElement(control, 'adaptFactorExponent', 0.8)
+        scale               <- extractControlElement(control, 'scale',               1)
+        includePP <- extractControlElement(control, 'includePP', error = 'must specify includePP')  ## NEW
+        ## node list generation
+        targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        ccLst <- mcmc_determineCalcAndCopyNodes_NEW(model, target, includePPDeps = includePP)
+        calcNodesNoSelf <- ccLst$calcNodesNoSelf; calcNodesPPskipped <- ccLst$calcNodesPPskipped; copyNodesDeterm <- ccLst$copyNodesDeterm; copyNodesStoch <- ccLst$copyNodesStoch   # not used: calcNodes
+        ## numeric value generation
+        scaleOriginal <- scale
+        timesRan      <- 0
+        timesAccepted <- 0
+        timesAdapted  <- 0
+        optimalAR     <- 0.44
+        gamma1        <- 0
+    },
+    run = function() {
+        currentValue <- model[[target]]
+        propValue <- rnorm(1, mean = currentValue,  sd = scale)
+        model[[target]] <<- propValue
+        logMHR <- model$calculateDiff(target)
+        if(logMHR == -Inf) {
+            jump <- FALSE
+            nimCopy(from = mvSaved, to = model, row = 1, nodes = target, logProb = TRUE)
+        } else {
+            logMHR <- logMHR + model$calculateDiff(calcNodesNoSelf)
+            jump <- decide(logMHR)
+            if(jump) {
+                model$calculate(calcNodesPPskipped)
+                nimCopy(from = model, to = mvSaved, row = 1, nodes = target, logProb = TRUE)
+                nimCopy(from = model, to = mvSaved, row = 1, nodes = copyNodesDeterm, logProb = FALSE)
+                nimCopy(from = model, to = mvSaved, row = 1, nodes = copyNodesStoch, logProbOnly = TRUE)
+            } else {
+                nimCopy(from = mvSaved, to = model, row = 1, nodes = target, logProb = TRUE)
+                nimCopy(from = mvSaved, to = model, row = 1, nodes = copyNodesDeterm, logProb = FALSE)
+                nimCopy(from = mvSaved, to = model, row = 1, nodes = copyNodesStoch, logProbOnly = TRUE)
+            }
+        }
+        if(adaptive)     adaptiveProcedure(jump)
+    },
+    methods = list(
+        adaptiveProcedure = function(jump = logical()) {
+            timesRan <<- timesRan + 1
+            if(jump)     timesAccepted <<- timesAccepted + 1
+            if(timesRan %% adaptInterval == 0) {
+                acceptanceRate <- timesAccepted / timesRan
+                timesAdapted <<- timesAdapted + 1
+                gamma1 <<- 1/((timesAdapted + 3)^adaptFactorExponent)
+                gamma2 <- 10 * gamma1
+                adaptFactor <- exp(gamma2 * (acceptanceRate - optimalAR))
+                scale <<- scale * adaptFactor
+                timesRan <<- 0
+                timesAccepted <<- 0
+            }
+        },
+        reset = function() {
+            scale <<- scaleOriginal
+            timesRan      <<- 0
+            timesAccepted <<- 0
+            timesAdapted  <<- 0
+            gamma1 <<- 0
+        }
+    )
+)
+
+
+
+thetaPP <- TRUE
+xPP     <- TRUE
+
+thetaPP <- FALSE
+xPP     <- FALSE
+
+
+
+code <- nimbleCode({
+    theta ~ dnorm(0, sd = 100)
+    x ~ dexp(scale = theta^3 + 1)
+    y ~ dpois(x)
+    pp ~ dnorm(theta + x, sd = 1)
+    ##for(i in 1:10) {
+    ##    y[i] ~ dpois(x)
+    ##    pp[i] ~ dnorm(theta, sd = x)
+    ##}
+})
+constants <- list()
+data <- list(y = 30)  ##y = 21:30)
+inits <- list(theta = 0, x = 1, pp = 20)  ##, pp = 1:10)
+niter <- 300000
+nburnin <- 200000
+
+runOptions <- function(thetaPP, xPP) {
+    Rmodel <- nimbleModel(code, constants, data, inits)
+    print(Rmodel$calculate())
+    conf <- configureMCMC(Rmodel, monitors = c('theta', 'x'))
+    conf$removeSampler('theta')
+    conf$addSampler(target = 'theta', type = 'RW_NEW', includePP = thetaPP)
+    conf$removeSampler('x')
+    conf$addSampler(target = 'x', type = 'RW_NEW', includePP = xPP)
+    conf$printSamplers()
+    Rmcmc <- buildMCMC(conf)
+    ##print(Rmcmc$samplerFunctions[[1]]$target)
+    ##print(Rmcmc$samplerFunctions[[1]]$calcNodesNoSelf)
+    ##print(Rmcmc$samplerFunctions[[1]]$calcNodesPPskipped)
+    ##print(Rmcmc$samplerFunctions[[1]]$copyNodesDeterm)
+    ##print(Rmcmc$samplerFunctions[[1]]$copyNodesStoch)
+    ##print(Rmcmc$samplerFunctions[[2]]$target)
+    ##print(Rmcmc$samplerFunctions[[2]]$calcNodesNoSelf)
+    ##print(Rmcmc$samplerFunctions[[2]]$calcNodesPPskipped)
+    ##print(Rmcmc$samplerFunctions[[2]]$copyNodesDeterm)
+    ##print(Rmcmc$samplerFunctions[[2]]$copyNodesStoch)
+    compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+    Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+    set.seed(0)
+    summary <- runMCMC(Cmcmc, niter = niter, nburnin = nburnin, samples = FALSE, summary = TRUE, nchains = 3)
+    summary <- runMCMC(Cmcmc, niter = niter, nburnin = nburnin, samples = TRUE, summary = TRUE, nchains = 3)
+    
+    return(summary)
+}
+
+summary$summary
+##           Mean    Median  St.Dev. 95%CI_low 95%CI_upp
+## theta  5.64403  4.241991 4.597069  2.048039   18.6041
+## x     30.29612 29.921270 5.528604 20.504477   42.2030
+##  
+## $chain2
+##            Mean    Median  St.Dev. 95%CI_low 95%CI_upp
+## theta  5.908568  4.227502 6.511099  2.032014  20.18764
+## x     30.259251 29.932926 5.473758 20.536729  41.87943
+##  
+## $chain3
+##            Mean    Median  St.Dev. 95%CI_low 95%CI_upp
+## theta  5.869351  4.246819 5.817485  2.041714  20.35873
+## x     30.284271 29.984159 5.482468 20.500284  42.06938
+##  
+## $all.chains
+##            Mean    Median  St.Dev. 95%CI_low 95%CI_upp
+## theta  5.807316  4.239139 5.698266  2.040487  19.67218
+## x     30.279882 29.946955 5.494999 20.511994  42.05092
+
+> 
+
+library(basicMCMCplots)
+
+samplesPlot(summary$samples[[2]], var = 'theta')
+samplesPlot(summary$samples, var = 'x')
+
+summaryTT <- runOptions(thetaPP = TRUE,  xPP = TRUE)
+summaryFF <- runOptions(thetaPP = FALSE, xPP = FALSE)
+summaryTF <- runOptions(thetaPP = TRUE,  xPP = FALSE)
+
+summaryTT
+summaryFF
+summaryTF
+
+
+
+## > summary0
+##           Mean   Median   St.Dev. 95%CI_low 95%CI_upp
+## theta 66.15734 53.35958 48.948089   9.72623 192.93780
+## x     25.55575 25.52742  1.603924  22.48439  28.79097
+## > summary1
+##           Mean   Median   St.Dev. 95%CI_low 95%CI_upp
+## theta 65.68603 52.48918 48.535005   9.45394 188.91579
+## x     25.52053 25.47460  1.613703  22.50450  28.75823
+
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    theta ~ dnorm(0, sd = 100)
+    x ~ dexp(scale = theta + 1)
+    for(i in 1:10) {
+        y[i] ~ dpois(x)
+        pp1[i] ~ dnorm(x, sd = 10)
+        pp2[i] ~ dnorm(theta, sd = 10)
+        pp12[i] ~ dnorm(theta, x)
+    }
+})
+
+constants <- list()
+data <- list(y = 21:30)
+inits <- list(theta = 0, x = 1, pp1 = 1:10, pp2 = 1:10, pp12 = 1:10)
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, monitors = c('theta', 'x'))
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+set.seed(0)
+summary0 <- runMCMC(Cmcmc, niter = 200000, nburnin = 100000, samples = FALSE, summary = TRUE)
+summary1 <- runMCMC(Cmcmc, niter = 200000, nburnin = 100000, samples = FALSE, summary = TRUE)
+summary2 <- runMCMC(Cmcmc, niter = 300000, nburnin = 200000, samples = FALSE, summary = TRUE)
+summary12 <- runMCMC(Cmcmc, niter = 300000, nburnin = 200000, samples = FALSE, summary = TRUE)
+summary12 <- runMCMC(Cmcmc, niter = 300000, nburnin = 200000, samples = TRUE, summary = TRUE)
+summary12 <- runMCMC(Cmcmc, niter = 300000, nburnin = 0, samples = TRUE, summary = TRUE)
+summary1212 <- runMCMC(Cmcmc, niter = 300000, nburnin = 200000, samples = FALSE, summary = TRUE)
+
+summary0
+summary1
+summary2
+summary12
+summary1212
+
+Cmodel$pp12
+Cmodel$theta
+Cmodel$x
+
+summaryFF
+summaryTT
+
+dim(summary0)
+library(basicMCMCplots)
+samplesPlot(summary0, 'theta')
+
+samplesPlot(summary12, 'theta', densityplot = FALSE)
+samplesPlot(summary12, 'x', densityplot = FALSE)
+
+## > summary0
+##           Mean   Median   St.Dev. 95%CI_low 95%CI_upp
+## theta 66.15734 53.35958 48.948089   9.72623 192.93780
+## x     25.55575 25.52742  1.603924  22.48439  28.79097
+## > summary1
+##           Mean   Median   St.Dev. 95%CI_low 95%CI_upp
+## theta 65.68603 52.48918 48.535005   9.45394 188.91579
+## x     25.52053 25.47460  1.613703  22.50450  28.75823
+## > summary2
+##           Mean   Median   St.Dev. 95%CI_low 95%CI_upp
+## theta 74.55041 59.89222 54.540043  10.26444 213.55068
+## x     25.54929 25.52478  1.613239  22.49440  28.78259
+
+
+
+
+
+
+numPoints <- 10
+lowerObsCoords <- matrix(c(0, 0, 1, 0, 0, 1, 1, 1), nrow = 4, byrow = TRUE)
+upperObsCoords <- matrix(c(1, 1, 2, 1, 1, 2, 2, 2), nrow = 4, byrow = TRUE)
+s <- c(1, 1)
+windowIntensities <- c(1:4)
+sd <- 0.1
+
+set.seed(0)
+stratRejectionSampler_normal(numPoints, lowerObsCoords, upperObsCoords, s, windowIntensities, sd)
+
+
+
+library(nimbleSCR)
+library(knitr)
+library(rmarkdown)
+
+setwd('~/github/nimble/nimbleSCR/nimbleSCR/vignettes')
+f <- list.files()
+f2 <- grep('\\.[Rr]md$', f, value = TRUE)
+times <- numeric(length(f2))
+names(times) <- f2
+
+for(ixi in 1:length(f2)) {
+    message(f2[ixi], ':')
+    tm <- system.time(render(f2[ixi]))
+    times[ixi] <- tm[3]
+}
+
+times
+
+
+
+i <- 3
+f2[i]
+tm <- system.time(render(f2[i]))
+tm
+
+
+times
+n
+length(times)
+
+
+
+
+
+
+f <- list.files('~/github/nimble/nimbleSCR/nimbleSCR/R')
+f2 <- gsub('\\.R$', '', f)
+f3 <- f2[!(f2 == 'zzz')]
+
+##n <- 'aaaa'
+n <- length(f3)
+n  ## 37
+
+i <- 37
+(name <- f3[i])
+cl <- parse(text = paste0('system.time(example(', name, '))'))[[1]]; message(n, ':'); eval(cl)
+
+
+
+
+1
+remove.packages('R6')
+library(R6)
+
+
+
+
+
+remove.packages('nimble')
+remove.packages('nimbleHMC')
+
+1
+
+
+library(nimble)   ## no version of nimble installed
+## Error in library(nimble) : there is no package called ‘nimble’
+nimbleOptions('buildDerivs')
+
+library(devtools)
+install_github("nimble-dev/nimble", ref = "AD-rc0", subdir = "packages/nimble")
+
+nimble:::mcmc_createRmodelObject
+
+library(nimbleHMC)
+
+install_github("nimble-dev/nimbleHMC", subdir = "nimbleHMC")
+
+library(nimbleHMC)
+
+
+
+
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10) {
+        x[i] ~ dnorm(mu, sd = sigma)
+    }
+})
+
+data <- list(x = c(2, 5, 3, 4, 1, 0, 1, 3, 5, 3))
+
+inits <- function() list(mu = rnorm(1,0,1), sigma = runif(1,0,10))
+
+##debug(nimbleHMC)
+
+mcmc.output <- nimbleHMC(code, data = data, inits = inits,
+                         monitors = c("mu", "sigma"), thin = 10,
+                         niter = 20000, nburnin = 1000, nchains = 3,
+                         summary = TRUE, WAIC = TRUE)
+
+nimbleHMC
+buildHMC
+configureHMC
+
+
+
+constants <- list()
+
+set.seed(0)
+initsList <- inits()
+Rmodel <- nimbleModel(code, constants, data, initsList, buildDerivs = TRUE)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+addHMC
+nodes <- c('mu', 'sigma')
+
+##undebug(addHMC)
+addHMC(conf, nodes)
+
+conf$addSampler(target = nodes, type = "HMC", print = TRUE)
+
+
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+samplesSummary(samples)
+samplesPlot(samples)
+apply(samples, 2, effectiveSize)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        returnType()
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
+
+stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
+for(v in stochVars) {
+    lp <- Rmodel$calculate(v)
+    cat(v, ': ', lp, '\n')
+}
+
+
+
+
+
+my_sampler <- nimbleFunction(
+    contains = sampler_BASE,
+    setup = function(...) {
+        ...
+        matrixInitializedFlag <- 0
+        matrix <- array(0, c(N, M))
+    }
+    run = function() {
+        ## when the matrix is first used:
+        if(matrixInitializedFlag == 0) {
+            matrixInitializedFlag <<- 1     ## use double assignment operator <<-
+            ## initialize matrix here       ## also use <<- here to assign values into the matrix
+            ...
+        }
+        ...
+    }
+    methods = list(
+        reset = funtion() {
+            ...
+            matrixInitializedFlag <<- 0     ## use <<- here
+        }
+    )
+)
+
+
+a <- 1
+b <- quote({print(1); 4})
+b
+eval(b)
+
+if(a && eval(b)) {
+    print('yes')
+} else {
+    print('no')
+}
+
+
+library(nimble)
+library(testthat)
+##source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
+
+## verbose: set to FALSE
+nimbleVerboseSetting <- nimbleOptions('verbose')
+nimbleOptions(verbose = FALSE)
+
+## MCMC progress bar: set to FALSE
+nimbleProgressBarSetting <- nimbleOptions('MCMCprogressBar')
+nimbleOptions(MCMCprogressBar = FALSE)
+## MCMC use MCMCreorderSamplersPosteriorPredLast sampler - save current setting
+nimbleReorderPPsamplersSetting <- getNimbleOption('MCMCreorderSamplersPosteriorPredLast')
+## MCMC use posteriorPredictiveBranch sampler - save current setting
+nimblePPBranchSamplerSetting <- getNimbleOption('MCMCjointlySamplePredictiveBranches')
+## MCMC calculation include predictive dependencies - save current setting
+nimbleIncludePredDependenciesSetting <- nimbleOptions('MCMCincludePredictiveDependencies')
+
+
+
+
+nimbleOptions(MCMCjointlySamplePredictiveBranches = FALSE)
+
+nimbleOptions(MCMCjointlySamplePredictiveBranches = nimblePPBranchSamplerSetting)
+
+
+
+
+RwarnLevel <- options('warn')$warn
+options(warn = 1)
+nimbleVerboseSetting <- nimbleOptions('verbose')
+nimbleOptions(verbose = FALSE)
+nimblePPBranchSamplerSetting <- getNimbleOption('MCMCjointlySamplePredictiveBranches')
+nimbleOptions(MCMCjointlySamplePredictiveBranches = FALSE)
+nimbleIncludePredDependenciesSetting <- nimbleOptions('MCMCincludePredictiveDependencies')
+
+
+
+code <- nimbleCode({
+    mu ~ dnorm(0, 1)
+    pp ~ dnorm(mu, 1)
+    for(i in 1:5)
+        x[i] ~ dexp(mu^2+1)
+    for(i in 1:4)
+        y[i] ~ dnorm(x[i], 1)
+})
+constants <- list()
+data <- list(y = c(1, 2, 3, NA))
+inits <- list(mu = 0, x = rep(1, 5), y = c(NA, NA, NA, 4), pp = 0)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+conf <- configureMCMC(Rmodel)
+
+pppp
+
+## configureMCMC should already have reordered PP samplers last (expect_true):
+samplerNames <- sapply(conf$samplerConfs, `[[`, 'name')
+ppSamplerInd <- which(grepl('^posterior_predictive', samplerNames))
+otherSamplerInd <- which(!grepl('^posterior_predictive', samplerNames))
+expect_true(all(sapply(ppSamplerInd, function(ind) all(ind > otherSamplerInd))))
+sapply(ppSamplerInd, function(ind) all(ind > otherSamplerInd))
+ppSamplerInd
+otherSamplerInd
+
+[1] RW sampler: mu
+[2] RW sampler: x[1]
+[3] RW sampler: x[2]
+[4] RW sampler: x[3]
+[5] posterior_predictive sampler: pp
+[6] RW sampler: x[4]
+[7] posterior_predictive sampler: x[5]
+[8] posterior_predictive sampler: y[4]
+
+
+
+model <- Rmodel
+m <- m
+m <- Rmodel
+
+m$getNodeNames(stochOnly = TRUE)
+m$getNodeNames(stochOnly = TRUE, includeData = FALSE)
+m$getNodeNames(posteriorPredOnly = TRUE)
+m$getNodeNames(posteriorPredBranchOnly = TRUE)
+
+nodes <- m$getNodeNames(stochOnly = TRUE, includeData = FALSE)
+nodes
+m$topologicallySortNodes(nodes)
+nodes == m$topologicallySortNodes(nodes)
+
+ppNodes <- m$getNodeNames(posteriorPredOnly = TRUE)
+ppNodes
+
+nodes %in% ppNodes
+
+
+    expect_true(all(sapply(conf$getSamplers(), function(x) x$name) ==
+                    c('conjugate_dgamma_dnorm_identity',
+                      rep('conjugate_dnorm_dnorm_identity_dnorm_multiplicative', 8),
+                      'posterior_predictive',
+                      'posterior_predictive_branch')))
+
+
+code <- nimbleCode({
+    mu ~ dnorm(0, 1)
+    pp ~ dnorm(mu, 1)
+    for(i in 1:5)
+        x[i] ~ dexp(mu^2+1)
+    for(i in 1:4)
+        y[i] ~ dnorm(x[i], 1)
+})
+constants <- list()
+data <- list(y = c(1, 2, 3, NA))
+inits <- list(mu = 0, x = rep(1, 5), y = c(NA, NA, NA, 4), pp = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+pppp
+
+conf$addSampler('mu', 'slice')
+conf$addSampler('x[1]', 'slice')
+conf$addSampler(c('x[1]', 'mu'), 'RW_block')
+
+conf$addSampler(c('x[1]', 'mu'), 'posterior_predictive_branch')
+conf$addSampler(c('x[2]', 'mu'), 'sampler_posterior_predictive_branch')
+
+
+unlist(lapply(conf$samplerConfs, `[[`, 'target'))
+
+Rmcmc <- buildMCMC(conf)
+
+samplerNames <- sapply(conf$samplerConfs, `[[`, 'name')
+ppSamplerInd <- which(grepl('^posterior_predictive', samplerNames))
+otherSamplerInd <- which(!grepl('^posterior_predictive', samplerNames))
+
+
+
+samplerNames <- sapply(conf$samplerConfs, `[[`, 'name')
+ppBranchSamplerInd <- which(samplerNames == 'posterior_predictive_branch')
+unlist(lapply(conf$samplerConfs[ppBranchSamplerInd], `[[`, 'target'))
+
+
+nfDef <- nimbleFunction(
+    setup = function() {
+        a <- 1
+        text <- 'abc'
+    },
+    run = function() {
+        print(a)
+    },
+    methods = list(
+        printText = function() {
+            print(text)
+        },
+        stopText = function() {
+            stop(text)
+        },
+        setText = function(b = double()) {
+            if(b==1) text <<- 'a'
+            if(b==2) text <<- 'b'
+            if(b==3) text <<- 'c'
+            if(b==4) text <<- 'd'
+            if(b==5) text <<- 'e'
+        }
+    )
+)
+
+Rnf <- nfDef()
+Rnf$run()
+Rnf$printText()
+Rnf$setText()
+Rnf$printText()
+Rnf$stopText()
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+Cnf$run()
+Cnf$printText()
+
+Cnf$setText(3.3)
+Cnf$setText(4)
+Cnf$printText()
+Cnf$stopText()
+
+
+
+
+
+
+conf$samplerExecutionOrder == 1:max(conf$samplerExecutionOrder)
+
+oo <- c(3,4,5,6)
+oo == 1:max(oo)
+all(oo == min(oo):max(oo))
+
+
+exOrder <- numeric()
+
+min(exOrder) == 1
+exOrder == 1:max(exOrder)
+all(exOrder == 1:max(exOrder))
+(min(exOrder) == 1) && all(exOrder == 1:max(exOrder))
+
+library(nimble)
+
+code <- nimbleCode({
+    mu[1] <- 10
+    mu[2] <- 20
+    mu[3] <- 30
+    x[1:3] ~ dmnorm(mu[1:3], prec = Q[1:3,1:3])
+})
+
+Q = matrix(c(1.0,0.2,-1.0,0.2,4.04,1.6,-1.0,1.6,10.81), nrow=3)
+data = list(Q = Q)
+inits = list(x = c(10, 20, 30))
+constants <- list()
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+
+Rmcmc <- buildMCMC(conf)
+Rmcmc$samplerFunctions
+
+conf$addSampler('x[1:3]', 'RW_block')
+
+model <- Rmodel
+target <- 'x[1:3]'
+
+## node list generation
+(targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE))
+ccLst <- nimble:::mcmc_determineCalcAndCopyNodes(model, target)
+ccLst
+calcNodes <- ccLst$calcNodes; calcNodesPPskipped <- ccLst$calcNodesPPskipped; copyNodesDeterm <- ccLst$copyNodesDeterm; copyNodesStoch <- ccLst$copyNodesStoch   # not used: calcNodesNoSelf
+finalTargetIndex <- max(match(model$expandNodeNames(target), calcNodes))
+if(!is.integer(finalTargetIndex) | length(finalTargetIndex) != 1 | is.na(finalTargetIndex[1]))   stop('problem with target node in RW_block sampler')
+calcNodesProposalStage <- calcNodes[1:finalTargetIndex]
+calcNodesDepStage <- calcNodes[-(1:finalTargetIndex)]
+## numeric value generation
+
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+
+
+test_mcmc(model = code, name = 'block sampler on multivariate node', data = data, seed = 0, numItsC = 10000,
+          results = list(mean = list(x = c(10,20,30)),
+                         var = list(x = diag(solve(Q)))),
+          resultsTolerance = list(mean = list(x = rep(1,3)),
+                                  var = list(x = c(.1, .03, .01))),
+          samplers = list(
+              list(type = 'RW_block', target = 'x[1:3]')), avoidNestedTest = TRUE)
+# caution: setting targetNodes='x' works but the initial end sampler is not removed because x[1:3] in targetNode in default sampler != 'x' in targetNodes passed in
+
+
+
+
+library(nimble)
+library(testthat)
+
+includePredDepOptionSave <- nimbleOptions('MCMCincludePredictiveDependencies')
+
+niter <- 200000
+nburnin <- 50000
+
+code <- nimbleCode({
+    ## binary sampler:
+    x[1] ~ dbern(0.4)
+    ## categorical sampler:
+    x[2] ~ dcat(p[1:5])
+    ## RW sampler:
+    x[3] ~ dgamma(1, 1)
+    ## RW_block sampler:
+    x[4:5] ~ dmnorm(mu[1:2], Sigma[1:2,1:2])
+    ## slice sampler:
+    x[6] ~ dbinom(size = 4, prob = 0.5)
+    ## ess sampler:
+    x[7:8] ~ dmnorm(mu[1:2], Sigma[1:2,1:2])
+    ## AF_slice sampler:
+    x[9:10] ~ dmnorm(mu[1:2], Sigma[1:2,1:2])
+    ## RW_dirichlet sampler:
+    x[11:13] ~ ddirch(a[1:3])
+    ## RW_wishart sampler:
+    w[1:2,1:2] ~ dwish(Sigma[1:2,1:2], 2)
+    ## data and predictive nodes:
+    for(i in 1:N) {
+        y[i] ~ dnorm(x[i], 1)
+        yp[i] ~ dnorm(x[i], 1)
+    }
+    for(i in 1:2) {
+        w_data[i] ~ dnorm(w[1,i], 1)
+        wp_data[i] ~ dnorm(w[1,i], 1)
+    }
+})
+
+N <- 13
+constants <- list(
+    N = N,
+    p = rep(0.2, 5),
+    mu = c(0,0),
+    Sigma = diag(2),
+    a = c(1,2,3)
+)
+data <- list(
+    y = rep(0, N),
+    w_data = rep(0,2)
+)
+inits <- list(
+    x = c(0,1,1, 0,0, 0, 0,0, 0,0, 1/3,1/3,1/3),
+    w = diag(2),
+    yp = rep(0, N),
+    wp_data = rep(0,2)
+)
+
+
+## include PP nodes in all sampler calculations:
+nimbleOptions(MCMCincludePredictiveDependencies = TRUE)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+lp <- Rmodel$calculate()
+expect_equal(lp, -45.04049)
+##
+conf <- configureMCMC(Rmodel)
+conf$removeSampler('x[7:8]')
+conf$addSampler('x[7:8]', 'ess')
+conf$removeSampler('x[9:10]')
+conf$addSampler('x[9:10]', 'AF_slice')
+##
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+set.seed(0)
+samplesT <- runMCMC(Cmcmc, niter, nburnin)
+
+
+
+## now exclude all PP nodes:
+nimbleOptions(MCMCincludePredictiveDependencies = FALSE)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+lp <- Rmodel$calculate()
+expect_equal(lp, -45.04049)
+##
+conf <- configureMCMC(Rmodel)
+conf$removeSampler('x[7:8]')
+conf$addSampler('x[7:8]', 'ess')
+conf$removeSampler('x[9:10]')
+conf$addSampler('x[9:10]', 'AF_slice')
+##
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+set.seed(0)
+samplesF <- runMCMC(Cmcmc, niter, nburnin)
+
+expect_true(all(abs(as.numeric(apply(samplesT, 2, mean)) - as.numeric(apply(samplesF, 2, mean))) < 0.03))
+expect_true(all(abs(as.numeric(apply(samplesT, 2, sd  )) - as.numeric(apply(samplesF, 2, sd  ))) < 0.05))
+
+
+
+nimbleOptions(MCMCincludePredictiveDependencies = includePredDepOptionSave)
+
+
+
+
+
+i <- 1
+conf$samplerConfs[[i]]$name
+conf$samplerConfs[[i]]$target
+##
+Rmcmc$samplerFunctions[[i]]$calcNodes
+Rmcmc$samplerFunctions[[i]]$calcNodesNoSelf
+Rmcmc$samplerFunctions[[i]]$calcNodesPPskipped
+Rmcmc$samplerFunctions[[i]]$copyNodesDeterm
+Rmcmc$samplerFunctions[[i]]$copyNodesStoch
+##
+Rmcmc$samplerFunctions[[i]]$calcNodesProposalStage
+Rmcmc$samplerFunctions[[i]]$calcNodesDepStage
+Rmcmc$samplerFunctions[[i]]$calcNodesPPskipped
+Rmcmc$samplerFunctions[[i]]$copyNodesDeterm
+Rmcmc$samplerFunctions[[i]]$copyNodesStoch
+
+
+
+
+includePredDepOptionSave <- nimbleOptions('MCMCincludePredictiveDependencies')
+nimbleOptions(MCMCincludePredictiveDependencies = TRUE)
+nimbleOptions(MCMCincludePredictiveDependencies = includePredDepOptionSave)
+
+
+
+
+
+library(nimble)
+
+
+
+nimbleOptions('MCMCincludePredictiveDependencies')
+nimbleOptions(MCMCincludePredictiveDependencies = FALSE)
+nimbleOptions(MCMCincludePredictiveDependencies = TRUE)
+nimbleOptions('MCMCincludePredictiveDependencies')
+
+
+code <- nimbleCode({
+    mu ~ dbern(0.4)
+    muPlus1 <- mu + 1
+    for(i in 1:2) {
+        y[i] ~ dnorm(muPlus1, sd=10)
+    }
+    pp ~ dnorm(muPlus1, sd=10)
+})
+
+constants <- list()
+data <- list(y = c(1,2))
+inits <- list(mu = 0, pp = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, monitors = c('mu', 'pp'))
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+i <- 1
+Rmcmc$samplerFunctions[[1]]$calcNodes
+Rmcmc$samplerFunctions[[1]]$calcNodesNoSelf
+Rmcmc$samplerFunctions[[1]]$calcNodesPPskipped
+Rmcmc$samplerFunctions[[1]]$copyNodesDeterm
+Rmcmc$samplerFunctions[[1]]$copyNodesStoch
+
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+
+if(FALSE) {
+    model <- Rmodel
+    mcmc <- Rmcmc
+    model <- Cmodel
+    mcmc <- Cmcmc
+}
+
+if(FALSE) {
+    debug(Rmcmc$samplerFunctions[[1]]$run)
+    undebug(Rmcmc$samplerFunctions[[1]]$run)
+}
+
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 1000)
+
+samplesRT <- samples
+samplesRF <- samples
+samplesCF <- samples
+samplesCT <- samples
+
+all(samplesRT - samplesCT == 0)
+all(samplesRF - samplesCF == 0)
+
+samplesT <- samplesCT
+samplesF <- samplesCF
+
+samplesT[, 'mu'] - samplesF[, 'mu']
+table(samplesT[, 'mu'] - samplesF[, 'mu'])
+
+samplesT[, 'pp'] - samplesF[, 'pp']
+samplesT[, 'pp']
+samplesF[, 'pp']
+table(samplesT[, 'pp'] - samplesF[, 'pp'])
+
+
+
+set.seed(0)
+mcmc$run(1)
+
+mcmc$run(1, reset = FALSE)
+
+(mvSaved <- mcmc$mvSaved)
+(samples <- as.matrix(mcmc$mvSamples))
+
+cbind(model$mu - as.numeric(mvSaved[['mu']]))
+
+lp1 <- model$logProb_mu
+lp2 <- as.numeric(mvSaved[['logProb_mu']])
+lp3 <- dbinom(model$mu, size = 1, prob = 0.4, log = TRUE)
+cbind(lp1 - lp2, lp1 - lp3)
+
+cbind(model$y - if(is.list(mvSaved[['y']])) mvSaved[['y']][[1]] else mvSaved[['y']])
+
+lp1 <- model$logProb_y
+lp2 <- if(is.list(mvSaved[['logProb_y']])) mvSaved[['logProb_y']][[1]] else mvSaved[['logProb_y']]
+lp3 <- dnorm(model$y, model$muPlus1, 10, log = TRUE)
+cbind(lp1 - lp2, lp1 - lp3)
+cbind(model$pp - as.numeric(mvSaved[['pp']]))
+
+lp1 <- model$logProb_pp
+lp2 <- as.numeric(mvSaved[['logProb_pp']])
+lp3 <- dnorm(model$pp, model$muPlus1, sd=10, log = TRUE)
+cbind(lp1 - lp2, lp1 - lp3)
+
+
+
+
+
+
+model$logProb_pp
+as.numeric(mvSaved[['logProb_pp']])
+dnorm(model$pp, model$muPlus1, sd=10, log = TRUE)
+
+
+
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    for(i in 1:8) {
+        b[i] ~ dnorm(a, 1)
+        c[i] ~ dnorm(b[i], 1)
+        d[i] ~ dnorm(c[i], 1)
+    }
+})
+
+Rmodel <- nimbleModel(code)
+
+expect_identical(Rmodel$getPostPredNodeIDs(), as.numeric(1:length(Rmodel$getNodeNames())))
+expect_identical(Rmodel$getPostPredBranchNodeIDs(), 1)
+
+expect_identical(Rmodel$getNodeNames(includePosteriorPred = FALSE), character())
+expect_identical(Rmodel$getNodeNames(includePosteriorPredBranch = FALSE), Rmodel$expandNodeNames(c('b', 'c', 'd')))
+expect_identical(Rmodel$getNodeNames(posteriorPredOnly = TRUE), Rmodel$getNodeNames())
+expect_identical(Rmodel$getNodeNames(posteriorPredBranchOnly = TRUE), 'a')
+
+Rmodel$resetData()
+Rmodel$setData(list(b=1:8, c=1:8, d=1:8))
+
+expect_identical(Rmodel$getPostPredNodeIDs(), numeric())
+expect_identical(Rmodel$getPostPredBranchNodeIDs(), numeric())
+
+expect_identical(Rmodel$getNodeNames(includePosteriorPred = FALSE), Rmodel$getNodeNames())
+expect_identical(Rmodel$getNodeNames(includePosteriorPredBranch = FALSE), Rmodel$getNodeNames())
+expect_identical(Rmodel$getNodeNames(posteriorPredOnly = TRUE), character())
+expect_identical(Rmodel$getNodeNames(posteriorPredBranchOnly = TRUE), character())
+
+Rmodel$resetData()
+Rmodel$setData(list(
+           b = rep(c(0, NA), each = 4),
+           c = rep(c(0, NA, 0, NA), each = 2),
+           d = rep(c(0, NA), 4)))
+
+expect_identical(Rmodel$getPostPredNodeIDs(), c(9, 13, 17, 19, 21, 23, 25))
+expect_identical(Rmodel$getPostPredBranchNodeIDs(), c(9, 13))
+
+expect_identical(Rmodel$getNodeNames(includePosteriorPred = FALSE),
+                 setdiff(Rmodel$getNodeNames(), Rmodel$modelDef$maps$graphID_2_nodeName[Rmodel$getPostPredNodeIDs()]))
+expect_identical(Rmodel$getNodeNames(includePosteriorPredBranch = FALSE),
+                 setdiff(Rmodel$getNodeNames(), Rmodel$modelDef$maps$graphID_2_nodeName[Rmodel$getPostPredBranchNodeIDs()]))
+expect_identical(Rmodel$getNodeNames(posteriorPredOnly = TRUE),
+                 Rmodel$modelDef$maps$graphID_2_nodeName[Rmodel$getPostPredNodeIDs()])
+expect_identical(Rmodel$getNodeNames(posteriorPredBranchOnly = TRUE),
+                 Rmodel$modelDef$maps$graphID_2_nodeName[Rmodel$getPostPredBranchNodeIDs()])
+
+expect_identical(Rmodel$getDependencies('a', includePosteriorPred = FALSE),
+                 Rmodel$expandNodeNames(c('a', 'b[1:7]')))
+expect_identical(Rmodel$getDependencies('a', includePosteriorPredBranch = FALSE),
+                 Rmodel$expandNodeNames(c('a', 'b[1:7]')))
+expect_identical(Rmodel$getDependencies('a', posteriorPredOnly = TRUE),
+                 'b[8]')
+expect_identical(Rmodel$getDependencies('a', posteriorPredBranchOnly = TRUE),
+                 'b[8]')
+
+expect_identical(Rmodel$getDependencies('b', includePosteriorPred = FALSE),
+                 Rmodel$expandNodeNames(c('b[1:7]', 'c[1:3]', 'c[5:7]')))
+expect_identical(Rmodel$getDependencies('b', includePosteriorPredBranch = FALSE),
+                 Rmodel$expandNodeNames(c('b[1:7]', 'c[1:3]', 'c[5:8]')))
+expect_identical(Rmodel$getDependencies('b', posteriorPredOnly = TRUE),
+                 c('b[8]', 'c[4]', 'c[8]'))
+expect_identical(Rmodel$getDependencies('b', posteriorPredBranchOnly = TRUE),
+                 c('b[8]', 'c[4]'))
+
+expect_identical(Rmodel$getDependencies('c', includePosteriorPred = FALSE),
+                 Rmodel$expandNodeNames(c('c[1:3]', 'c[5:7]', 'd[1]', 'd[3]', 'd[5]', 'd[7]')))
+expect_identical(Rmodel$getDependencies('c', includePosteriorPredBranch = FALSE),
+                 Rmodel$expandNodeNames(c('c[1:3]', 'c[5:8]', 'd[1:8]')))
+expect_identical(Rmodel$getDependencies('c', posteriorPredOnly = TRUE),
+                 c('c[4]', 'c[8]', 'd[2]', 'd[4]', 'd[6]', 'd[8]'))
+expect_identical(Rmodel$getDependencies('c', posteriorPredBranchOnly = TRUE),
+                 c('c[4]'))
+
+expect_identical(Rmodel$getDependencies('d', includePosteriorPred = FALSE),
+                 c('d[1]', 'd[3]', 'd[5]', 'd[7]'))
+expect_identical(Rmodel$getDependencies('d', includePosteriorPredBranch = FALSE),
+                 Rmodel$expandNodeNames('d[1:8]'))
+expect_identical(Rmodel$getDependencies('d', posteriorPredOnly = TRUE),
+                 c('d[2]', 'd[4]', 'd[6]', 'd[8]'))
+expect_identical(Rmodel$getDependencies('d', posteriorPredBranchOnly = TRUE),
+                 character())
+
+node <- 'a'
+node <- 'c[2]'
+node <- 'b[8]'
+Rmodel$getDependencies(node)
+Rmodel$getDependencies(node, includePosteriorPred = FALSE)
+Rmodel$getDependencies(node, includePosteriorPredBranch = FALSE)
+
+
+Rmodel$isData('a')
+Rmodel$isData('b')
+Rmodel$isData('c')
+Rmodel$isData('d')
+
+
+Rmodel$getNodeNames(includePosteriorPred = FALSE)
+
+f <- function(x) Rmodel$modelDef$maps$graphID_2_nodeName[x]
+Rmodel$modelDef$maps$graphID_2_nodeName[Rmodel$getPostPredNodeIDs()]
+Rmodel$modelDef$maps$graphID_2_nodeName[Rmodel$getPostPredBranchNodeIDs()]
+
+
+Rmodel$modelDef$maps$graphID_2_nodeName[thisCandNodeID]
+Rmodel$modelDef$maps$graphID_2_nodeName[stochDownstreamNoSelfIDs]
+posteriorPredictiveBranchNodeIDs
+
+posteriorPredictiveNodeIDs <- numeric()
+posteriorPredictiveBranchNodeIDs <- numeric()
+stochNonDataIDs <- Rmodel$getNodeNames(stochOnly = TRUE, includeData = FALSE, returnType = 'ids')
+anyPPnodes <- any(Rmodel$isEndNode(stochNonDataIDs))
+if(anyPPnodes) {
+    ## all potential (candidate) posterior predictive branch nodes:
+    candidateBranchNodeIDs <- stochNonDataIDs[!Rmodel$isEndNode(stochNonDataIDs)]
+    dataNodeIDs <- Rmodel$getNodeNames(dataOnly = TRUE, returnType = 'ids')
+    dataNodeParentIDs <- Rmodel$expandNodeNames(Rmodel$getParents(dataNodeIDs, stochOnly = TRUE), returnType = 'ids')
+    ## remove from candidate branch nodes all direct parents of data nodes:
+    candidateBranchNodeIDs <- setdiff(candidateBranchNodeIDs, dataNodeParentIDs)
+    nCandidate <- length(candidateBranchNodeIDs)
+    nextCandInd <- 1
+    while(nextCandInd <= nCandidate) {
+        thisCandNodeID <- as.numeric(candidateBranchNodeIDs[nextCandInd])
+        stochDownstreamNoSelfIDs <- Rmodel$getDependencies(thisCandNodeID, self = FALSE, stochOnly = TRUE, downstream = TRUE, returnType = 'ids')
+        ## skip candidate nodes that have any downstream data nodes:
+        if(length(intersect(stochDownstreamNoSelfIDs, dataNodeIDs)) > 0)   { nextCandInd <- nextCandInd + 1;   next }
+        ## found posterior predictive branch node:
+        posteriorPredictiveBranchNodeIDs <- c(posteriorPredictiveBranchNodeIDs, thisCandNodeID)
+        ## everything downstream from (and including) branch node is a posterior predictive node:
+        posteriorPredictiveNodeIDs <- c(posteriorPredictiveNodeIDs, thisCandNodeID, stochDownstreamNoSelfIDs)
+        ## update candidateBranchNodeIDs, removing downstream stochastic dependencies of this branch node from the candidate set:
+        candidateBranchNodeIDs <- candidateBranchNodeIDs[-(1:nextCandInd)]
+        candidateBranchNodeIDs <- setdiff(candidateBranchNodeIDs, stochDownstreamNoSelfIDs)
+        nCandidate <- length(candidateBranchNodeIDs)
+        nextCandInd <- 1
+    }
+}
+## set into the model object's fields:
+postPredNodeIDs <<- sort(unique(posteriorPredictiveNodeIDs))       ## can contain duplicates
+postPredBranchNodeIDs <<- posteriorPredictiveBranchNodeIDs
+
+
+
+
+
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+
+
+1
+
+library(nimble)
+
+
+## We conduct CV on the classic "dyes" BUGS model.
+
+code <- dyesCode <- nimbleCode({
+    for (i in 1:BATCHES) {
+        for (j in 1:SAMPLES) {
+            y[i,j] ~ dnorm(mu[i], tau.within);
+        }
+        mu[i] ~ dnorm(theta, tau.between);
+    }
+    ##
+    theta ~ dnorm(0.0, 1.0E-10);
+    tau.within ~ dgamma(0.001, 0.001);  sigma2.within <- 1/tau.within;
+    tau.between ~ dgamma(0.001, 0.001);  sigma2.between <- 1/tau.between;
+})
+
+data <- dyesData <- list(y = matrix(c(1545, 1540, 1595, 1445, 1595,
+                                      1520, 1440, 1555, 1550, 1440,
+                                      1630, 1455, 1440, 1490, 1605,
+                                      1595, 1515, 1450, 1520, 1560, 
+                                      1510, 1465, 1635, 1480, 1580,
+                                      1495, 1560, 1545, 1625, 1445), 
+                                    nrow = 6, ncol = 5))
+
+constants <- dyesConsts <- list(BATCHES = 6,
+                                SAMPLES = 5)
+
+inits <- dyesInits <- list(theta = 1500, tau.within = 1, tau.between =  1)
+
+Rmodel <- dyesModel <- nimbleModel(code = dyesCode,
+                                   constants = dyesConsts,
+                                   data = dyesData,
+                                   inits = dyesInits)
+
+# Define the fold function.
+# This function defines the data to leave out for the i'th fold
+# as the i'th row of the data matrix y.  This implies we will have
+# 6 folds.
+
+ff <- dyesFoldFunction <- function(i){
+    foldNodes_i <- paste0('y[', i, ', ]')  # will return 'y[1,]' for i = 1 e.g.
+    return(foldNodes_i)
+}
+
+
+
+
+# We define our own loss function as well.
+# The function below will compute the root mean squared error.
+
+loss <- RMSElossFunction <- function(simulatedDataValues, actualDataValues){
+    dataLength <- length(simulatedDataValues) # simulatedDataValues is a vector
+    SSE <- 0
+    for(i in 1:dataLength){
+        SSE <- SSE + (simulatedDataValues[i] - actualDataValues[i])^2
+    }
+    MSE <- SSE / dataLength
+    RMSE <- sqrt(MSE)
+    return(RMSE)
+}
+
+conf <- dyesMCMCconfiguration <- configureMCMC(dyesModel)
+
+pppp
+
+debug(runCrossValidate)
+debug(calcCrossVal)
+debug(calcCrossValSD)
+
+
+
+cv <- runCrossValidate(MCMCconfiguration = dyesMCMCconfiguration,
+                       k = 6,
+                       foldFunction = dyesFoldFunction,
+                       lossFunction = RMSElossFunction,
+                       MCMCcontrol = list(niter = 5000,
+                                          nburnin = 500))
+
+
+crossValOut1 <- calcCrossVal(1,
+                             MCMCconfiguration,
+                             foldFunction,
+                             lossFunction,
+                             niter,
+                             nburnin,
+                             returnSamples,
+                             nBootReps,
+                             FALSE,
+                             silent)
+
+
+
+
+1
+setwd('~/github/nimble/nimbleHMC/joss/paper/')
+f <- 'paper.md'
+library(rmarkdown)
+rmarkdown::render(f, output_format = 'pdf_document')
+system('open paper.pdf')
+
+
+
 1
 df <- read.csv('~/Downloads/Lab Study Data.csv')
 
@@ -505,8 +2277,15 @@ model <- nimbleModel(model_code, constants = constants, data = data, inits = ini
 ## I understand that if-else statements are only used to create model variants at the time of definition, but is there any way to do what I am trying to accomplish in nimble?
 
 
+v <- c(T, T, T, F, F, F, T)
+v[c(3:4)] <- FALSE
+v[-c(3:4)] <- FALSE
+
+v[numeric()] <- FALSE
+v[-numeric()] <- FALSE
 
 
+v
 
 library(nimble)
 

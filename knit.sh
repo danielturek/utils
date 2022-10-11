@@ -51,7 +51,14 @@ if [ -r "$1" ]; then
         ##                markdownToHTML('${mdfile}.md', '${mdfile}.html')"
 	##    ) > /dev/null 2>&1
         (
-            /usr/local/bin/Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE)"
+	    ## let's handle either .rmd or .md
+	    if [ -f ${mdfile}.rmd ]; then
+		inputFile=${mdfile}.rmd
+	    fi
+	    if [ -f ${mdfile}.md ]; then
+		inputFile=${mdfile}.md
+	    fi
+            /usr/local/bin/Rscript -e "require(methods); require(rmarkdown); render('${inputFile}', quiet=TRUE)"
         )
 	##> /dev/null 2>&1
     fi
@@ -61,7 +68,14 @@ if [ -r "$1" ]; then
         ##                markdownToHTML('${mdfile}.md', '${mdfile}.html'); browseURL('${mdfile}.html')"
 	##    ) > /dev/null 2>&1
         (
-            /usr/local/bin/Rscript -e "require(methods); require(rmarkdown); render('${mdfile}.rmd', quiet=TRUE)"
+	    ## let's handle either .rmd or .md
+	    if [ -f ${mdfile}.rmd ]; then
+		inputFile=${mdfile}.rmd
+	    fi
+	    if [ -f ${mdfile}.md ]; then
+		inputFile=${mdfile}.md
+	    fi
+            /usr/local/bin/Rscript -e "require(methods); require(rmarkdown); render('${inputFile}', quiet=TRUE)"
         )
 	##> /dev/null 2>&1
 	if [ -f ${mdfile}.pdf ]; then
