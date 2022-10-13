@@ -24,6 +24,7 @@ options(scipen=999)  ## turns off scientific notation display
 build <- function(x) {
     if('nimble' %in% .packages())   return(invisible())    ## return if nimble already loaded
     x <- as.character(substitute(x))
+    if(length(x) > 1) stop('need to put the build name in quotes for calling the build function()')
     buildDir <- paste0('~/temp/builds/', x)
     if(!file.exists(buildDir)) stop(paste0('no build: ', buildDir), call. = FALSE)
     message('==============================================')

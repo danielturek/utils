@@ -1,5 +1,76 @@
 
 
+1
+
+##build('v11-1')
+##build('v12-0')
+build('v12-1')
+build('v12-2')
+
+code <- nimbleCode({
+    tau ~ dgamma(0.1, 0.1)
+    omega ~ dbeta(2,8)     ##-- Prior on inclusion probability
+    for (i in 1:N) {
+        betaHabCovs[i] ~ dnorm(0, tau)
+        w[i] ~ dbern(omega)  ##-- w: Indicator variable for each coefficient
+    }
+    y ~ dnorm(sum(w[1:N] * betaHabCovs[1:N]), 1)
+})
+
+N <- 10
+constants <- list(N = N)
+data <- list(y = 0)
+inits <- list(tau = 1, omega = 0.5, betaHabCovs = rep(0, N), w = rep(0, N))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$calculate()   ## -19.97234    ## with y=0: -20.89128
+
+conf <- configureMCMC(Rmodel)
+pppp
+
+##configureRJ(conf, targetNodes = c('betaHabCovs'))
+
+configureRJ(conf, targetNodes = c('betaHabCovs'), indicatorNodes = c('w'))
+
+pppp
+
+targetNodes <- c('betaHabCovs')
+indicatorNodes <- c('w')
+model <- conf$model
+nNodes <- length(targetNodes)
+control <- list(mean = NULL, scale = NULL, fixedValue = NULL)
+fixedValue <- if(!is.null(control$fixedValue)) control$fixedValue else 0
+mean       <- if(!is.null(control$mean))       control$mean       else 0
+scale      <- if(!is.null(control$scale))      control$scale      else 1
+priorProb <- NULL
+indicatorFlag <- !is.null(indicatorNodes)
+priorFlag     <- !is.null(priorProb)
+
+
+
+##if(length(model$getParents(targetNodes, stochOnly = TRUE, includeData = FALSE)) > 0) {
+
+
+targetNodesAsScalars <- model$expandNodeNames(targetNodes, returnScalarComponents = TRUE)
+
+
+i <- 1
+##for(i in seq_along(targetNodesAsScalars)) {
+
+
+if(length(model$getParents(targetNodesAsScalars[i], stochOnly = TRUE, includeData = FALSE)) > 0) {
+    stop('Reversible jump target node \"', targetNodesAsScalars[i], '\" appears to have a non-constant hyper-parameter, which is not currently supported for reversible jump MCMC.')
+}
+
+
+##}
+
+
+##}
+
+
+
 ## update a new MCMC testing gold file
 ## to remove the "Test passed" messages from test_that testthat package
 ## to compare gold file
@@ -50,9 +121,9 @@ library(nimble)
 code <- nimbleCode({
     a ~ dnorm(0, 1)
     for(i in 1:8) {
-        b[i] ~ dnorm(a, 1)
-        c[i] ~ dnorm(b[i], 1)
-        d[i] ~ dnorm(c[i], 1)
+        b[i] ~ dnorm(sqrt(a), 1)
+        c[i] ~ dnorm(b[i]^2, 1)
+        d[i] ~ dnorm(c[i]^3, 1)
     }
 })
 
@@ -65,15 +136,57 @@ Rmodel$setData(list(b = 1:8))
 Rmodel$getPredictiveNodeIDs()
 Rmodel$getPredictiveBranchPointNodeIDs()
 
+nimbleOptions('MCMCusePosteriorPredictiveSampler')
+nimbleOptions(MCMCusePosteriorPredictiveSampler = FALSE)
 
 conf <- configureMCMC(Rmodel)
 conf$setSamplers(c(8, 9, 1:9))
 pppp
 conf$removeSampler('c')
 
+
+
 Rmcmc <- buildMCMC(conf)
 
+Rmcmc$samplerFunctions$contentsList[[1]]
+Rmcmc$samplerFunctions$contentsList[[1]]$calcNodesNoSelf
+Rmcmc$samplerFunctions$contentsList[[1]]$copyNodesDeterm
+Rmcmc$samplerFunctions$contentsList[[1]]$copyNodesStoch
 
+
+
+conf <- configureMCMC(Rmodel)
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf <- configureMCMC(Rmodel, nodes = NULL, print = FALSE)
+
+conf$unsampledNodes
+conf$getUnsampledNodes()
+
+conf$addSampler('a')
+conf$addSampler('b')
+conf$addSampler('d[1]', 'posterior_predictive')
+conf$addSampler(c('d[1]', 'd[3]'), 'posterior_predictive')
+conf$addSampler('a', 'posterior_predictive')
+conf$addSampler('c', 'posterior_predictive')
+conf$addSampler('d', 'posterior_predictive')
+conf$addSampler('d[1:1]', 'posterior_predictive')
+conf$addSampler('d[1:3]', 'posterior_predictive')
+conf$addSampler(c('d[1:3]', 'd'), 'posterior_predictive')
+conf$addSampler(c('d[1:3]', 'b'), 'posterior_predictive')
+conf$addSampler('b', 'posterior_predictive')
+conf$addSampler('a', 'posterior_predictive')
+
+
+conf$addSampler('d', 'RW_block')
+conf$addSampler(c('d[1]', 'd[3]'), 'RW_block')
+conf$addSampler('d[1]', 'RW_block')
+
+conf$printSamplers(byType = TRUE)
+conf
+
+undebug(conf$printSamplersByType)
+debug(conf$printSamplersByType)
+conf$printSamplers(byType = TRUE)
 
 
 ## orig:
