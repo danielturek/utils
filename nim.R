@@ -29,8 +29,10 @@ samples <- runMCMC(Cmcmc, 10000)
 
 colnames(samples)
 samplesSummary(samples)
+library(basicMCMCplots)
 samplesPlot(samples)
-apply(samples, 2, effectiveSize)
+library(coda)
+effectiveSize(samples)
 
 
 nfDef <- nimbleFunction(
@@ -59,8 +61,5 @@ Rnf()
 Cnf()
 
 stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
-for(v in stochVars) {
-    lp <- Rmodel$calculate(v)
-    cat(v, ': ', lp, '\n')
-}
+for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
 
