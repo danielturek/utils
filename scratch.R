@@ -1,4 +1,393 @@
 
+
+{
+    dd <- FALSE
+    if(dd) print('yes')
+    else print('no')
+}
+
+
+
+## testing non-conjugate Wishart distribution in jags
+## and in stan
+
+library(nimble)
+
+code <- nimbleCode({
+    Q[1:3,1:3] ~ dwish(I[1:3,1:3], 5)
+    y[1:3] ~ dmnorm(mu0[1:3], Q[1:3,1:3])
+    y2 ~ dexp(Q[1,1])
+})
+
+constants <- list(mu0 = rep(0,3), I = diag(3))
+##data <- list(y = c(1,2,3))
+data <- list(y = c(1,2,3), y2=1)
+inits <- list(Q = diag(3))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+######## conjuate case:
+## [1] conjugate_dwish_dmnorm_identity sampler: Q[1:3, 1:3]
+######## non-conjuate case:
+## [1] RW_wishart sampler: Q[1:3, 1:3]
+
+
+constsAndData <- c(constants, data)
+modelfile <- file.path('~/temp/model.txt')
+writeLines(paste0('model\n', paste0(deparse(code, width.cutoff=500L), collapse='\n')), con=modelfile)
+
+##install.packages('rjags')
+library(rjags)
+packageVersion('rjags')
+
+jags_mod <- jags.model(file=modelfile, data=constsAndData, inits=inits, n.chains=1, quiet=FALSE)
+list.samplers(jags_mod)
+######## conjugate case:
+## $`bugs::ConjugateWishart`
+## [1] "Q"
+######## non-conjugate case:
+## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 2
+##    Unobserved stochastic nodes: 1
+##    Total graph size: 19
+##  
+## Initializing model
+## Deleting model
+##  
+## Error in jags.model(file = modelfile, data = constsAndData, inits = inits,  : 
+##   Error in node Q
+## Unable to find appropriate sampler
+
+
+## below here, using non-conjugate wishart in stan:
+
+library(rstan)
+packageVersion('rstan')
+
+suppressWarnings(rm('ppp', 'pppp', 'qqq', 'rrr'))
+
+
+
+constants <- list(
+    mu0 = rep(0,3),
+    I = diag(3)
+)
+
+data <- list(
+    y = c(1, 2, 3),
+    y2 = 1
+)
+
+inits <- list(
+    Q = diag(3)
+)
+
+monitors <- c('Q')
+
+stan_code <- '
+data {
+  vector[3] mu0;
+  cov_matrix[3] I;
+  vector[3] y;
+  real y2;
+}
+
+parameters {
+  cov_matrix[3] Q;
+}
+
+model {
+  Q ~ wishart(5, I);
+  y ~ multi_normal(mu0, Q);
+  y2 ~ exponential(Q[1,1]*Q[2,2] + Q[3,1]^2 + 1);
+}
+
+'
+
+stan_mod <- rstan::stan_model(model_code = stan_code)
+
+stan_data <- c(constants, data)
+
+## niter and warmup notes:
+## - if you omit 'warmup' argument, then half of niter is used as warmup
+## - if you specify 'warmup' and 'niter', then the value for 'niter'
+##   also includes the warmup iterations
+
+stan_out <- rstan::sampling(
+                       stan_mod,
+                       data = stan_data,
+                       chains = 1,
+                       warmup = 5000,
+                       iter = 10000,
+                       pars = monitors,
+                       init = list(inits)  ## or a list of length 'chains'
+                   )
+
+rstan::get_elapsed_time(stan_out)    ## timings
+
+samples_stan <- as.matrix(stan_out)  ## samples
+
+head(samples_stan)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###################################################
+##                     NimblefunctionR           ##
+###################################################
+etl_codeco_nim <- nimbleFunction(
+  run = function(theta = double(1), z.init = integer(1), num.days = integer(), tau = double(0, default = 1)){
+    #State transition matrix (S,I_observed,I_hidden,Bacteria,New observed infection)
+    nu <- matrix(c(0,0,-1,-1,0,0,
+                    0,0,1,0,-1,0,
+                    0,0,0,1,0,-1,
+                    1,-1,0,0,0,0,
+                    0,0,1,0,0,0),ncol = 5)
+      valueForSeq <- tau
+    time <- seq(0,num.days,valueForSeq)
+    ##Monte Carlo Trajectory
+    traj <- matrix(nrow = length(time), ncol = length(z.init))
+    traj[1,] <- z.init
+    for(i in 2:length(time)){
+      z <- traj[(i-1),]
+      #Event rates
+      R <- c((z[2]+z[3])*theta[2],                                            # Bacteria Birth  
+             z[4]*0.1,                                                              # Bacteria death
+             theta[1]  * (z[4] / (z[4] + 10**6)) * z[1] * theta[4],         # Observed Infection
+             theta[1]  * (z[4] / (z[4] + 10**6)) * z[1] * (1-theta[4]),     # Hidden Infection
+             theta[3]  *  z[2],                                                  # Observed Infective recovery
+             theta[3]  *  z[3])                                                  # Hidden Infective recovery
+      lambda <- tau * R
+      k <- rpois(length(lambda),lambda)
+      knu <- k*nu
+      changes <- numeric(length = length(z.init))
+      for(j in 1:length(changes)){
+        changes[j] <- sum(knu[,j])
+      }
+      traj[i,] <- traj[(i-1),] +  changes
+      traj[i,][traj[i,] < 0] <- 0
+    }
+      returnType(double(1))
+    return(traj[-1,])
+  })
+
+###################################################
+##                  SET UP                       ##
+###################################################
+##Parameter values
+theta <- c(
+  a  = 0.015,
+  e  = 100,
+  r  = 0.05,
+  p = 0.3
+)
+num.days <- 500
+tau <- 1
+##Initial conditions (Susceptible, Infected, Bacteria, New Infections)
+N        = 10000
+Io0       = 3
+Ih0       = 7
+B0       = 1000
+S0       = N - Io0 - Ih0
+z.init   = c(S = S0, Io = Io0, Ih = Ih0, B = B0, NI = 0)
+
+###################################################
+##                        RUN                    ##
+###################################################
+
+R_test <- etl_codeco_nim(theta,z.init,num.days) #Runs fine
+C_etl <- compileNimble(etl_codeco_nim, showCompilerOutput = TRUE) #Error
+#Error in sizeSeq(<environment>, new("symbolTable", .xData = <environment>),  :
+#object 'thisSizeExpr' not found
+
+
+
+
+
+
+library(nimble)
+##install.packages('nimbleSMC')
+library(nimbleSMC)
+
+timeModelCode <- nimbleCode({
+    x[1] ~ dnorm(mu_0, 1)
+    y[1] ~ dnorm(x[1], 1)
+    for(i in 2:t){
+        x[i] ~ dnorm(x[i-1] * a + b, 1)
+        y[i] ~ dnorm(x[i] * c, 1)
+    }
+    a ~ dunif(0, 1)
+    b ~ dnorm(0, 1)
+    c ~ dnorm(1,1)
+    mu_0 ~ dnorm(0, 1)
+})
+
+# simulate some data
+set.seed(0)
+t <- 25; mu_0 <- 1
+x <- rnorm(1 ,mu_0, 1)
+y <- rnorm(1, x, 1)
+a <- 0.5; b <- 1; c <- 1
+for(i in 2:t){
+    x[i] <- rnorm(1, x[i-1] * a + b, 1)
+    y[i] <- rnorm(1, x[i] * c, 1)
+}
+
+# build the model
+inits <- list(a = 0.5, b = 1, c = 1, mu_0 = 1, x=y)
+Rmodel <- rTimeModel <- nimbleModel(timeModelCode, constants = list(t = t),
+                                    data <- list(y = y), inits = inits)
+
+Rmodel$calculate()
+stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
+for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
+
+##cTimeModel <- compileNimble(rTimeModel)
+timeConf <- configureMCMC(rTimeModel, nodes = NULL)
+
+timeConf$removeSamplers(c("a", "b", "c", "mu_0"))
+timeConf
+
+timeConf$addSampler(target = c("a", "b", "c", "mu_0"), type = "RW_PF_block",
+                    control = list(propCov= diag(4), adaptScaleOnly = FALSE,
+                                   latents = "x[2:24]", pfOptimizeNparticles = TRUE))
+
+
+timeConf$addSampler(target = c("a", "b", "c"), type = "RW_PF_block",
+                    control = list(propCov= diag(4), adaptScaleOnly = FALSE,
+                                   latents = "x[1:4]", pfOptimizeNparticles = TRUE))
+
+timeConf$printSamplers()
+
+timeConf$getUnsampledNodes()
+
+
+timeConfMCMC <- buildMCMC(timeConf)
+compiled_model <- compileNimble(rTimeModel)
+compiled_model_MCMC <- compileNimble(timeConfMCMC, project = rTimeModel)
+
+set.seed(0)
+resultsLinear <- runMCMC(compiled_model_MCMC,
+                         niter = 1000,
+                         nburnin = 0)
+
+head(resultsLinear, 1000)
+
+library(basicMCMCplots)
+samplesPlot(resultsLinear[1:1000,])
+
+
+
+
+
+createCodeAndConstants <- function(N, listOfBlockIndexes=list(), rhoVector=numeric(), expDecay=FALSE, gammaScalars=FALSE) {
+    code <- quote({})
+    constants <- list()
+    if(length(listOfBlockIndexes) != length(rhoVector)) stop()
+    for(i in seq_along(listOfBlockIndexes)) {
+        blockIndexes <- listOfBlockIndexes[[i]]
+        rho <- rhoVector[i]
+        numNodes <- as.numeric(length(blockIndexes))
+        if(numNodes == 1) {
+            code[[length(code)+1]] <-
+                if(gammaScalars) substitute(x[IND] ~ dgamma(1.1, 1.1), list(IND=as.numeric(blockIndexes)))
+                else             substitute(x[IND] ~ dnorm(0, 1),      list(IND=as.numeric(blockIndexes)))
+        } else {
+            muText <- paste0('mu', i)
+            sigmaText <- paste0('Sigma', i)
+            indMin <- as.numeric(min(blockIndexes))
+            indMax <- as.numeric(max(blockIndexes))
+            code[[length(code)+1]] <- substitute(x[MIN:MAX] ~ dmnorm(MU[1:NUM], cov = SIGMA[1:NUM,1:NUM]), list(MIN=indMin, MAX=indMax, NUM=numNodes, MU=as.name(muText), SIGMA=as.name(sigmaText)))
+            constants[[muText]] <- rep(0, numNodes)
+            constants[[sigmaText]] <- createCov(N=numNodes, rho=rho, expDecay=expDecay)
+        }
+    }
+    allInd <- 1:N
+    leftoverInd <- setdiff(allInd, unlist(listOfBlockIndexes))
+    for(ind in leftoverInd) {
+        code[[length(code)+1]] <-
+            if(gammaScalars) substitute(x[IND] ~ dgamma(1.1, 1.1), list(IND=as.numeric(ind)))
+            else             substitute(x[IND] ~ dnorm(0, 1),      list(IND=as.numeric(ind)))
+    }
+    codeAndConstantsList <- list(code=code, constants=constants)
+    return(codeAndConstantsList)
+}
+
+createCov <- function(N, indList=list(1:N), rho=0.8, indList2=list(), rho2=0.3, indList3=list(), rho3=0.5, expDecay=FALSE) {
+    Sigma <- diag(N)
+    for(gp in indList)  { for(i1 in gp) for(i2 in gp) Sigma[i1,i2] <- Sigma[i2,i1] <- if(expDecay) rho^ abs(i1-i2) else rho  }
+    for(gp in indList2) { for(i1 in gp) for(i2 in gp) Sigma[i1,i2] <- Sigma[i2,i1] <- if(expDecay) rho2^abs(i1-i2) else rho2 }
+    for(gp in indList3) { for(i1 in gp) for(i2 in gp) Sigma[i1,i2] <- Sigma[i2,i1] <- if(expDecay) rho2^abs(i1-i2) else rho3 }
+    diag(Sigma) <- 1
+    Sigma
+}
+
+
+createCodeAndConstants(10, listOfBlockIndexes = list(1:5, 4:6), rhoVector = c(3,5))
+
+
+
+n <- 5; p <- 2
+
+data <- matrix(rbinom(n * p, 1, .5), n, p)
+
+data
+
+
+
+
+library(gdistance)
+costDistance
+showMethods(costDistance)
+gdistance::costDistance
+
+?standardGeneric
+
+?GenericFunctions
+
+
+isGeneric('costDistance')
+isGroup('costDistance')
+findFunction('costDistance')
+
+findMethods('costDistance')
+
+gdistance:::.cd
+igraph::shortest.paths
+
+
+showMethods(costDistance)
+
+showMethods(transition)
+findMethods(transition)
+
+gdistance:::.TfromR
+
+dumpMethod('costDistance', c("TransitionLayer", "Coords", "Coords"), file = '~/temp/sig')
+
+findFunction('costDistance')
+findMethods('geoCorrection')
+
+
 library(nimble)
 
 code <- nimbleCode({
@@ -9,36 +398,61 @@ code <- nimbleCode({
         y[i, 1:p] ~ dmnorm(w[i, 1:p], cov = Omega[1:p, 1:p])
     }
 })
-
+##
 # constants
 cov <- structure(c(1, 0.291439908378029, 0.944925896806776, 0.291439908378029,
                    1, 0.278127103103443, 0.944925896806776, 0.278127103103443, 1
                    ), dim = c(3L, 3L))
 n <- 3; p <- 2
-
+##
 constants <- list(Omega = diag(1,p),
                   zeroes = rep(0, n),
                   p = p,
                   n = n,
                   cov = cov)
-
-
-jsdmModel <- nimbleModel(code,
-                         constants = constants)
-
+##
+jsdmModel <- nimbleModel(code, constants = constants)
 jsdmModel$setData(list(y = matrix(rnorm(n * p), n, p)))
-
+##
 jsdmModel$calculate()
-
-
+##
+##
 Rmodel <- jsdmModel
-stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
-for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
+Rmodel$calculate()
+
+undebug(nimble:::conjugacyRelationshipsObject$checkConjugacy_new)
+debug(nimble:::conjugacyRelationshipsObject$checkConjugacy_new)
+
+undebug(nimble:::cc_expandDetermNodesInExpr)
+debug(nimble:::cc_expandDetermNodesInExpr)
+
+undebug(nimble:::cc_checkLinearity)
+debug(nimble:::cc_checkLinearity)
 
 
-jsdmcompiled <- compileNimble(jsdmModel, resetFunctions = T)
-jsdmConf <- configureMCMC(jsdmcompiled, print = TRUE,
-                          enableWAIC = T)
+cc_expandDetermNodesInExpr(model, linearityCheckExprRaw, targetNode = targetNode)
+
+conf <- configureMCMC(Rmodel)
+
+
+
+
+
+##stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
+##for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
+##
+##jsdmcompiled <- compileNimble(jsdmModel, resetFunctions = T)
+jsdmConf <- configureMCMC(jsdmModel, print = TRUE, enableWAIC = T, useConjugacy = FALSE)
+
+jsdmConf <- configureMCMC(jsdmModel, print = TRUE, enableWAIC = T)
+
+jsdmConf$removeSampler('w')
+jsdmConf$addSampler('w', default = TRUE, useConjugacy = FALSE)
+
+jsdmConf
+
+
+
 
 jsdmConf$printSamplers()
 
@@ -387,12 +801,12 @@ ndata <- 10
 data <- list( mydata=matrix(rnorm(ndata*2), nrow=ndata, ncol=2) )
 constants <- list(ndata=ndata)
 
-inits <-function(){list(
-                       probvector = rep(1/3,3), # prior probabilities for index variable
-                       scalevector = c(0.5, 1, 2), # possible scale values
-                       scaleindex = c(1, 1),
-                       variance = c(1, 1)
-                   )}
+initsFun <-function(){list(
+                          probvector = rep(1/3,3), # prior probabilities for index variable
+                          scalevector = c(0.5, 1, 2), # possible scale values
+                          scaleindex = c(1, 1),
+                          variance = c(1, 1)
+                      )}
 
 
 
@@ -415,15 +829,26 @@ dimensions <- list(
     variance = 2
 )
 
+set.seed(0)
+inits <- initsFun()
+inits <- list(scalevector = c(0.5, 1, 2) )
+
 examplemodel <- nimbleModel(code=examplecode, name='test',
                             constants=constants,
-                            inits=inits(),
+                            inits=inits,
                             data=data,
                             dimensions=dimensions)
 
 
+examplemodel$probvector <- rep(NA, 3)
+examplemodel$variance <- c(-1, 1)
+examplemodel$variance
+examplemodel$variate
+
+examplemodel$calculate('mydata')
 
 examplemodel$initializeInfo()
+examplemodel$initializeInfo(TRUE)
 
 examplemodel$mydata
 examplemodel$variance
@@ -431,6 +856,7 @@ examplemodel$scaleindex
 examplemodel$
 examplemodel$
 examplemodel$
+
 
 
 library(nimble)
@@ -444,8 +870,17 @@ data <- list(y = 5)
 inits <- list(a = 0)
 
 Rmodel <- nimbleModel(code, constants, data, inits)
+Rmcmc <- buildMCMC(Rmodel)
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+nimble:::clearCompiled(Cmodel)
+nimble:::clearCompiled(Cmcmc)
+
+
 Rmodel$calculate()
 
+conf <- configureMCMC(Rmodel)
 conf <- configureMCMC(Rmodel, thin = 0.5)
 conf <- configureMCMC(Rmodel, thin = -3)
 conf <- configureMCMC(Rmodel, thin = 1.5)
@@ -457,8 +892,16 @@ conf <- configureMCMC(Rmodel, thin2 = 90)
 
 Rmcmc <- buildMCMC(conf)
 
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
 compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
 Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+nimble:::clearCompiled
+getNimbleProject(Cmcmc)
+getNimbleProject(Cmcmc)$clearCompiled()
+nimble:::clearCompiled(Cmodel)
 
 mcmc <- Rmcmc
 mcmc <- Cmcmc
@@ -32823,6 +33266,18 @@ Rmodel <- nimbleModel(code, constants)
 ##nimble:::checkConjugacyOneDep
 ##= function(model, targetNode, depNode) {
 ##conf <- configureMCMC(Rmodel)
+
+library(nimble)
+
+expr <- quote(structureExpr(w[1:3, 1], w[1:3, 2]))
+targetNode <- "w[1:3, 1]"
+
+nimble:::cc_checkLinearity(expr, t
+
+
+nimble:::cc_checkLinearity(expr, targetNode)
+
+
 
 conf <- configureMCMC(Rmodel)
 conf <- configureMCMC(Rmodel, useConjugacy = FALSE)
