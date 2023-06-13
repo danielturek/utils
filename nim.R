@@ -12,6 +12,9 @@ inits <- list(a = 0)
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmodel$calculate()
 
+Rmodel$initializeInfo()
+Rmodel$initializeInfo(TRUE)
+
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
 conf$printSamplers(byType = TRUE)

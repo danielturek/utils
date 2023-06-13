@@ -1,4 +1,1752 @@
 
+library(nimble)
+Rmodel <- nimbleModel(quote({ x ~ dnorm(0, 1) }))
+Cmodel <- compileNimble(Rmodel)
+
+
+library(nimble)
+library(testthat)
+
+
+code <- nimbleCode({
+    x ~ dcat(prob = a[1:3])
+    y[1:3] ~ ddirch(alpha = A[x,1:3])
+})
+constants <- list(a = c(1, 1, 0))
+data <- list(y = c(0, 1/2, 1/2))
+inits <- list(x = 2, A = array(1/3, c(3,3)))
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('x', 'slice')
+conf$printSamplers()
+
+##expect_true(length(conf$getSamplers()) == 1)
+##expect_true(conf$getSamplers()[[1]]$name == 'categorical')
+
+Rmcmc <- buildMCMC(conf)
+
+
+
+
+samples <- runMCMC(Rmcmc, 10)
+
+
+expect_output(samples <- runMCMC(Rmcmc, 10), 'encountered an invalid model density, and sampling results are likely invalid')
+
+
+
+
+
+code <- nimbleCode({
+    x ~ dcat(prob = a[1:3])
+    y ~ dnorm(x, -1)
+})
+
+constants <- list(a = c(1, 1, 0))
+data <- list(y = 0)
+inits <- list(x = 2)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('x', 'slice')
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel, showCompilerOutput = TRUE)
+
+samples <- runMCMC(Cmcmc, 100)
+
+
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+table(samples)
+
+
+
+samples <- runMCMC(Rmcmc, 10)
+debug(Rmcmc$samplerFunctions[[1]]$run)
+samples
+
+
+expect_output(samples <- runMCMC(Rmcmc, 10), 'encountered an invalid model density, and sampling results are likely invalid')
+expect_output(samples <- runMCMC(Rmcmc, 10), 'encountered an invalid model density, and sampling results are likely invalid')
+expect_true(all(samples == 1))
+
+
+expect_identical(Rmodel$calculate(), Inf)
+conf <- configureMCMC(Rmodel)
+
+
+
+
+
+reGroup1 <- model$getDependencies(paramPairs[[1]], self = FALSE, stochOnly = TRUE)
+reGroup2 <- model$getDependencies(paramPairs[[2]], self = FALSE, stochOnly = TRUE)
+reGroup1Deps <- model$getDependencies(reGroup1, self = FALSE, stochOnly = TRUE)
+reGroup2Deps <- model$getDependencies(reGroup2, self = FALSE, stochOnly = TRUE)
+intersect(reGroup1Deps, reGroup2Deps) ## Not empty with lots of z's
+## Another example
+reGroup5 <- model$getDependencies(paramPairs[[5]], self = FALSE, stochOnly = TRUE)
+reGroup9 <- model$getDependencies(paramPairs[[9]], self = FALSE, stochOnly = TRUE)
+reGroup5Deps <- model$getDependencies(reGroup5, self = FALSE, stochOnly = TRUE)
+reGroup9Deps <- model$getDependencies(reGroup9, self = FALSE, stochOnly = TRUE)
+intersect(reGroup5Deps, reGroup9Deps) ## Not empty with lots of y's 
+
+
+pairInd <- c(1:4, 7,8)
+pairInd <- c(5,6, 9,10)
+dep <- lapply(paramPairs[pairInd], function(x) model$getDependencies(x, self = FALSE, stochOnly = TRUE))
+depdep <- lapply(dep, function(x) model$getDependencies(x, self = FALSE, stochOnly = TRUE))
+
+str(dep)
+str(depdep)
+
+g <- expand.grid(pairInd, pairInd)
+nr <- nrow(g)
+idList <- rep(NA, nr)
+for(i in 1:nr) idList[i] <- identical(depdep[[g[i,1]]], depdep[[g[i,2]]])
+idList
+
+identical(depdep[[1]], depdep[[2]])
+
+all(depdep[[4]] %in% depdep[[1]])
+6554 + 6090
+
+
+
+
+
+library(nimble)
+library(nimbleHMC)
+
+code <- nimbleCode({
+    p ~ dnorm(0,1)
+    re1 ~ dnorm(p, 1)
+    re2 ~ dnorm(re1, 1)
+    re3 ~ dnorm(re2, 1)
+    y ~ dnorm(re3, 1)
+})
+
+Rmodel <- nimbleModel(code, data = list(y = 1), buildDerivs = TRUE)
+
+conf <- configureHMC(Rmodel)
+class(conf)
+
+a <- addHMC(conf, 'p')
+a
+class(a)
+
+Rmcmc <- buildHMC(Rmodel)
+class(Rmcmc)
+
+Rmcmc <- buildMCMC(conf)
+mvSaved <- Rmcmc$mvSaved
+
+conf$samplerConfs[[1]]$mvSaved
+
+samp <- sampler_HMC(Rmodel, mvSaved, 'p', list())
+class(samp)
+
+## this works fine:
+setupMargNodes(Rmodel, 'p')
+## $randomEffectsNodes
+## [1] "re1" "re2" "re3"
+
+code <- nimbleCode({
+    p ~ dnorm(0,1)
+    re1 ~ dnorm(p, 1)
+    re2 ~ dbern(re1)    ## discrete node here
+    re3 ~ dnorm(re2, 1)
+    y ~ dnorm(re3, 1)
+})
+
+Rmodel <- nimbleModel(code, data = list(y = 1))
+
+## this includes 're3' as a RE
+setupMargNodes(Rmodel, 'p')
+## $randomEffectsNodes
+## [1] "re1" "re3"
+
+
+
+
+
+Rmodel$getNodeNames()
+Rmodel$getNodeNames(stochOnly = TRUE)
+Rmodel$getNodeNames(determOnly = TRUE)
+Rmodel$getNodeNames(latentOnly = TRUE)
+Rmodel$getNodeNames(includePredictive = FALSE, stochOnly = TRUE)
+Rmodel$getNodeNames(predictiveOnly = TRUE, stochOnly = TRUE)
+
+
+
+
+
+library(nimble)
+
+mc <- nimbleCode({
+    P ~ dnorm(0,1)
+    RE1 ~ dnorm(P, 1)
+    RE2 ~ dnorm(P, 1)
+    Z1 ~ dnorm(RE1, 1)
+    Z2 ~ dnorm(RE2, 1)
+    Y ~ dnorm(Z1 + Z2, 1)
+    predictive <- Z1 + Z2
+})
+
+m <- nimbleModel(mc, data = list(Y = 1))
+
+setupMargNodes(m) # Gives RE1 and RE2 as randomEffectsNodes. Wrongly puts Z1 and Z2 in givenNodes
+
+m$getNodeNames(latentOnly = TRUE, stochOnly = TRUE)
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    z[1:N] ~ dCRP(alpha, size = N)
+    alpha ~ dgamma(1, 1)
+    for(i in 1:M) {
+        thetatilde[i] ~ dnorm(0, var = 100)
+        s2tilde[i] ~ dinvgamma(1, 1)
+    }
+    for(i in 1:N)
+        y[i] ~ dnorm(thetatilde[z[i]], var = s2tilde[z[i]])
+})
+
+set.seed(1)
+constants <- list(N = 100, M = 50)
+data <- list(y = c(rnorm(50, -5, sqrt(3)), rnorm(50, 5, sqrt(4))))
+inits <- list(thetatilde = rnorm(constants$M, 0, 10),
+              s2tilde = rinvgamma(constants$M, 1, 1),
+              z = sample(1:10, size = constants$N, replace = TRUE),
+              alpha = 1)
+
+model <- nimbleModel(code, constants, data, inits)
+
+model$calculate()
+
+foldFunction <- function(i){
+    foldNodes_i <- paste0('y[i]')  # will return 'y[1]' for i = 1 e.g.
+    return(foldNodes_i)
+}
+
+dyesMCMCconfiguration <- configureMCMC(model)
+
+
+debug(buildMCMC)
+
+debug(sampler_CRP)
+
+crossValOutput <- runCrossValidate(MCMCconfiguration = dyesMCMCconfiguration,
+                                   k = 2,
+                                   foldFunction = foldFunction,
+                                   lossFunction = "MSE",
+                                   MCMCcontrol = list(niter = 5000,
+                                                      nburnin = 500), silent = TRUE)
+
+
+
+
+debug(`%|>%`)
+undebug(`%|>%`)
+
+
+
+## another example of unknownsAsGiven and getConditionallyIndependentSets
+
+library(nimble)
+
+code <- nimbleCode({
+    ## parameters:
+    p ~ dnorm(0, 1)
+    ## random effect:
+    for(i in 1:2) {
+        re[i] ~ dnorm(p, 1)
+        z[i]  ~ dnorm(re[i], 1)
+    }
+    ## data:
+    y ~ dnorm(z[1] + z[2], 1)
+})
+
+Rmodel <- nimbleModel(code, data = list(y=0, z = c(1,1)))
+
+Rmodel$getNodeNames(latentOnly = TRUE)
+
+Rlaplace <- buildLaplace(Rmodel, 'p')   ## uses default split = TRUE
+Rlaplace <- buildLaplace(Rmodel, 'p', c('re'))   ## uses default split = TRUE
+Rlaplace <- buildLaplace(Rmodel, 'p', c('re', 'z'))   ## uses default split = TRUE
+
+Rlaplace$AGHQuad_nfl[[1]]$randomEffectsNodes
+Rlaplace$AGHQuad_nfl[[2]]$randomEffectsNodes
+Rlaplace$AGHQuad_nfl[[1]]$calcNodes
+Rlaplace$AGHQuad_nfl[[2]]$calcNodes
+## "p2"  "re1"
+
+
+debug(setupMargNodes)
+undebug(setupMargNodes)
+
+
+## example of unknownsAsGiven and getConditionallyIndependentSets
+
+reSets <- MargNodes$randomEffectsSets
+## remove any nodes within reSets which are not among scalarRENodes:
+reSets <- lapply(reSets, function(set) intersect(set, scalarRENodes))
+## remove any elements of reSets which are zero-length:
+reSets <- reSets[sapply(reSets,length) > 0]
+
+
+l <- list(1, numeric(), 3)
+l[sapply(l, function(set) length(set)>0)]
+
+l[sapply(l,length) > 0]
+
+                 
+library(nimble)
+
+code <- nimbleCode({
+    ## parameters:
+    p1 ~ dnorm(0, 1)
+    p2 ~ dnorm(0, 1)
+    ## random effect:
+    re1 ~ dnorm(p1, 1)
+    ## data:
+    y ~ dnorm(re1 + p2, 1)
+})
+
+Rmodel <- nimbleModel(code, data = list(y=0))
+
+
+Rlaplace <- buildLaplace(Rmodel, 'p1', 're1', control = list(split = FALSE))
+Rlaplace$AGHQuad_nfl[[1]]$randomEffectsNodes
+## "re1"
+
+Rlaplace <- buildLaplace(Rmodel, 'p1', 're1')   ## uses default split = TRUE
+Rlaplace$AGHQuad_nfl[[1]]$randomEffectsNodes
+## "p2"  "re1"
+
+
+
+
+debug(buildLaplace)
+undebug(buildLaplace)
+debug(nimble:::buildAGHQuad)
+undebug(nimble:::buildAGHQuad)
+debug(setupMargNodes)
+undebug(setupMargNodes)
+
+
+
+
+
+code <- nimbleCode({
+    theta1 ~ dnorm(0, 1)
+    x1 ~ dnorm(theta1, 1)
+    theta2 ~ dnorm(0, 1)
+    y ~ dnorm(x1 + theta2, 1)
+})
+model <- nimbleModel(code)
+model$getConditionallyIndependentSets(nodes = 'x1', givenNodes = c('theta1', 'y'))
+
+
+## figuring out how SetupMargNodes works
+
+
+code <- nimbleCode({
+    for(i in 1:4) th[i] ~ dnorm(0, 1)
+    for(i in 1:3) thx[i] ~ dnorm(0, 1)
+    for(i in 1:4) re[i] ~ dnorm(th[1] + th[2], 1)
+    for(i in 5:8) re[i] ~ dnorm(th[3] + th[4], 1)
+    z ~ dnorm(thx[1] + sum(re[1:4]), 1)
+    y[1] ~ dnorm(z + thx[2] + sum(re[5:8]), 1)
+    y[2] ~ dnorm(thx[3] + sum(re[5:8]), 1)
+})
+
+model <- nimbleModel(code, data = list(y = 1:2))
+
+confnimble <- configureMCMC(model)
+
+confnimble$getSamplers()
+args(confnimble$getSamplers)
+args(confnimble$printSamplers)
+
+samplerConfs <- confnimble$getSamplers()
+RWbool <- sapply(samplerConfs, `[[`, 'name') == 'RW'
+RWtargets <- sapply(samplerConfs[RWbool], `[[`, 'target')
+confnimble$replaceSamplers(RWtargets, type = 'slice', expandTarget = TRUE)
+                           
+
+typeInd <- unique(unname(unlist(lapply(type, grep, x = lapply(samplerConfs, `[[`, 'name')))))
+
+targetslist <- sapply(confnimble$getSamplers(), function(xx)xx$target)
+nameslist <- sapply(confnimble$getSamplers(), function(xx)xx$name)
+for(asampler in targetslist[nameslist == 'RW']){
+    confnimble$removeSamplers(asampler)
+    confnimble$addSampler(target=asampler, type='slice')
+}
+
+conf <- configureMCMC(model, onlySlice = TRUE)
+conf
+pppp
+
+##nodes <- Rmodel$getNodeNames(stochOnly = TRUE)
+##l <- lapply(nodes, Rmodel$getDependencies)
+##names(l) <- nodes
+##l
+
+setupMargNodes(model, 'th[1]')
+
+## input: paramNodes
+(paramNodes <- 'th[1]')
+(paramNodes <- 'th[2]')
+(paramNodes <- 'th[3]')
+(paramNodes <- 'th[4]')
+(paramNodes <- 'thx[1]')
+(paramNodes <- 're[1]')
+(paramNodes <- 're[5]')
+(paramStochDeps <- model$getDependencies(paramNodes, stochOnly = TRUE, self = FALSE))
+(randomEffectsNodes <- intersect(paramStochDeps, model$getNodeNames(latentOnly = TRUE)))
+(calcNodes <- model$getDependencies(randomEffectsNodes))
+(calcNodesOther <- setdiff(paramStochDeps, calcNodes))
+(givenNodes <- setdiff(c(paramNodes, calcNodes), c(randomEffectsNodes, model$getDependencies(randomEffectsNodes, determOnly = TRUE))))
+(reSets <- model$getConditionallyIndependentSets(nodes = randomEffectsNodes, givenNodes = givenNodes))
+
+getConditionallyIndependentSets
+model$modelDef$maps$nimbleGraph$getConditionallyIndependentSets
+
+## error in linear_predictor example from nimble-demos:
+
+1
+
+library(nimble)
+
+##build(new_devel)
+##build(devel_old)
+
+set.seed(1)
+p <- 15    # number of explanatory variables
+n <- 2   # number of observations
+X <- matrix(rnorm(p*n), nrow = n, ncol = p) # explanatory variables
+true_betas <- c(c(0.1, 0.2, 0.3, 0.4, 0.5), rep(0, p-5)) # coefficients
+y <- rnorm(n, X %*% true_betas, 1)
+
+code <- nimbleCode({
+    beta0 ~ dnorm(0, 1)
+    beta[1:p] ~ dmnorm(zeros[1:p], omega[1:p, 1:p])
+    linpred[1:n] <- (x[1:n, 1:p] %*% beta[1:p])[1:n,1]
+    for(i in 1:n) {
+        y[i] ~ dnorm(beta0 + linpred[i], 1)
+    }
+})
+
+constants <- list(n = n, p = p, x = X, zeros = rep(0, p), omega = 0.0001 * diag(p))
+data <- list(y = y)
+inits <- list(beta = rep(0, p))
+
+Rmodel <- nimbleModel(code, constants = constants, data = data, inits = inits)
+
+##debug(Rmodel$getUnrolledIndicesList)
+##debug(nimble:::cc_expandDetermNodesInExpr)
+
+##options(error = recover)
+
+conf <- configureMCMC(Rmodel)
+
+
+
+
+
+## error with nimbleSMC finding sampler_BASE default methods
+## after extension of the system:
+
+
+
+library(nimble)
+library(nimbleSMC)
+
+## RW sampler from 'nimble' package:
+## class generator includes 'before_chain' and 'after_chain' methods,
+## which were added automatically:
+environment(sampler_RW)$nfRefClass
+
+
+## RW_PF sampler from 'nimbleSMC' package:
+## class generator *does not include* 'before_chain' or 'after_chain' methods,
+## which were *not* added:
+environment(sampler_RW_PF)$nfRefClass
+
+My 
+
+## helping with scalar / vector case for a user on nimble-users list
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:N) {
+        if(N == 1) x_mean[i] <- mu
+        if(N  > 1) x_mean[i] <- mu[i]
+        x[i] ~ dnorm(x_mean[i], 1)
+    }
+})
+
+N <- 1
+constants <- list(N = N, mu = rep(0,N))
+data <- list(x = rep(0,N))
+inits <- list()
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$calculate()
+Rmodel$getNodeNames()
+
+Cmodel <- compileNimble(Rmodel)
+Cmodel$calculate()
+Cmodel$getNodeNames()
+
+
+
+## bug in Laplace with different numbers of conditionally indepedent RE sets
+
+library(nimble)
+
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+
+code <- nimbleCode({
+    for(i in 1:2) {
+        param[i] ~ dnorm(0, 1)
+        for(j in 1:num_re[i]) {
+            re[i,j] ~ dnorm(param[i], 1)
+        }
+        y[i] ~ dnorm(sum(re[i,1:num_re[i]]), 1)
+    }
+})
+
+num_re <- c(3,7)   ## different numbers of REs in two conditionally independent sets
+constants <- list(num_re = num_re)
+data <- list(y = c(0,0))
+
+Rmodel <- nimbleModel(code, constants, data, buildDerivs = TRUE)
+Rlaplace <- buildLaplace(Rmodel, 'param', 're', control = list(split = FALSE))
+
+Cmodel <- compileNimble(Rmodel)
+Claplace <- compileNimble(Rlaplace, project = Rmodel)
+
+Rlaplace$AGHQuad_nfl
+Rlaplace$AGHQuad_nfl[[1]]
+Rlaplace$AGHQuad_nfl[[1]]$optimControl$ndeps      ## not set in uncompiled
+Rlaplace$AGHQuad_nfl[[1]]$optimControl$parscale   ## not set in uncompiled
+
+Claplace$AGHQuad_nfl
+Claplace$AGHQuad_nfl[[2]]
+Claplace$AGHQuad_nfl[[1]]$optimControl$ndeps      ## not set in compiled, either
+Claplace$AGHQuad_nfl[[1]]$optimControl$parscale   ## not set in compiled, either
+
+Claplace$findMLE(c(0,0))
+
+## Error in Claplace$findMLE(c(0, 0)) : 
+##   In compiled optim (aka nimOptim) call: lengths for control parameters parscale and ndeps must equal length(par).
+
+
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    x[1:3] ~ ddirch(a[1:3])
+})
+
+Rmodel <- nimbleModel(code)
+
+Rmodel$a
+Rmodel$a <- c(2,2,2)/2
+Rmodel$a
+
+
+Rmodel$x
+newX <- c(1,1,0)
+Rmodel$x <- newX / sum(newX)
+Rmodel$x
+
+
+Rmodel$calculate('x')
+
+ddirichlet(Rmodel$x, Rmodel$a, log = TRUE)
+
+
+
+
+
+
+
+https://us02web.zoom.us/j/7341328146?pwd=Z3JRd1JjQ0ZTZnR1WkdISXRrUk1KQT09
+https://us02web.zoom.us/j/7341328146?pwd=Z3JRd1JjQ0ZTZnR1WkdISXRrUk1KQT09
+
+
+
+
+
+library(nimble)
+
+
+prepbirds <- nimbleModel(code = nimIBM, constants = nc,
+                         data = nd, inits = ni, calculate = T, check = T)
+prepbirds$phi.p[,1] <- 1
+prepbirds$initializeInfo()
+prepbirds$calculate()
+mcmcbirds <- configureMCMC(prepbirds, monitors = pars, print = T, control = list(adaptInterval = adaptInterval, scale=.1))
+mcmcbirds$removeSampler(paste0("s[",1:M,", 1:2, 1]"))
+
+for(i in 1:M){
+    mcmcbirds$addSampler(target = paste0("s[",i,", 1:2, 1]"),
+                         type = 'RW_block', silent=TRUE,
+                         control = list(adaptInterval = adaptInterval, propCov=diag(2), scale=SamplerScale, adaptScaleOnly=TRUE))
+    for(tt in 2:occ){
+        mcmcbirds$addSampler(target = paste0("s[",i,", 1:2, ", tt, "]"),
+                             type = 'myRWtrajectoryPotentialSampler',
+                             control = list(ind=i, scale=SamplerScale, npix=npix, pxw = pxw,xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax, gcoords= gcoords, pixMat = pixels))
+    }
+}
+
+birdsMCMC <- buildMCMC(mcmcbirds)
+Cmodel <- compileNimble(prepbirds) #takes a long time (sometimes)
+Compbirds <- compileNimble(birdsMCMC, project = prepbirds)
+Compbirds$run(niter = 2, nburnin = 0, thin = 1, reset = F)
+
+
+
+
+
+code <- nimbleCode({
+    beta0 ~ dnorm(0, sd = 100)
+    beta1 ~ dnorm(0, sd = 100)
+    beta2 ~ dnorm(0, sd = 100)
+    sigma ~ dinvgamma(1, 1)
+})
+
+Rmodel <- nimbleModel(
+    code,
+    data = list(),
+    inits = initial values for the 4 parameters,
+    constants = list()
+)
+
+llFun <- nimbleFunction(
+    setup = function(model,
+                     ## all the other constants you need here: covs, sim_covs, knots_dist, the other dist arrays,
+                     ## note also that you may not need all of n_uof, n_sim, n_knots for indexing the arrays, 
+                     ## since arrays do not need to be "fully indexed" in nimbleFunction code.  I'll give an example below.
+                     ) { },
+    run = function() {
+        ## calculate XB
+        ## calculate XB_int
+        ## calculate knots_cov
+        ## calclate observed_pts_vs_knots_cov
+        ## calculate integration_pts_vs_knots_cov
+        ## *simulate* the GP gp_on_knots:
+        knots_cov_chol <- chol(knots_cov)
+        gp_on_knots <- rmnorm_chol(1, knots_mean, knots_cov_chol, prec_param = 0)
+        ## the above lines first calculate the Cholesky factorization of the covariance matrix,
+        ## since nimble's underlying implementation of the multivaraite normal operate
+        ## using that.  The argument prec_param = 0 indicates that the third argument (knots_cov_chol)
+        ## is the cholesky factor of the covariance matrix (the 0 means "not of the precision matrix")
+        ## notice also how we do *not* need indexing such as [1:n_knots] or [1:n_knots, 1:n_knots]
+        ## on all the vectors or arrays; omitting the indexing means "use the entire vector or array"
+        ## calculate gp_on_observed_pts, again omitting indexing:
+        gp_on_observed_pts <- observed_pts_vs_knots_cov %*% inverse(knots_cov) %*% asCol(gp_on_knots)
+        ## calculate gp_on_integration_pts
+        ## calculate integ
+        ll <- sum(XB + gp_on_observed_pts) - integ
+        returnType(double())
+        return(ll)
+    }
+)
+
+RllFun <- llFun(Rmodel, all the other constants needed)
+
+mcmcConf <- configureMCMC(Rmodel, nodes = NULL)  ## monitors will be correct by default
+
+mcmcConf$addSampler(target = c("beta0", "beta1", "beta2", "sigma"), 
+                    type = "RW_llFunction_block",
+                    control = list(llFunction = RllFun, includesTarget = F))
+
+## etc....
+
+
+
+
+
+## helping 'Zhihan Yang' via nimble-users
+## question on: LGCP on simulated example
+
+set.seed(42)
+
+library(nimble)
+library(ggplot2)
+library(fields)  # for rdist
+library(glue)
+library(dplyr)
+library(sf)
+library(sp)
+library(spatstat)
+library(reshape2)
+#install RandomFieldsUtils if necessary, it has been removed from CRAN
+#install.packages(("https://cran.r-project.org/src/contrib/Archive/RandomFieldsUtils/RandomFieldsUtils_1.2.5.tar.gz"), repos=NULL, type="source")
+library(RandomFieldsUtils)
+#install RandomFields if needed
+#install.packages(("https://cran.r-project.org/src/contrib/Archive/RandomFields/RandomFields_3.3.14.tar.gz"), repos=NULL, type="source")
+library(RandomFields)
+
+## Generate a simulated dataset:
+
+sampled_process <- rLGCP("exp", function(x, y){0.1 * x - 0.1 * y + 1},
+                         var=1, scale=4,
+                         win = owin(c(-10, 10), c(-10, 10)))
+
+## plot(sampled_process)
+
+## I’m using an exponential covariance function:
+
+expcov <- nimbleFunction(run = function(dists = double(2), phi = double(0), sigma = double(0)) {
+    returnType(double(2))
+    n <- dim(dists)[1]
+    m <- dim(dists)[2]
+    sigma2 <- sigma*sigma
+    result <- sigma2*exp(-dists/phi)
+    return(result)
+})
+
+## Defining observed points (obs_pts), knots and integration points (int_pts): 
+
+obs_pts <- as.data.frame(sampled_process)
+knots_xs <- seq(from = -10, to = 10, length.out = 10)
+knots_ys <- seq(from = -10, to = 10, length.out = 10)
+knots <- expand.grid(knots_xs, knots_ys)
+colnames(knots) <- c("x", "y")
+int_xs <- runif(500, min=-10, max=10)
+int_ys <- runif(500, min=-10, max=10)
+int_pts <- data.frame(cbind(int_xs, int_ys))
+colnames(int_pts) <- c("x", "y")
+n_uof = nrow(obs_pts)
+n_sim = nrow(int_pts)
+n_knots <- nrow(knots)
+
+# defining covariate values for regression
+# in this case, the x-y coordinates themselves are the covariates
+covs <- as.matrix(obs_pts)
+sim_covs <- as.matrix(int_pts)  # sim stands for “simulation”
+
+# distance matrices
+knots_dists <- rdist(knots, knots)
+observed_pts_vs_knots_dists <- rdist(obs_pts, knots)
+integration_pts_vs_knots_dists <- rdist(int_pts, knots)
+
+## I’m using knots to reduce the computational cost (following this paper https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3712798/). 
+##  
+## Basically, instead of directly sampling the value of the GP on the observed data points, I first sample the value of the GP on the knots (which are much fewer than the number of data points) and then interpolate the value of the GP on the observed data points using Gaussian conditioning formulas.
+
+code <- nimbleCode({
+    beta0 ~ dnorm(0, sd = 100)
+    beta1 ~ dnorm(0, sd = 100)
+    beta2 ~ dnorm(0, sd = 100)
+    sigma ~ dinvgamma(1, 1)
+    XB[1:n_uof] <- beta0 + beta1*covs[,1] + beta2*covs[,2]
+    XB_int[1:n_sim] <- beta0 + beta1*sim_covs[,1] + beta2*sim_covs[,2]
+    knots_cov[1:n_knots, 1:n_knots] <- expcov(knots_dists[1:n_knots, 1:n_knots], phi=4, sigma=sigma)
+    observed_pts_vs_knots_cov[1:n_uof, 1:n_knots] <- expcov(observed_pts_vs_knots_dists[1:n_uof, 1:n_knots], phi=4, sigma=sigma)
+    integration_pts_vs_knots_cov[1:n_sim, 1:n_knots] <- expcov(integration_pts_vs_knots_dists[1:n_sim, 1:n_knots], phi=4, sigma=sigma)
+    gp_on_knots[1:n_knots] ~ dmnorm(knots_mean[1:n_knots], cov=knots_cov[1:n_knots, 1:n_knots])
+    gp_on_observed_pts[1:n_uof] <- observed_pts_vs_knots_cov[1:n_uof, 1:n_knots] %*% inverse(knots_cov[1:n_knots, 1:n_knots]) %*% asCol(gp_on_knots[1:n_knots])
+    gp_on_integration_pts[1:n_sim] <- integration_pts_vs_knots_cov[1:n_sim, 1:n_knots] %*% inverse(knots_cov[1:n_knots, 1:n_knots]) %*% asCol(gp_on_knots[1:n_knots])
+    integ <- (area / n_sim) * sum(exp(XB_int[1:n_sim] + gp_on_integration_pts[1:n_sim]))
+})
+
+## Constructing nimbleModel:
+
+Rmodel <- nimbleModel(
+    code, 
+    data = list(),
+    inits = list(
+        beta0 = 0,
+        beta1 = 0,
+        beta2 = 0,
+        sigma = 1, 
+        gp_on_knots = numeric(n_knots)
+    ),
+    constants = list(
+        sim_covs = sim_covs, 
+        covs = covs, 
+        area = 400,  # 20 * 20
+        n_uof = n_uof,
+        n_sim = n_sim,
+        knots_mean = numeric(n_knots),
+        knots_dists = knots_dists, 
+        observed_pts_vs_knots_dists = observed_pts_vs_knots_dists,
+        integration_pts_vs_knots_dists = integration_pts_vs_knots_dists,
+        n_knots = n_knots
+    )
+)
+
+Rmodel$initializeInfo()
+Rmodel$initializeInfo(TRUE)
+
+Rmodel$calculate()
+
+## Defining custom log likelihood:
+##  
+## I’m using a block sampler for all parameters instead of adding a separate sampler for each parameter - the second approach doesn’t seem to work (for example, the posterior samples for sigma look like they are from the prior).
+
+llFun <- nimbleFunction(
+    setup = function(model) { },
+    run = function() {
+        ll <- sum(model$XB + model$gp_on_observed_pts) - model$integ
+        returnType(double())
+        return(ll[1])
+    }
+)
+
+RllFun <- llFun(Rmodel)
+
+mcmcConf <- configureMCMC(Rmodel, nodes = NULL, monitors = c("beta0", "beta1", "beta2", "sigma", "gp_on_knots"))
+
+# this ensures that gp_on_knots is monitored alongside of other nodes, but also makes sure that no default samplers are assigned (we are adding a custom sampler just below)
+# adding custom samplers
+
+mcmcConf$addSampler(target = c("beta0", "beta1", "beta2", "sigma", "gp_on_knots"), 
+                    type = "RW_llFunction_block",
+                    control = list(llFunction = RllFun, includesTarget = F))
+
+# mcmcConf$addSampler(target = "beta1", type = "RW_llFunction",
+#                     control = list(llFunction = RllFun, includesTarget = FALSE))
+# 
+# mcmcConf$addSampler(target = "beta2", type = "RW_llFunction",
+#                     control = list(llFunction = RllFun, includesTarget = FALSE))
+# 
+# mcmcConf$addSampler(target = "sigma", type = "RW_llFunction",
+#                     control = list(llFunction = RllFun, includesTarget = FALSE))
+# 
+# mcmcConf$addSampler(target = "gp_on_knots", type = "RW_llFunction_block",
+#                     control = list(llFunction = RllFun, includesTarget = FALSE))
+
+mcmcConf$printSamplers() 
+
+Rmcmc <- buildMCMC(mcmcConf)
+
+comp_model <- compileNimble(Rmodel)
+comp_MCMC <- compileNimble(Rmcmc)
+
+mcmcConf$getUnsampledNodes()
+
+comp_MCMC$run(niter = 10000)
+
+samples <- as.matrix(comp_MCMC$mvSamples)
+
+
+## Here’s the code I’ve written for plotting the trace plots:
+
+samples <- as.matrix(comp_MCMC$mvSamples) %>% as.data.frame()
+n_samples <- nrow(samples)
+
+# trace plot for beta0, beta1 and beta2
+
+ggplot() + 
+    geom_line(aes(x=1:n_samples, y=samples[, 1]), color="red") +   # beta0
+    geom_line(aes(x=1:n_samples, y=samples[, 2]), color="green") +   # beta1
+    geom_line(aes(x=1:n_samples, y=samples[, 3]), color="blue") +   # beta2
+    xlab("Number of samples") + 
+    ylab("Value")
+
+# trace plot for the value of GP on a few knots (1st to 10th)
+
+melted_samples <- melt(cbind(1:n_samples, samples[, 4:14]), id.vars="1:n_samples")
+colnames(melted_samples)[1] <- "index"
+
+ggplot() +
+    geom_line(data=melted_samples, aes(x=index, y=value, color=variable)) +
+    xlab("Number of samples") +
+    ylab("Value") +
+    theme(legend.position="none")
+
+# trace plot for sigma
+
+ggplot() + geom_line(aes(x=1:n_samples, y=samples[, ncol(samples)]))
+
+
+
+
+
+## trying to debug crossvalidation CV of dyes model
+
+
+library(nimble)
+
+nimbleOptions('CV_buggy')
+nimbleOptions(CV_buggy = TRUE)
+nimbleOptions(CV_buggy = FALSE)
+nimbleOptions('CV_buggy')
+
+nimbleOptions('debug_CV')
+nimbleOptions(debug_CV = TRUE)
+nimbleOptions(debug_CV = FALSE)
+nimbleOptions('debug_CV')
+
+
+
+
+code <- nimbleCode({
+    for (i in 1:BATCHES) {
+        for (j in 1:SAMPLES) {
+            y[i,j] ~ dnorm(mu[i], tau.within)
+        }
+        mu[i] ~ dnorm(theta, tau.between)
+    }
+    theta ~ dnorm(0.0, 1.0E-10)
+    tau.within ~ dgamma(0.001, 0.001)
+    sigma2.within <- 1/tau.within
+    tau.between ~ dgamma(0.001, 0.001)
+    sigma2.between <- 1/tau.between
+})
+data <- list(y = matrix(c(1545, 1540, 1595, 1445, 1595,
+                          1520, 1440, 1555, 1550, 1440,
+                          1630, 1455, 1440, 1490, 1605,
+                          1595, 1515, 1450, 1520, 1560,
+                          1510, 1465, 1635, 1480, 1580,
+                          1495, 1560, 1545, 1625, 1445),
+                        nrow = 6, ncol = 5))
+constants <- list(BATCHES = 6, SAMPLES = 5)
+inits <- list(theta = 1500, tau.within = 1, tau.between =  1)
+foldFun <- function(i){
+    foldNodes_i <- paste0('y[', i, ', ]')  # will return 'y[1,]' for i = 1 e.g.
+    return(foldNodes_i)
+}
+RMSElossFunction <- function(simulatedDataValues, actualDataValues){
+    dataLength <- length(simulatedDataValues) # simulatedDataValues is a vector
+    SSE <- 0
+    for(i in 1:dataLength){
+        SSE <- SSE + (simulatedDataValues[i] - actualDataValues[i])^2
+    }
+    MSE <- SSE / dataLength
+    RMSE <- sqrt(MSE)
+    return(RMSE)
+}
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+
+conf <- configureMCMC(Rmodel)
+
+
+set.seed(0)
+
+crossValOutput <- runCrossValidate(MCMCconfiguration = conf,
+                                   k = 6,
+                                   foldFunction = foldFun,
+                                   lossFunction = RMSElossFunction,
+                                   MCMCcontrol = list(niter = 5000, nburnin = 500))
+
+
+
+## lapply(1:k, calcCrossVal,
+##        MCMCconfiguration,
+##        foldFunction,
+##        lossFunction,
+##        niter,
+##        nburnin,
+##        returnSamples,
+##        nBootReps,
+##        FALSE,
+##        silent)
+
+calcCrossVal(1, MCMCconfiguration, foldFunction, lossFunction, niter, nburnin, returnSamples, nBootReps, FALSE, silent)
+
+
+## buggy (old): 63.872534
+## new: 97.89058
+crossValOutput$CVvalue
+
+## buggy (old): 0.0023289839
+## new: 1.042394
+crossValOutput$CVstandardError
+
+## buggy (old): c(56.525316, 41.326957, 73.621281, 61.466634, 109.806489, 40.488530)
+## new: c(100.56460, 79.60581, 92.88915, 105.16338, 112.89869, 96.22186)
+sapply(crossValOutput$foldCVinfo, function(x) x['foldCVvalue'])
+
+## buggy (old): c(0.0052012467, 0.0058034916, 0.0060221136, 0.0059338851, 0.0045952414, 0.0064763733))
+## new: c(2.768838, 1.402500, 2.177210, 4.491977, 1.136694, 1.809252))
+sapply(crossValOutput$foldCVinfo, function(x) x['foldCVstandardError'])
+
+
+crossValOutput$foldCVinfo
+##
+## NEW:
+##         foldCVvalue foldCVstandardError 
+## 1         100.564595            2.768838 
+## 2           79.60581             1.40250 
+## 3           92.88915             2.17721 
+## 4         105.163379            4.491977 
+## 5         112.898689            1.136694 
+## 6          96.221865            1.809252 
+##
+## buggy (old):
+##         foldCVvalue foldCVstandardError 
+## 1       56.525316158         0.005201247 
+## 2       41.326956792         0.005803492 
+## 3       73.621280571         0.006022114 
+## 4       61.466634332         0.005933885 
+## 5      109.806488561         0.004595241 
+## 6       40.488529767         0.006476373 
+##
+##
+
+
+
+
+##
+##
+##
+##
+
+
+code <- nimbleCode({
+    x[1, 1:2] <- nimC(1, 0)
+    x[2, 1:3] <- nimC(1, 0, 0)
+})
+
+Rmodel <- nimbleModel(code)
+
+Rmodel$x
+
+Rmodel$getNodeNames()
+Rmodel$expandNodeNames('x')
+
+code <- nimbleCode({
+    for (i in 1:ns){
+        truex[i] ~ dcat(p[1:4])
+        biopsies[i,] ~ dmulti(error[truex[i], 1:XX[i]], nbiops[i])
+    }
+    error[1, 1:4] <- c(1, 0, 0, 0)
+    error[2, 1:2] ~ ddirch(prior[2, 1:2])
+    error[3, 1:3] ~ ddirch(prior[3, 1:3])
+    error[4, 1:4] ~ ddirch(prior[4, 1:4])
+    p[] ~ ddirch(prior[4,1:4])
+})
+ns <- 157
+p <- c(0.25, 0.25, 0.25, 0.25)
+truex <- rep(4, ns)
+prior <- structure(c(1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1), .Dim = as.integer(c(4,4)))
+error <- matrix(c(1,0,0,0,
+                  .5,.5,NA,NA,
+                  .1,.1,.8,NA,
+                  .1,.1,.1,.7), nrow=4, byrow=TRUE)
+inits <- list(p=p, truex=truex, error = error)
+biopsies <-structure(c(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 
+                       1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 
+                       3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 
+                       3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 
+                       1, 1, 1, 1, 1, 1, 1, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 1, 1, 
+                       1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 
+                       1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 
+                       2, 2, 2, 2, 2, 2, 2, 2, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 
+                       2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 
+                       3, 3, 0, 1, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 
+                       1, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 
+                       3, 3), .Dim = as.integer(c(157, 4)))
+nbiops <- c(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 
+            2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 
+            2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 
+            3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 
+            3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 
+            3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 
+            3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3)
+constants <- list(ns=ns, prior=prior, nbiops = nbiops, XX=c(4,2,3,4))
+data <- list(biopsies=biopsies)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+
+
+
+
+readBUGSmodel(file.path(tempdir(), "biops.bug"))
+
+readLines("/var/folders/5s/5tb6_7ln4q32j4rh8kfc0bh40000gn/T//RtmpGYn4mI/biops.bug")
+
+options(error = recover)
+test_mcmc(model = file.path(tempdir(), "biops.bug"), name = 'biops', inits = file.path(tempdir(), "biops-inits.R"), data = system.file('classic-bugs', 'vol2', 'biops','biops-data.R', package = 'nimble'), numItsC = 1000, avoidNestedTest = TRUE)
+
+
+
+
+1
+
+library(nimble)
+##build(devel)
+source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
+
+library(testthat)
+
+
+
+
+system.in.dir(paste("echo 'var\n
+    biopsies[ns,4], #  grades observed in ith session (multinomial)\n
+    nbiops[ns],     # total number of biopsies in ith session\n
+    truex[ns],       # true state in ith session\n
+    error[4,4],     # error matrix in taking biopsies\n
+    prior[4,4],     # prior parameters for rows of error[,]\n
+    p[4];           # underlying   incidence of true  states\n
+model {\n
+   for (i in 1:ns){\n
+      truex[i]       ~ dcat(p[]);\n
+      biopsies[i,]  ~ dmulti(error[truex[i],],nbiops[i]); \n
+   }\n
+   error[1, 1:4] <- c(1, 0, 0, 0)\n
+    error[2, 1:2] ~ ddirch(prior[2, 1:2])\n
+    error[3, 1:3] ~ ddirch(prior[3, 1:3])\n
+    error[4, 1:4] ~ ddirch(prior[4, 1:4])\n
+   p[]       ~ ddirch(prior[4,]);     # prior for p\n
+   }' >> ", file.path(tempdir(), "biops.bug")), dir = system.file('classic-bugs','vol2','biops', package = 'nimble'))
+
+system.in.dir(paste("sed 's/true/truex/g' biops-inits.R > ", file.path(tempdir(), "biops-inits.R")), dir = system.file('classic-bugs','vol2','biops', package = 'nimble'))
+
+system.in.dir(paste("echo 'error <- matrix(c(1,0,0,0, .5, .5, 0, 0, 1/3,1/3,1/3,0,1/4,1/4,1/4,1/4), 4,4, byrow=T)'  >> ", file.path(tempdir(), "biops-inits.R")), dir = system.file('classic-bugs','vol2','cervix', package = 'nimble'))
+
+testBUGSmodel('biops', dir = "", model = file.path(tempdir(), "biops.bug"), data = system.file('classic-bugs','vol2','biops','biops-data.R', package = 'nimble'),  inits = file.path(tempdir(), "biops-inits.R"),  useInits = TRUE)
+
+test_mcmc(model = file.path(tempdir(), "biops.bug"), name = 'biops', inits = file.path(tempdir(), "biops-inits.R"), data = system.file('classic-bugs', 'vol2', 'biops','biops-data.R', package = 'nimble'), numItsC = 1000, avoidNestedTest = TRUE)
+
+
+
+code <- nimbleCode({
+    y[1:3] ~ dmnorm(mu[1:3], pr[1:3,1:3])
+    mu[1:2] ~ dmnorm(mu0[1:2],pr[1:2,1:2])
+    mu[3] <- 0
+})
+
+
+Rmodel <- nimbleModel(code, data = list(y = rnorm(3)),
+                      inits = list(mu = rnorm(3)))
+
+Rmodel <- m
+
+conf <- configureMCMC(Rmodel)
+
+debug(Rmodel$checkConjugacy)
+undebug(nimble:::conjugacyRelationshipsObject$checkConjugacy)
+undebug(nimble:::conjugacyRelationshipsObject$checkConjugacy_new)
+
+
+conjugacyObj <-nimble:::conjugacyRelationshipsObject$conjugacys[['dnorm']]
+debug(conjugacyObj$checkConjugacyOneDep)
+
+debug(cc_checkLinearity)
+undebug(cc_checkLinearity)
+
+Rmodel$checkConjugacy('mu[1:4]')
+Rmodel$checkConjugacy('beta[1]')
+
+
+linearityCheckExprRaw
+linearityCheckExpr
+targetNode
+
+cc_expandDetermNodesInExpr(model, linearityCheckExprRaw, targetNode = targetNode)
+cc_checkLinearity(linearityCheckExpr, targetNode)
+
+Rmodel$getDependencies('beta[1]')
+
+expect_true(conf$samplerConfs[[8]]$name == 'CAR_normal')
+pppp
+class(Rmcmc$samplerFunctions$contentsList[[1]])
+
+class(Rmcmc$samplerFunctions$contentsList[[8]]$componentSamplerFunctions$contentsList[[1]])
+expect_true(class(Rmcmc$samplerFunctions$contentsList[[8]]$componentSamplerFunctions$contentsList[[1]]) == 'CAR_scalar_conjugate')
+
+
+
+code <- nimbleCode({
+    for(i in 1:n) 
+        y[i] ~ dnorm(b0 + inprod(beta[1:p], X[i, 1:p]), 1)
+    for(i in 1:p) 
+        beta[i] ~ dnorm(0, 1)
+    b0 ~ dnorm(0, 1)
+})
+constants <- list(n = 5, p = 3)
+data <- list(y = rnorm(constants$n),
+             X = matrix(rnorm(constants$n * constants$p), constants$n))
+inits <- list(b0 = 1, beta = rnorm(constants$p))
+Rmodel <- nimbleModel(code, data = data, constants = constants)
+
+conf <- configureMCMC(Rmodel)
+pppp
+
+
+
+code <- nimbleCode({
+    S[1:N] ~ dcar_normal(adj[1:L], weights[1:L], numneighbours[1:N], 1)
+    for(i in 1:K) {
+        beta[i] ~ dnorm(0, 1)
+    }
+    for(i in 1:N){
+        eta[i] <- inprod(beta[1:K]^2, x[1:K])
+        mu[i] <- S[i] + eta[i]
+        y[i] ~ dnorm(mu[i], 1)
+    }
+})
+
+
+nimble:::cc_expandDetermNodesInExpr(Rmodel, quote(eta[1]))
+
+Rmodel$checkConjugacy('beta[1]')
+
+
+
+K = 4
+# nimble code
+require("nimble")
+require("evaluate")
+
+# Create indices of main, interaction effects as nimbleList: la_index
+library("utils")
+
+la_index_mat = la_index_list = vector("list",K)
+
+v = character(K)
+
+for (k in 1:K){
+    la_index_mat[[k]] = combn(1:K,k)
+    v[k] = paste("v",as.character(k),sep="")
+    la_index_list[[k]] = nimbleType(name = v[k], type = 'double', dim = 2)
+}
+
+la_index_list_def <- nimbleList(la_index_list)
+
+txt = character()
+for (k in 1:K){
+    if (k==1){point = ""}else{point = ", "}
+    txt = paste(txt, point, v[k]," = la_index_mat[[",as.character(k),"]]", sep="")
+}
+txt = paste("la_index = la_index_list_def$new(",txt,")",sep="")
+
+
+
+
+
+a <- eval(parse(text=txt))
+
+a
+
+la_index
+
+
+K <- 4
+la_index_list <- lapply(1:K, function(k)
+    nimbleType(name = paste0('v',k), type = 'double', dim = 2))
+la_index_list_def <- nimbleList(la_index_list)
+argList <- lapply(1:K, function(k) combn(1:K,k))
+names(argList) <- paste0('v', 1:K)
+do.call(la_index_list_def$new, argList)
+
+
+
+
+
+
+
+constants$n.occasions_rel[1]   ## 47 47
+
+## st goes from 1:2
+##  i goes from 1:47
+
+
+data$rec.obs
+
+constants$FL
+
+rec.obs[1:47, (7*4*96+(j-1)*96+(jj-1)*12+k), 1:2]
+
+aa <- numeric()
+for(jj in 2:8) {
+    for(k in 7:12) {
+        for(j in 1:2) {
+            aa <- c(aa, (7*4*96+(j-1)*96+(jj-1)*12+k))
+        }
+    }
+}
+
+
+
+ind <- which(!is.na(data$rec.obs[1:47, aa, 1:2]) & data$rec.obs[1:47, aa, 1:2]>0, arr.ind = TRUE)
+
+dim(ind)
+ind_aa <- ind
+ind_aa[,2] <- aa[ind[,2]]
+
+ind_aa
+check <- apply(ind_aa, 1, function(x) data$rec.obs[x[1],x[2],x[3]])
+class(check)
+length(check)
+any(is.na(check))
+all(check > 0)
+check
+
+ind_aa
+
+
+MRConf <- configureMCMC(Rmodel, print=TRUE, useConjugacy = FALSE, nodes = NULL)
+
+MRConf
+MRConf$printSamplers()
+
+MRConf$removeSamplers(c("LF", "LFR"))
+MRConf$addSampler(target = "LF", type = "RW")
+MRConf$addSampler(target = "LFR", type = "RW", scalarComponents = TRUE)
+
+Rmcmc <- buildMCMC(MRConf)
+
+## segfault in nimbleHMC
+
+
+build(ADoak)
+library(nimbleHMC)
+
+code <- nimbleCode({
+    for (i in seq(1, n - 1)) {
+        for (j in seq(i + 1, n)) {
+            p[i, j] <- 1 / (1 + (angular_distance(theta[i], theta[j], b, pi_) * radius_div_mu / kappa[i] / kappa[j])^beta)
+            adjacency[i, j] ~ dbern(p[i, j])
+        }
+    }
+    for (i in 1:n) {
+        theta[i] ~ dunif(-pi_, pi_)
+        kappa[i] ~ dunif(kappa_min, kappa_max)
+    }
+})
+
+model <- nimbleModel(
+    model_code,
+    constants = list(n = n, beta = beta, radius_div_mu = radius_div_mu,
+                     kappa_min = kappa_min, kappa_max = kappa_max,
+                     gamma = gamma, b = b, pi_ = pi),
+    data = list(adjacency = adjacency),
+    inits = list(theta = theta, kappa = kappa),
+    buildDerivs = TRUE
+)
+
+hmc <- buildHMC(model)
+compiled_model <- compileNimble(model)
+compiled_hmc <- compileNimble(hmc, project = model)
+samples <- runMCMC(compiled_hmc, nchain = chains, niter = 1000, nburnin = 500)
+
+
+n <- 10
+x <- array(NA, c(n,n))
+for (i in seq(1, n - 1)) {
+    for (j in seq(i + 1, n)) {
+        x[i,j] <- 0
+    }
+}
+
+x
+
+
+## testing how lists work inside of constants list
+
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in 1:N) {
+        for(j in cls[[i]]) {
+            x[i,j] <- 0
+        }
+    }
+})
+N <- 3
+cls <- lapply(1:N, function(x) 2^(1:x))
+## [[1]]
+## [1] 1
+##  
+## [[2]]
+## [1] 1 2
+##  
+## [[3]]
+## [1] 1 2 3
+constants <- list(N = N, cls = cls)
+
+Rmodel <- nimbleModel(code, constants)
+Rmodel$calculate()
+## 0
+
+Rmodel$getNodeNames()
+## [1] "x[1, 1]" "x[2, 1]" "x[2, 2]" "x[3, 1]" "x[3, 2]" "x[3, 3]"
+
+Cmodel <- compileNimble(Rmodel)
+
+Cmodel$calculate()
+## 0
+
+Cmodel$getNodeNames()
+
+Rmodel$x
+Cmodel$x
+
+
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    for(i in cls) {
+        x[i] <- 0
+    }
+})
+(cls <- 1:5)
+
+constants <- list(cls = cls)
+
+Rmodel <- nimbleModel(code, constants)
+Rmodel$calculate()
+## 0
+
+Rmodel$getNodeNames()
+## [1] "x[1, 1]" "x[2, 1]" "x[2, 2]" "x[3, 1]" "x[3, 2]" "x[3, 3]"
+
+
+
+rrr
+load('~/github/rebecca_whitlock/save.RData')
+ls()
+> #Nrep=Nseq,obs_rep=r.obs 
+> #omega=diag(nstocks)
+> 
+> source("make_inits_mark_recap_spatial_simple_move.r")
+Error in file(filename, "r", encoding = encoding) : 
+  cannot open the connection
+Calls: source -> file
+In addition: Warning message:
+In file(filename, "r", encoding = encoding) :
+  cannot open file 'make_inits_mark_recap_spatial_simple_move.r': No such file or directory
+Execution halted
+
+
+
+
+
+library(nimbleHMC)
+library(mra) 
+data(dipper.data) 
+y <- dipper.data[,1:7]
+
+code <- nimbleCode({
+    phi[1] ~ dunif(0, 1)
+    phi[2] ~ dunif(0, 1)
+    p ~ dunif(0, 1)
+    for(i in 1:N) {
+        x[i, first[i]] <- 1
+        for(t in (first[i]+1):T) {
+            x[i,t] ~ dbern(phi[f[t]] * x[i,t-1])
+            y[i,t] ~ dbern(p * x[i,t])
+        }
+    }
+})
+
+Rmodel <- nimbleModel(
+    code,
+    constants = list(N = nrow(y),
+                     T = ncol(y),
+                     first = apply(y, 1, which.max),
+                     f = c(1,2,2,1,1,1,1)),
+    data = list(y = y),
+    inits = list(phi = c(0.5, 0.5),
+              p = 0.5,
+              x = array(1, dim(y))),
+    buildDerivs = TRUE
+)
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+addHMC(conf)
+addHMC(conf, replace = TRUE)
+conf
+
+conf <- configureMCMC(Rmodel)
+addHMC(conf, nodes = c('phi'))
+addHMC(conf, nodes = c('phi', 'p'))
+addHMC(conf, nodes = c('p'))
+addHMC(conf, nodes = c('p', 'x'))
+addHMC(conf, nodes = c('x'))
+
+
+conf
+
+Rmodel$getNodeNames
+
+conf <- configureMCMC(Rmodel)
+
+## RW sampler (3)
+##   - phi[]  (2 elements)
+##   - p
+## binary sampler (848)
+##   - x[]  (848 elements)
+
+conf$replaceSamplers(target = c("phi", "p"), type = "HMC")
+conf$printSamplers(byType = TRUE)
+
+## HMC sampler (1)
+##   - phi, p 
+## binary sampler (848)
+##   - x[]  (848 elements)
+
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, niter = 20000, nburnin = 10000)
+
+samplesSummary( samples)
+samplesSummary(samples, round = 2)
+##            Mean    Median    St.Dev. 95%CI_low 95%CI_upp
+##p      0.8950736 0.8975031 0.02884604 0.8322880 0.9443211
+##phi[1] 0.5770015 0.5776852 0.02767979 0.5221968 0.6302397
+##phi[2] 0.4988479 0.4985191 0.05509090 0.3918466 0.6057851
+
+
+basicMCMCplots::samplesPlot(samples,
+                            legend.location = 'topleft',
+                            width=4.5, height=2,
+                            file='~/github/nimble/nimbleHMC/joss/paper/samplesPlot.pdf')
+
+
+
+
+
+system("osascript -e 'tell application \"Acrobat\" to quit'")
+setwd('~/github/nimble/nimbleHMC/joss/paper')
+f <- 'paper.md'
+library(rmarkdown)
+rmarkdown::render(f, output_format = 'pdf_document')
+system('open paper.pdf')
+
+
+
+
+
+## making nimbleHMC example for JOSS paper
+
+library(nimbleHMC)
+
+code <- nimbleCode({
+    phi[1] ~ dunif(0, 1)
+    phi[2] ~ dunif(0, 1)
+    p ~ dunif(0, 1)
+    for(i in 1:N) {
+        for(t in (first[i]+1):T) {
+            x[i,t] ~ dbern(phi[flood[t]] * x[i,t-1])
+            y[i,t] ~ dbern(p * x[i,t])
+        }
+    }
+})
+
+library(mra)
+data(dipper.data)
+y <- dipper.data[,1:7]
+
+Rmodel <- nimbleModel(
+    code,
+    constants = list(N = nrow(y),
+                     T = ncol(y),
+                     first = apply(y, 1, which.max),
+                     flood = c(1,2,2,1,1,1,1)),
+    data = list(y = y),
+    inits = list(phi = c(0.5, 0.5),
+              p = 0.5,
+              x = array(1, dim(y))),
+    buildDerivs = TRUE
+)
+
+conf <- configureMCMC(Rmodel)
+##RW sampler (3)
+##  - phi[]  (2 elements)
+##  - p
+##binary sampler (848)
+##  - x[]  (848 elements)
+conf$replaceSamplers(target = c('phi','p'), type = 'HMC')
+conf$printSamplers(byType = TRUE)
+##HMC sampler (1)
+##  - phi, p 
+##binary sampler (848)
+##  - x[]  (848 elements)
+
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, niter = 20000, nburnin = 10000)
+
+samplesSummary(samples)
+##            Mean    Median    St.Dev. 95%CI_low 95%CI_upp
+##p      0.8950736 0.8975031 0.02884604 0.8322880 0.9443211
+##phi[1] 0.5770015 0.5776852 0.02767979 0.5221968 0.6302397
+##phi[2] 0.4988479 0.4985191 0.05509090 0.3918466 0.6057851
+
+
+
+
+
+
+
+
+## I don't know what this was from (below here):
+
+
+library(nimble)
+
+
+dMyDist <- nimbleFunction(
+   run = function(x = double(), theta = double(), log = integer(default = 1)) {    ## "y" will take the place of "x", and "a+b" will take the place of "theta"
+      lp <- dnorm(theta, 0, 1)    ## you could use any distribution here, in your case it looks like dpois()      
+      returnType(double())
+      if(log) return(lp) else return(exp(lp))
+   }
+)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dnorm(0, 1)
+    y ~ dMyDist(theta = a + b)
+})
+
+## definitely specify a data value for y, so the model does not try to simulate it
+data <- list(y = 0)    ## the data value you provide for y does not matter
+inits <- list (a=0, b=0)
+constants <- list()
+
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+
+1
+setwd('~/github/nimble/nimbleHMC/joss/paper')
+f <- 'paper.md'
+library(rmarkdown)
+rmarkdown::render(f, output_format = 'pdf_document')
+system('open paper.pdf')
+
+
+
+
+library(nimbleHMC)
+library(testthat)
+        
+
+
+
+rm(list=ls())
+
+resultFiles <- list.files('~/github/RWishart_paper/sims/results', '^d', full.names = TRUE)
+
+f2 <- grep('d2_rho0.5[N_]', resultFiles, value = TRUE)
+
+load(f2[1])
+load(f2[2])
+
+ls()
+
+essAr2 <- essAr
+essAr2
+time
+
+essAr
+time
+
+    
+
+
+
+
+combinedFile <- '~/github/RWishart_paper/sims/results/allCombined.RData'
+load(combinedFile)
+library(ggplot2)
+library(dplyr)
+
+
+
+
+
+
+x <- seq(0.01, 5, by=0.1)
+
+plot(-1,-1, xlim = range(x), ylim = c(0,1))
+lines(x, exp(-x), col = 'red')
+lines(x, x^(-1/2), col = 'blue')
+lines(x, x^(-3), col = 'green')
+lines(x, x^(-2.7), col = 'black')
+lines(x, x^(1/3), col = 'green')
+lines(x, x^(1/9), col = 'blue')
+
+
+for(n in 1:10) {
+    cat(paste0('================= n = ', n, '\n'))
+    x <- 1:n
+    ind <- x*(x-1)/2 + 1
+    print(ind)
+}
+
+
+a <- c(1,2,-1.5)
+(A <- array(c(a[1],a[3],a[3],a[2]), c(2,2)))
+chol(A)
+
+solve(A)
+
 
 {
     dd <- FALSE
@@ -7,15 +1755,19 @@
 }
 
 
-
+p
 ## testing non-conjugate Wishart distribution in jags
 ## and in stan
 
+
 library(nimble)
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+nimbleOptions('buildDerivs')
 
 code <- nimbleCode({
     Q[1:3,1:3] ~ dwish(I[1:3,1:3], 5)
     y[1:3] ~ dmnorm(mu0[1:3], Q[1:3,1:3])
+    a <- y2  + 1
     y2 ~ dexp(Q[1,1])
 })
 
@@ -24,8 +1776,16 @@ constants <- list(mu0 = rep(0,3), I = diag(3))
 data <- list(y = c(1,2,3), y2=1)
 inits <- list(Q = diag(3))
 
-Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
 Rmodel$calculate()
+
+
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+addHMC(conf)
+addHMC(conf, replace = TRUE)
+conf
+
 
 conf <- configureMCMC(Rmodel)
 conf$printSamplers()
@@ -33,6 +1793,33 @@ conf$printSamplers()
 ## [1] conjugate_dwish_dmnorm_identity sampler: Q[1:3, 1:3]
 ######## non-conjuate case:
 ## [1] RW_wishart sampler: Q[1:3, 1:3]
+
+conf$addSampler(c('y','a'), 'HMC')
+conf$addSampler('Q', 'HMC')
+
+conf$addSampler('y2', 'RW')
+conf$addSampler('Q', 'RW_block')
+pppp
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+##
+mcmc <- Cmcmc
+mcmc$samplerFunctions$contentsList[[3]]$setScale(2)
+mcmc$samplerFunctions$contentsList[[3]]$setPropCov(3*diag(9))
+mcmc$samplerFunctions$contentsList[[3]]$scale
+mcmc$samplerFunctions$contentsList[[3]]$propCov
+mcmc$samplerFunctions$contentsList[[3]]$chol_propCov
+mcmc$samplerFunctions$contentsList[[3]]$chol_propCov_scale
+#
+mcmc$samplerFunctions$contentsList[[2]]$setScale(23)
+mcmc$samplerFunctions$contentsList[[2]]$setPropCov(3*diag(9))
+mcmc$samplerFunctions$contentsList[[2]]$reset()
+mcmc$samplerFunctions$contentsList[[2]]$scale
+mcmc$samplerFunctions$contentsList[[2]]$scaleOriginal
 
 
 constsAndData <- c(constants, data)
@@ -863,11 +2650,13 @@ library(nimble)
 
 code <- nimbleCode({
     a ~ dnorm(0, 1)
+    b ~ dnorm(a^2 + 1, 1)
     y ~ dexp(a^2 + 10)
+    y2 ~ dexp(b^2 + 10)
 })
 constants <- list()
-data <- list(y = 5)
-inits <- list(a = 0)
+data <- list(y = 5, y2 = 10)
+inits <- list(a = 0, b=0)
 
 Rmodel <- nimbleModel(code, constants, data, inits)
 Rmcmc <- buildMCMC(Rmodel)
@@ -876,6 +2665,30 @@ Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
 
 nimble:::clearCompiled(Cmodel)
 nimble:::clearCompiled(Cmcmc)
+
+
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+samples <- nimbleMCMC(Rmodel, niter=100)
+samples <- nimbleMCMC(Rmodel, niter=100, monitors = 'b')
+##samples <- nimbleMCMC(Rmodel, niter=100, monitors = c('a','b'))
+
+Rmcmc <- buildMCMC(Rmodel)
+Rmcmc <- buildMCMC(Rmodel, monitors = 'b')
+Rmcmc <- buildMCMC(Rmodel, monitors = c('a','b'))
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+Cmcmc$run(niter = 100)
+samples <- as.matrix(Cmcmc$mvSamples)
+
+
+
+dim(samples)
+head(samples)
+samplesSummary(samples)
+samples
 
 
 Rmodel$calculate()
@@ -1685,11 +3498,14 @@ constants <- list(N = N)
 data <- list(y = 0)
 inits <- list(tau = 1, omega = 0.5, betaHabCovs = rep(0, N), w = rep(0, N))
 
-Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
 
 Rmodel$calculate()   ## -19.97234    ## with y=0: -20.89128
 
 conf <- configureMCMC(Rmodel)
+conf$addSampler(c('tau', 'omega'), 'HMC')
+conf$addSampler(c('tau', 'omega', 'w'), 'HMC')
+Rmcmc <- buildMCMC(conf)
 pppp
 
 ##configureRJ(conf, targetNodes = c('betaHabCovs'))

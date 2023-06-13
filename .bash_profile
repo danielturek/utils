@@ -97,6 +97,7 @@ alias hpcc='ssh dbt1@hpcc.williams.edu'
 alias status='git status'
 alias st='git status'
 alias dif=~/github/utils/my_github_dif.sh
+alias difDevel='git diff $(git merge-base --fork-point devel)'
 alias pull='git pull'
 alias push='git push'
 alias checkout='git checkout'
