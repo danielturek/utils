@@ -117,6 +117,7 @@ alias nim='cd ~/github/nimble/nimble/packages/nimble/R'
 
 set -o noclobber
 
+PATH="$PATH:/opt/homebrew/bin/"
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!

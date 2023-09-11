@@ -1,4 +1,124 @@
 
+
+
+
+
+
+
+
+
+
+
+library(nimble)
+
+
+
+
+nfDef <- nimbleFunction(
+    setup = function(x) {},
+    run = function() {
+        print(x)
+        if(x == "a") print(1)
+        f(1)
+    },
+    methods = list(
+        f = function(arg1 = double()) {
+            print('----')
+            print(arg1)
+            print(x)
+            print('----')
+            print(arg1, x, 3, 'xx')
+            stop('stsop message')
+            print('----')
+        }
+    )
+)
+
+Rnf <- nfDef('a')
+##Rnf <- nfDef('b')
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
+
+stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
+for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
+
+
+
+
+x <- c(1.9, 1.99, 1.999, 2.001, 2.01, 2.1)
+(x^3 - 8) / (x^2 - 4)
+
+
+x <- c(9.9, 9.99, 9.999, 10.001, 10.01, 10.1)
+(x-5) / (x-10)^2
+
+
+xs <- seq(-2, 2, by = 0.01)
+ys <- xs ^ 1.5
+plot(xs, ys, type = 'l')
+
+(-2) ^ 2.1
+
+
+github/nimble/nimble/packages/nimble/R/s
+
+
+library(nimbleHMC)
+
+code <- nimbleCode({
+    mu ~ dnorm(0, sd = 1000)
+    sigma ~ dunif(0, 1000)
+    for(i in 1:10) {
+        x[i] ~ dnorm(mu, sd = sigma)
+    }
+})
+data <- list(x = c(2, 5, 3, 4, 1, 0, 1, 3, 5, 3))
+inits <- function() list(mu = rnorm(1,0,1), sigma = runif(1,0,10))
+
+debug(nimbleHMC)
+
+out <- nimbleHMC(code, data = data, inits = inits,
+                 monitors = c("mu", "sigma"), thin = 10,
+                 niter = 20000, nburnin = 1000, nchains = 3,
+                 summary = TRUE, WAIC = TRUE)
+
+code <- nimbleCode({
+    a[1] ~ dnorm(0, 1)
+    a[2] ~ dnorm(a[1]+1, 1)
+    a[3] ~ dnorm(a[2]+1, 1)
+    b ~ dbern(0.5)
+    d ~ dnorm(sum(a[1:3]) + b, sd=2)
+})
+
+constants <- list()
+data <- list(d = 5)
+inits <- list(a = rep(0, 3), b = 0)
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
+
+Rmcmc <- buildHMC(Rmodel)
+
+conf <- configureHMC(Rmodel)
+
+conf$removeSampler('b')
+conf
+Rmcmc <- buildHMC(conf)
+
+
 library(nimble)
 Rmodel <- nimbleModel(quote({ x ~ dnorm(0, 1) }))
 Cmodel <- compileNimble(Rmodel)

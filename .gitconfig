@@ -1,8 +1,3 @@
 [user]
-	name = danielturek
 	email = danielturek@gmail.com
-[core]
-	editor = emacs
-	autocrlf = input
-[push]
-	default = simple
+	name = Daniel Turek

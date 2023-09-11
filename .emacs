@@ -7,6 +7,13 @@
 ;; is loaded after `custom-file':
 ;; ~/Library/Preferences/Aquamacs Emacs/Preferences
 ;; _____________________________________________________________________________
+
+;; Added by Package.el.  This must come before configurations of
+;; installed packages.  Don't delete this line.  If you don't want it,
+;; just comment it out by adding a semicolon to the start of the line.
+;; You may delete these explanatory comments.
+(package-initialize)
+
 (setq backup-directory-alist `(("." . "~/.emacssave")))
 
 ;; this would allow aquamacs to detect rmd-mode automatically,
@@ -209,7 +216,9 @@ If there is still something left do do start the next latex-command."
          (setq TeX-texify-sentinel (process-sentinel proc))
          (set-process-sentinel proc 'TeX-texify-sentinel))))))
 
-(add-hook 'LaTeX-mode-hook '(lambda () (local-set-key (kbd "C-c C-c") 'TeX-texify))) 
+(add-hook 'LaTeX-mode-hook '(lambda () (local-set-key (kbd "C-c C-c") 'TeX-texify)))
+
+(load-theme 'tango-dark)
 
 
 
