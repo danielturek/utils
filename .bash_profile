@@ -32,6 +32,12 @@
 # after the Anaconda insallation, run from terminal (to remove "(base)" from bash prompt):
 # $ conda config --set changeps1 False
 
+# to get polymode (enter into R style-editing in Rmarkdown files),
+# accessed by mmy own shortcut: C-c C-m, in Aquamacs, run:
+# M-x package-install [ENTER] polymode      [ENTER]
+# M-x package-install [ENTER] poly-markdown [ENTER]
+# M-x package-install [ENTER] poly-R        [ENTER]
+
 # Macbook FIXES
 # 
 # Apple Technical Support (Education): 1-800-800-2775, option 3
