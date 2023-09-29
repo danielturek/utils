@@ -1,8 +1,241 @@
+library(readxl)
+simgarchr <- read_excel("simgarchr.xlsx")
+simulated_returns=simgarchr
+plot(simulated_returns)
+
+
+##n<-length(as.numeric(simulated_returns$simulated_returns))
+
+# Use R nimble library
+library(nimble)
+## BUGS code
+# Model and prior
+
+
+myCode <- nimbleCode({
+    # Likelihood
+    for (t in 1:n) {   ## changed 1:1 to 1:n
+        y[t] ~ dnorm(0, sigma_h[t]^2)
+        sigma_h[t] <- exp(h[t])
+    }
+    ##Priors  
+    omega ~ dgamma(omega_star, 0.25)
+    alpha_beta[ 1: 3] ~ ddirch(alpha_beta_star[1:3])
+    h[1] <- omega/(1-alpha+beta) ### change the [1] after omega should be removed
+    for(t in 2:n) {
+        h[t] <- sqrt(omega + alpha* pow(y[t-1], 2)  ### change the [1] after omega should be removed
+                     + beta * pow(h[t-1], 2))
+    }
+    alpha <- alpha_beta[1]  ##[1,1]   ## change
+    beta <- alpha_beta[2]   ##[1,2]   ## change
+    alpha_beta_star[1:3]<-c(alpha_star[1],beta_star[1],phi[1])
+})
+
+n <- 1510   ## added this line
+
+# Constants, Data, Initial values for MCMC
+myConstants <- list( n = n )
+myData      <- list( y = rnorm(n)) ##as.numeric(simulated_returns$simulated_returns))   ## changed the data
+myInits     <- list( h = rnorm(n+1, 0, 1), alpha_star = runif(1),beta_star=runif(1),phi=1, omega = 1 , alpha_beta =c(0,0,0),alpha=0,beta=0,omega_star=rgamma(1,2,2))
+
+##dimensions <- list(
+##    h<-c(1510),
+##    y<-c(1509,1),
+##    alpha_star<-c(1),
+##    beta_star<-c(1),
+##    omega<-c(1),
+##    phi<-c(1),
+##    alpha_beta<-c(3),
+##    alpha<-c(1),
+##    beta<-c(1),
+##    mu<-c(1)
+##)
+
+dimensions <- list(   ## change.  Need to use "=" inside list, rather than "<-"
+    h = c(1510),
+    y = 1510, ##c(1509,1),   ## change here
+    ##alpha_star = c(1), 
+    ##beta_star = c(1),   ## don't include dimensions for scalars, all lines below
+    ##omega = c(1),
+    ##phi = c(1),
+    alpha_beta = c(3)
+    ##alpha = c(1),
+    ##beta = c(1),
+    ##mu = c(1)
+)
+
+model <- nimbleModel(myCode, data=myData, inits=myInits, dimensions = dimensions)
 
 
 
 
 
+library(nimble)
+
+code <- nimbleCode({
+    omega ~ dgamma(omega_star, 0.25)
+    alpha_beta[ 1: 3] ~ ddirch(alpha_beta_star[1:3])
+    for(i in 1:3) {
+        x[i] <- 1
+    }
+    yy[1:3] <- c(x[1], x[2], x[3])
+})
+
+Rmodel <- nimbleModel(code)
+
+conf <- configureMCMC(Rmodel)
+
+
+library(nimble)
+
+code <- nimbleCode({
+    p[1] <- 0.1
+    p[2] <- 0.2
+    p[3] <- 0.3
+    p[4] <- 0.4
+    x[1:4] ~ dmulti(size = 1, prob = p[1:4])
+})
+
+Rmodel <- nimbleModel(code, inits = list(x = c(1,0,0,0)))
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('x', 'RW_multinomial')
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 1000000)
+
+apply(samples, 2, mean)
+##    x[1]    x[2] 
+## 0.17789 0.82211
+
+
+
+code <- nimbleCode({...})
+constants <- list(...)
+data <- list(...)
+inits <- list(...)
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+llFunction_definition <- nimbleFunction(
+    setup = function(model) { },
+    run = function() {
+        returnType(double())
+        return(model$Likelihoods)
+    }
+)
+my_llFunction <- llFunction_definition(Rmodel)
+
+conf <- configureMCMC(Rmodel)
+conf$addSampler(type = "RW_llFunction", target = "mu", llFunction = my_llFunction)
+
+Rmcmc <- buildMCMC(conf)
+## compile, run MCMC, etc...
+
+
+
+(7442 - 1000) / 24
+
+
+setwd('~/github/courses/ds201/dsb/course-materials/_slides')
+
+library(devtools)
+devtools::install_github("hadley/emo")
+library(rmarkdown)
+
+render('u1-d01-welcome/u1-d01-welcome.Rmd')
+
+getwd()
+
+install.packages('emo')
+
+
+library(xaringan)
+library(xaringanExtra)
+library(emo)
+
+
+xaringan::inf_mr('u1-d01-welcome/u1-d01-welcome.Rmd', cast_from = '..')
+
+servr::daemon_stop()
+
+
+
+library(nimble)
+
+
+code <- nimbleCode({
+    y[1:10] ~ dmnorm(mu[1:10], pr[1:10,1:10])
+})
+
+constants <- list(mu = rep(0, 10), pr = diag(10))
+data <- list(y = c(rep(0,5), rep(NA,5)))
+inits <- list(y = c(rep(NA,5), rep(0,5)))
+
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Rmodel$calculate()
+Rmodel$isData('y')
+Rmodel$isDataFromGraphID
+Rmodel$isDataEnv$y
+
+conf <- configureMCMC(Rmodel)
+
+
+
+
+
+library(nimble)
+
+set.seed(1)
+p <- 15    # number of explanatory variables
+n <- 100   # number of observations
+X <- matrix(rnorm(p*n), nrow = n, ncol = p) # explanatory variables
+true_betas <- c(c(0.1, 0.2, 0.3, 0.4, 0.5), rep(0, p-5)) # coefficients
+sigma <- 1
+y <- rnorm(n, X %*% true_betas, sigma)
+
+code <- nimbleCode({
+    beta0 ~ dnorm(0, sd = 100)
+    for(k in 2:p)
+        beta[k] ~ dnorm(0, sd = 100)
+    sigma ~ dunif(0, 100)  # prior for variance components based on Gelman (2006)
+    beta[1] <- 1
+    for(i in 1:n) {
+        y[i] ~ dnorm(beta0 + inprod(beta[1:p], x[i, 1:p]), sd = sigma)
+    }
+})
+
+X <- sweep(X, 2, colMeans(X))  # center for better MCMC performance
+
+constants <- list(n = n, p = p, x = X)
+data <- list(y = y)
+inits <- list(beta0 = mean(y), beta = rep(0, p), sigma = 0.5)
+mod <- nimbleModel(code, constants = constants, data = data, inits = inits)
+##model <- compileNimble(mod)
+
+conf <- configureMCMC(mod)
+conf$printSamplers()
+
+conf$removeSampler("beta")
+
+conf
+conf$printSamplers()
+
+conf$addSampler("beta[2:15]", "AF_slice") # throws warning
+conf$addSampler("beta", "AF_slice") # throws warning
+conf$printSamplers()
+
+mcmc <- buildMCMC(conf) # another warning
+
+
+cmcmc <- compileNimble(mcmc, project = model)
+res <- runMCMC(cmcmc,  niter=20, nburnin = 1, thin=1, 
+               nchains = 1, samplesAsCodaMCMC = TRUE) # runs while all beta nodes lack a sampler
 
 
 
