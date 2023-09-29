@@ -19,13 +19,17 @@
 ;; this would allow aquamacs to detect rmd-mode automatically,
 ;; but the require commands cause an init-file error in bash emacs.
 ;;(setq load-path
-;;    (append (list "/Users/dturek/utils/polymode/"
-;;                  "/Users/dturek/utils/polymode/modes/")
+;;    (append (list "~/github/utils/polymode/"
+;;                  "~/github/utils/polymode/modes/")
 ;;        load-path))
 ;;(require 'poly-R)
 ;;(require 'poly-markdown)
 ;;(add-to-list 'auto-mode-alist '("\\.Rmd\\'" . poly-markdown+r-mode))
 ;;(add-to-list 'auto-mode-alist '("\\.rmd\\'" . poly-markdown+r-mode))
+
+(unless (package-installed-p 'polymode)
+  (package-install 'poly-markdown)
+  (package-install 'poly-R))
 
 (custom-set-variables
  '(one-buffer-one-frame-mode nil nil (aquamacs-frame-setup)))
@@ -34,8 +38,9 @@
   "ESS Markdown mode for rmd files"
   (interactive)
   (setq load-path
-    (append (list "/Users/dturek/github/utils/polymode/"
-                  "/Users/dturek/github/utils/polymode/modes/")
+    (append (list "~/github/utils/polymode/"
+                  "~/github/utils/polymode/modes/"
+		  "~/github/utils/polymode/poly-R/")
         load-path))
   (require 'poly-R)
   (require 'poly-markdown)
@@ -104,14 +109,14 @@
   (save-buffer)
   (interactive)
   (shell-command
-   (format "/Users/dturek/github/utils/knit.sh -c %s"
+   (format "~/github/utils/knit.sh -c %s"
        (shell-quote-argument (buffer-file-name)))))
 
 (defun rmarkdown-tangle-file ()
   "Run knitr on the current file and tangle its R code."
   (interactive)
   (shell-command
-   (format "/Users/dturek/github/utils/knit.sh -t %s"
+   (format "~/github/utils/knit.sh -t %s"
        (shell-quote-argument (buffer-file-name)))))
 
 (defun rmarkdown-commit ()  ;;(message)
@@ -130,7 +135,7 @@
   (save-buffer)
   (interactive)
   (shell-command
-   (format "/Users/dturek/github/utils/knit.sh -b %s"
+   (format "~/github/utils/knit.sh -b %s"
        (shell-quote-argument (buffer-file-name)))))
 
 (global-set-key (kbd "C-c r") (quote R))
