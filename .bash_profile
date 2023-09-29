@@ -104,16 +104,18 @@ alias checkout='git checkout'
 alias branch='git branch'
 alias log='git log'
 alias commit=~/github/utils/commit.sh
-alias s101='cd ~/github/courses/stat101'
-alias s161='cd ~/github/courses/stat161'
-alias s201='cd ~/github/courses/stat201'
-alias s202='cd ~/github/courses/stat202'
-alias s319='cd ~/github/courses/stat319'
-alias s359='cd ~/github/courses/stat359'
-alias s360='cd ~/github/courses/stat360'
-alias s365='cd ~/github/courses/stat365'
-alias s465='cd ~/github/courses/stat465'
+## alias s101='cd ~/github/courses/stat101'
+## alias s161='cd ~/github/courses/stat161'
+## alias s201='cd ~/github/courses/stat201'
+## alias s202='cd ~/github/courses/stat202'
+## alias s319='cd ~/github/courses/stat319'
+## alias s359='cd ~/github/courses/stat359'
+## alias s360='cd ~/github/courses/stat360'
+## alias s365='cd ~/github/courses/stat365'
+## alias s465='cd ~/github/courses/stat465'
 alias nim='cd ~/github/nimble/nimble/packages/nimble/R'
+##alias edit=~/github/utils/edit.sh   doesn't work
+##alias stop=~/github/utils/stop.sh   doesn't work
 
 set -o noclobber
 
