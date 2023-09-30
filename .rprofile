@@ -71,5 +71,3 @@ makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c(
 ##    invisible(out)
 ##}
 
-
-
