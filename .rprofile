@@ -50,7 +50,7 @@ makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c(
 library <- function(package, ...) {
     pkgName <- as.character(substitute(package))
     libraryCall <- substitute(base::library(package = PKG, ...), list(PKG = pkgName))
-    e <- try(eval(substitute(CALL, list(CALL = libraryCALL))), silent = TRUE)
+    e <- try(eval(substitute(CALL, list(CALL = libraryCall))), silent = TRUE)
     if(inherits(e, 'try-error')) {
         eval(substitute(install.packages(PKG), list(PKG = pkgName)))
         eval(substitute(CALL, list(CALL = libraryCall)))
