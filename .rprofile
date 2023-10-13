@@ -47,6 +47,16 @@ makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c(
                                                                            'rrr'
                                                                        )))), envir = .GlobalEnv), .GlobalEnv)
 
+library <- function(package, ...) {
+    pkgName <- as.character(substitute(package))
+    libraryCall <- substitute(base::library(package = PKG, ...), list(PKG = pkgName))
+    e <- try(eval(substitute(CALL, list(CALL = libraryCALL))), silent = TRUE)
+    if(inherits(e, 'try-error')) {
+        eval(substitute(install.packages(PKG), list(PKG = pkgName)))
+        eval(substitute(CALL, list(CALL = libraryCall)))
+    }
+}
+
 ## make L as the first argument of (the function call) R
 ## this is a new feature in newer versions of R (actually: `|>` )
 `%|>%` <- function(L, R) {
@@ -70,4 +80,6 @@ makeActiveBinding('rrr', function() eval(quote(rm(list = setdiff(ls(), c(
 ##    makeActiveBinding('qqq', function() q('no'), .GlobalEnv)
 ##    invisible(out)
 ##}
+
+
 
