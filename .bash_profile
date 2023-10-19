@@ -98,7 +98,7 @@ alias backup=~/github/utils/backup.sh
 alias cleanup=~/github/utils/cleanup.sh
 alias build=~/github/utils/build.sh
 alias Rrun=~/github/utils/run_R_script.sh
-alias gand='ssh gandalf.berkeley.edu'
+alias gand='ssh dturek@gandalf.berkeley.edu'
 alias hpcc='ssh dbt1@hpcc.williams.edu'
 alias status='git status'
 alias st='git status'
@@ -120,6 +120,7 @@ alias commit=~/github/utils/commit.sh
 ## alias s365='cd ~/github/courses/stat365'
 ## alias s465='cd ~/github/courses/stat465'
 alias nim='cd ~/github/nimble/nimble/packages/nimble/R'
+alias site='cd ~/github/ds201/site/'
 ##alias edit=~/github/utils/edit.sh   doesn't work
 ##alias stop=~/github/utils/stop.sh   doesn't work
 
