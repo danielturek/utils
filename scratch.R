@@ -1,4 +1,14 @@
 
+
+
+load('~/github/rebecca_whitlock/results/1_orig.RData')
+ls()
+
+names(nimTimes)
+
+head(samplerTimeDF)
+
+
 library(nimble)
 
 T_index_list <- lapply(1:16, function(i) nimbleType(name = paste0('T',i), type = 'double', dim = 2))
