@@ -9,7 +9,7 @@
 ;; Use this file in place of ~/.emacs (which is loaded as well.)
 ;;
 ;; to load this theme manually:
-;; M-x [Enter]
+;; M-x load-theme [Enter]
 ;; tango-dark [Enter]
 ;;
 
