@@ -58,6 +58,12 @@ if [ -r "$1" ]; then
 	    if [ -f ${mdfile}.md ]; then
 		inputFile=${mdfile}.md
 	    fi
+	    ## delete the html file also, if one exists already
+	    htmlFile=${mdfile}.html
+	    if [ -f ${htmlFile} ]; then
+		rm ${htmlFile}
+	    fi
+	    ## finally, knit (render) the input file:
             /usr/local/bin/Rscript -e "require(methods); require(rmarkdown); render('${inputFile}', quiet=TRUE)"
         )
 	##> /dev/null 2>&1
@@ -75,6 +81,12 @@ if [ -r "$1" ]; then
 	    if [ -f ${mdfile}.md ]; then
 		inputFile=${mdfile}.md
 	    fi
+	    ## delete the html file also, if one exists already
+	    htmlFile=${mdfile}.html
+	    if [ -f ${htmlFile} ]; then
+		rm ${htmlFile}
+	    fi
+	    ## finally, knit (render) the input file:
             /usr/local/bin/Rscript -e "require(methods); require(rmarkdown); render('${inputFile}', quiet=TRUE)"
         )
 	##> /dev/null 2>&1
