@@ -18,18 +18,18 @@
 
 ;; this would allow aquamacs to detect rmd-mode automatically,
 ;; but the require commands cause an init-file error in bash emacs.
-(setq load-path
-    (append (list "~/github/utils/polymode/"
- 		  "~/github/utils/polymode/modes/")
- 	load-path))
-(require 'poly-R)
-(require 'poly-markdown)
-(add-to-list 'auto-mode-alist '("\\.Rmd\\'" . poly-markdown+r-mode))
-(add-to-list 'auto-mode-alist '("\\.rmd\\'" . poly-markdown+r-mode))
- 
-;;(unless (package-installed-p 'polymode)
-;;  (package-install 'poly-markdown)
-;;  (package-install 'poly-R))
+;;(setq load-path
+;;    (append (list "~/github/utils/polymode/"
+;;                  "~/github/utils/polymode/modes/")
+;;        load-path))
+;;(require 'poly-R)
+;;(require 'poly-markdown)
+;;(add-to-list 'auto-mode-alist '("\\.Rmd\\'" . poly-markdown+r-mode))
+;;(add-to-list 'auto-mode-alist '("\\.rmd\\'" . poly-markdown+r-mode))
+
+(unless (package-installed-p 'polymode)
+  (package-install 'poly-markdown)
+  (package-install 'poly-R))
 
 (custom-set-variables
  '(one-buffer-one-frame-mode nil nil (aquamacs-frame-setup)))
