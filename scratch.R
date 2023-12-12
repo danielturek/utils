@@ -1,4 +1,212 @@
+library(nimble)
+library(nimbleSMC)
 
+set.seed(1235)
+SSM_model <- nimbleCode({
+  sdl_x ~ dgamma(2, 1)
+  sd_y ~ dgamma(1, 2)
+  dx[1] ~ dlnorm(meanlog = 0, sdlog = sdl_x)
+  x[1] <- dx[1]
+  y[1] ~ dnorm(mean = x[1], sd = sd_y)
+  for(i in 2:t){
+    dx[i] ~ dlnorm(meanlog = 0, sdlog = sdl_x)
+    x[i] <- x[i-1] + dx[i]
+    y[i] ~ dnorm(x[i], sd = sd_y)
+  }
+})
+t <- 30
+model <- nimbleModel(code = SSM_model, constants = list(t = t))
+model$simulate()
+truth <- model
+model <- nimbleModel(code = SSM_model, constants = list(t = t), data = list(y = truth$y))
+
+Cmodel <- compileNimble(model)
+
+## PF ----
+##PF <- buildBootstrapFilter(model, nodes = "dx", control = list(initModel = FALSE))
+PF <- buildBootstrapFilter(model, nodes = "dx")
+CPF <- compileNimble(PF, project = model, resetFunctions = T)
+
+source('~/github/nimble/nimbleSMC/packages/nimbleSMC/R/MCMCSamplers.R')
+
+## PMCMC ----
+conf <- configureMCMC(Cmodel, nodes = NULL)
+target <- c("sdl_x", "sd_y")
+conf$addSampler(target = target, type = "RW_PF_block2", pf = PF, adaptScaleOnly = FALSE,
+                control = list(latents = "dx", pfNparticles = 1000))
+conf$addMonitors("logProb_y")
+mcmc <- buildMCMC(conf)
+
+Cmcmc <- compileNimble(mcmc, project = model, resetFunctions = T)
+
+Cmcmc$run(1000, nburnin = 500)
+
+samples_PF <- as.matrix(Cmcmc$mvSamples)
+
+## plots ----
+layout(matrix(1:3, 3, 1))
+
+plot(samples_PF[, 'sd_y'], type = "l", ylim = range(samples_PF[, 'sd_y'], truth$sdl_x), ylab = "sd_y")
+abline(h = truth$sd_y, col = "darkred", lwd = 2)
+plot(samples_PF[, 'sdl_x'], type = "l", ylim = range(samples_PF[, 'sdl_x'], truth$sdl_x), ylab = "sdl_x")
+abline(h = truth$sdl_x, col = "darkred", lwd = 2)
+plot(rowSums(samples_PF[, grep("logProb_y", colnames(samples_PF))]), type = "l", ylab = "logProb_y")
+
+
+
+
+
+
+
+tempFileName <- '~/github/temp/mcmctest/mcmcTestLog_Correct_NEW.Rout'
+tempFileName <- '~/github/temp/mcmctest/mcmcTestLog_Correct_NEW2.Rout'
+goldFile <- '~/github/nimble/nimble/packages/nimble/tests/testthat/mcmcTestLog_Correct.Rout'
+
+trialResults <- readLines(tempFileName)
+trialResults <- trialResults[grep('Error in x$.self$finalize() : attempt to apply non-function', trialResults, invert = TRUE, fixed = TRUE)]
+
+
+i <- 1
+newResults <- trialResults
+while(i <= length(newResults)) {
+    if(grepl('Test passed', newResults[i])) {
+        if(i < length(newResults)) {
+            newResults[i] <- paste0(gsub('Test passed.*', '', newResults[i]), newResults[i+1])
+            newResults <- newResults[-(i+1)]
+        } else {
+            ## i == length(newResults)
+            if(grepl('^Test passed', newResults[i])) {
+                newResults <- newResults[-i]
+            } else {
+                newResults[i] <- gsub('Test passed.*', '', newResults[i])
+            }
+        }
+    } else {
+        i <- i + 1
+    }
+}
+writeLines(newResults, '~/github/temp/mcmctest/mcmcTestLog_Correct_NEW2.Rout')
+
+
+
+correctResults <- readLines(goldFile)
+
+##compareFilesByLine(trialResults, correctResults)
+
+##compareFilesByLine <- function(trialResults, correctResults, main = "") {
+trialResults <- stripTestsPassedMessage(stripTestPlacementWarning(trialResults))
+correctResults <- stripTestPlacementWarning(correctResults)
+
+tail(trialResults)
+tail(correctResults)
+
+expect_equal(length(trialResults), length(correctResults))
+
+linesToTest <- min(length(trialResults), length(correctResults))
+
+a <- mapply(function(lineno, trialLine, correctLine) {
+    expect_identical(trialLine, correctLine)
+}, 1:linesToTest, trialResults[1:linesToTest], correctResults[1:linesToTest])
+##}
+
+
+
+
+mapply(function(a, b, c) {paste(a,b,c,sep='.')}, 1:5, letters[1:6], 11:15)
+
+
+if(Sys.info()['nodename'] == 'gandalf') library(nimble, lib.loc = '~/Documents/')
+if(Sys.info()['nodename'] != 'gandalf') library(nimble)
+nimbleOptions(generateGoldFileForMCMCtesting = '~')
+
+f <- function(x) x^2-5
+uniroot(f, c(-0, 10))
+
+library(nimble)
+library(nimbleHMC)
+
+code <- nimbleCode({
+    for(i in 1:3) {
+        p[i] ~ dunif(0, 1)
+    }
+    y ~ dcat(p[1:3])
+})
+
+constants <- list()
+data <- list(y=1)
+inits <- list(p = rep(0.5,3))
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+Rmodel$calculate()
+Cmodel$calculate()
+
+
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
+Rmodel$calculate()
+
+Rmodel$initializeInfo()
+Rmodel$initializeInfo(TRUE)
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$printSamplers()
+conf$replaceSamplers('p', 'NUTS')
+conf$printSamplers()
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+samplesSummary(samples)
+
+##           Mean    Median   St.Dev.  95%CI_low 95%CI_upp
+## p[1] 0.6317185 0.6609614 0.2495379 0.12403782 0.9871488
+## p[2] 0.4468514 0.4128208 0.2906545 0.01775376 0.9712241
+## p[3] 0.4438928 0.4200780 0.2897343 0.01526575 0.9688533
+
+
+
+
+
+library(nimbleSCR)
+
+
+
+nInd <- 5
+nTraps <- 3
+
+dat <- rbinom(nInd*nTraps, 1, 0.5)
+dat[dat == 0] <- -1
+x <- array(dat, dim = c(nInd, nTraps))
+x
+
+debug(getSparseY)
+undebug(getSparseY)
+
+getSparseY(x, nMaxTraps = 4)
+
+
+
+coordsGridCenter <- expand.grid(list(x = seq(50.5, 100, 1), y = seq(100.5, 150, 1)))
+coordsData <- expand.grid(list(x = seq(60, 90, 1), y = seq(110, 140, 1)))
+
+plot(coordsGridCenter[,2]~coordsGridCenter[,1])
+points(coordsData[,2]~coordsData[,1], col="red")
+
+scaled <- scaleCoordsToHabitatGrid(coordsData = coordsData, coordsHabitatGridCenter = coordsGridCenter)
+
+plot(scaled$coordsHabitatGridCenterScaled[,2]~scaled$coordsHabitatGridCenterScaled[,1])
+
+points(scaled$coordsDataScaled[,2]~scaled$coordsDataScaled[,1], col="red")
+
+
+ 
 
 fruit <- c("apple", "banana", "pear", "pineapple")
 
