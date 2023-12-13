@@ -1,1179 +1,374 @@
 
 
-fruit <- c("apple", "banana", "pear", "pineapple")
 
-str_subset(fruit, "a")
-str_subset(fruit, "^a")
-str_subset(fruit, "a$")
-str_subset(fruit, "b")
-str_subset(fruit, "[aeiou]")
 
-# Elements that don't match
-str_subset(fruit, "^p", negate = TRUE)
-
-# Missings never match
-str_subset(c("a", NA, "b"), ".")
+grep('[Mm]arqb', art$title, value = TRUE)
 
 
 
-art %>%  separate(title, into = c("title", "year"), sep = "\\(")
-
-    
-
-
-page %>% html_nodes(".record-title a")
-
-
-titles <- page %>%
-    html_nodes(".iteminfo") %>%
-    html_node("h3") %>%
-    html_node("a") %>%
-    html_text2()
-
-titles
-
-
-
-gss16$polviews[gss16$polviews == "Extrmly conservative"] <- "Extremely conservative"
-
-save(gss16, file = '~/github/ds201/ds201/hw/hw-08/data/gss16.rda')
-save(gss16, file = '~/github/ds201/ds201/starters/hw/hw-08-exploring-gss/data/gss16.rda')
-save(gss16, file = '~/github/ds201/ds201/solns/data/gss16.rda')
-
-
-
-## Scrape the list of top 250 movies from https://www.imdb.com/chart/top
-
-# Load packages ---------------------------------------------------------------
-
-library(tidyverse)
-library(rvest)
-
-# Read html page ---------------------------------------------------------------
-
-page <- read_html("https://www.imdb.com/chart/top")
-
-titles <- page %>% html_nodes(".ipc-title__text") %>% html_text()
-
-titles
-
-
-
-# Titles -----------------------------------------------------------------------
-
-titles <- page %>%
-  html_nodes(".title a") %>%
-    html_text()
-
-titles <- gsub('^[0-9]*\\. *', '', titles[-(1:2)][1:250])
-
-
-
-# Years-------------------------------------------------------------------------
-
-
-
-years <- page %>% html_nodes(".cli-title-metadata span:nth-child(1)") %>% html_text() %>% as.numeric()
-
-
-years <- page %>%
-  html_nodes(".secondaryInfo") %>%
-  html_text() %>%
-  str_remove("\\(") %>%
-  str_remove("\\)") %>%
-  as.numeric()
-
-# Scores -----------------------------------------------------------------------
-
-scores <- page %>% html_nodes(".ipc-rating-star--imdb") %>% html_attr("aria-label") %>% str_remove("IMDb rating: ") %>% as.numeric()
-
-scores <- page %>%
-  html_nodes("strong") %>%
-  html_text() %>%
-  as.numeric()
-
-# Put it all in a data frame ---------------------------------------------------
-
-imdb_top_250 <- tibble(
-  title = titles,
-  rating = scores,
-  year = years
-)
-
-# Add rank ---------------------------------------------------------------------
-
-imdb_top_250 <- imdb_top_250 %>%
-  mutate(rank = 1:nrow(imdb_top_250)) %>%
-  relocate(rank)
-
-
-
-
-
-df <- data.frame(year = c(1,1,2,2), amount = c(1,2, 0,10), party = c('a','b','a','b'))
-df
-
-df %>% ggplot(aes(x=year, y=amount, color=party)) + geom_line()
-p  %>% ggplot(aes(x=year, y=amount, color=party)) + geom_line()
-
-
-p %>% ggplot(aes(x=year, y=amount, color=party)) +
-    geom_line()
-
-df <- data.frame(aaa = c('a1b', 'AA1B1B', '1CCC'))
-
-lapply(strsplit(df$aaa, '1'), length)
-
-df %>% separate_wider_delim(aaa, '1', names = c('name1', 'name2'))
-df %>% separate_wider_delim(aaa, '1', names = c('name1', 'name2'), too_many = "merge")
+child_titles1
 
 
 library(nimble)
-library(testthat)
-source('~/github/nimble/nimble/packages/nimble/tests/testthat/test_utils.R')
+library(nimbleSMC)
 
-        ##
-        cat('=============================\n')
-        a <- trialResults
-        print(paste0('length trialResults: ', length(a)))
-        cat('=============================\n')
-        tmp <- paste0(1:length(a), ': ~', a, '~\n'); cat(tmp)
-        cat('=============================\n')
-        a <- correctResults
-        print(paste0('length correctResults: ', length(a)))
-        cat('=============================\n')
-        tmp <- paste0(1:length(a), ': ~', a, '~\n'); cat(tmp)
-        cat('=============================\n')
-##
+set.seed(1235)
+SSM_model <- nimbleCode({
+  sdl_x ~ dgamma(2, 1)
+  sd_y ~ dgamma(1, 2)
+  dx[1] ~ dlnorm(meanlog = 0, sdlog = sdl_x)
+  x[1] <- dx[1]
+  y[1] ~ dnorm(mean = x[1], sd = sd_y)
+  for(i in 2:t){
+    dx[i] ~ dlnorm(meanlog = 0, sdlog = sdl_x)
+    x[i] <- x[i-1] + dx[i]
+    y[i] ~ dnorm(x[i], sd = sd_y)
+  }
+})
+t <- 30
+model <- nimbleModel(code = SSM_model, constants = list(t = t))
+model$simulate()
+truth <- model
+model <- nimbleModel(code = SSM_model, constants = list(t = t), data = list(y = truth$y))
 
+Cmodel <- compileNimble(model)
 
+## PF ----
+##PF <- buildBootstrapFilter(model, nodes = "dx", control = list(initModel = FALSE))
+PF <- buildBootstrapFilter(model, nodes = "dx")
+CPF <- compileNimble(PF, project = model, resetFunctions = T)
 
+source('~/github/nimble/nimbleSMC/packages/nimbleSMC/R/MCMCSamplers.R')
 
-a <- c('sdfsd', 'bbbbb', 'cccccc')
-tmp <- paste0(1:length(a), ': ~', a, '~\n')
-print(tmp)
-cat(tmp)
+## PMCMC ----
+conf <- configureMCMC(Cmodel, nodes = NULL)
+target <- c("sdl_x", "sd_y")
+conf$addSampler(target = target, type = "RW_PF_block2", pf = PF, adaptScaleOnly = FALSE,
+                control = list(latents = "dx", pfNparticles = 1000))
+conf$addMonitors("logProb_y")
+mcmc <- buildMCMC(conf)
 
-print(paste0('length trialResults: ', length(a)))
+Cmcmc <- compileNimble(mcmc, project = model, resetFunctions = T)
 
-lego_sales <- lego_sales %>%
-  mutate(age_group = case_when(
-    age <= 18            ~ "18 and under",
-    between(age, 19, 25) ~ "19 - 25",
-    between(age, 26, 35) ~ "26 - 35",
-    between(age, 36, 51) ~ "36 - 51",
-    age >= 51            ~ "51 and over"))
+Cmcmc$run(1000, nburnin = 500)
 
-as.data.frame(lego_sales %>% select(age, age_group))
+samples_PF <- as.matrix(Cmcmc$mvSamples)
 
+## plots ----
+layout(matrix(1:3, 3, 1))
 
-
-
-lego_sales %>%
-  filter(theme == "Star Wars")
-count(subtheme)
-
-
-
-  arrange(desc(n)) %>%
-      slice_max(n, n = 3)
-
-
-
-
-l <- c('a', 'f', 'c', 'z', 'y')
-
-f <- factor(l, levels = l)
-
-
-f
-fct_relevel(f, unique(sort(l)))
-fct_relevel(f, letters)
-day.name
-
-library(tidyverse)
-hotels <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-11/hotels.csv")
-
-hotels
+plot(samples_PF[, 'sd_y'], type = "l", ylim = range(samples_PF[, 'sd_y'], truth$sdl_x), ylab = "sd_y")
+abline(h = truth$sd_y, col = "darkred", lwd = 2)
+plot(samples_PF[, 'sdl_x'], type = "l", ylim = range(samples_PF[, 'sdl_x'], truth$sdl_x), ylab = "sdl_x")
+abline(h = truth$sdl_x, col = "darkred", lwd = 2)
+plot(rowSums(samples_PF[, grep("logProb_y", colnames(samples_PF))]), type = "l", ylab = "logProb_y")
 
 
 
 
 
+
+
+tempFileName <- '~/github/temp/mcmctest/mcmcTestLog_Correct_NEW.Rout'
+tempFileName <- '~/github/temp/mcmctest/mcmcTestLog_Correct_NEW2.Rout'
+goldFile <- '~/github/nimble/nimble/packages/nimble/tests/testthat/mcmcTestLog_Correct.Rout'
+
+trialResults <- readLines(tempFileName)
+trialResults <- trialResults[grep('Error in x$.self$finalize() : attempt to apply non-function', trialResults, invert = TRUE, fixed = TRUE)]
+
+
+i <- 1
+newResults <- trialResults
+while(i <= length(newResults)) {
+    if(grepl('Test passed', newResults[i])) {
+        if(i < length(newResults)) {
+            newResults[i] <- paste0(gsub('Test passed.*', '', newResults[i]), newResults[i+1])
+            newResults <- newResults[-(i+1)]
+        } else {
+            ## i == length(newResults)
+            if(grepl('^Test passed', newResults[i])) {
+                newResults <- newResults[-i]
+            } else {
+                newResults[i] <- gsub('Test passed.*', '', newResults[i])
+            }
+        }
+    } else {
+        i <- i + 1
+    }
+}
+writeLines(newResults, '~/github/temp/mcmctest/mcmcTestLog_Correct_NEW2.Rout')
+
+
+
+correctResults <- readLines(goldFile)
+
+##compareFilesByLine(trialResults, correctResults)
+
+##compareFilesByLine <- function(trialResults, correctResults, main = "") {
+trialResults <- stripTestsPassedMessage(stripTestPlacementWarning(trialResults))
+correctResults <- stripTestPlacementWarning(correctResults)
+
+tail(trialResults)
+tail(correctResults)
+
+expect_equal(length(trialResults), length(correctResults))
+
+linesToTest <- min(length(trialResults), length(correctResults))
+
+a <- mapply(function(lineno, trialLine, correctLine) {
+    expect_identical(trialLine, correctLine)
+}, 1:linesToTest, trialResults[1:linesToTest], correctResults[1:linesToTest])
+##}
+
+
+
+
+mapply(function(a, b, c) {paste(a,b,c,sep='.')}, 1:5, letters[1:6], 11:15)
+
+
+if(Sys.info()['nodename'] == 'gandalf') library(nimble, lib.loc = '~/Documents/')
+if(Sys.info()['nodename'] != 'gandalf') library(nimble)
+nimbleOptions(generateGoldFileForMCMCtesting = '~')
+
+f <- function(x) x^2-5
+uniroot(f, c(-0, 10))
 
 library(nimble)
+library(nimbleHMC)
 
 code <- nimbleCode({
-    rate ~ dunif(0, 100)
-    beta ~ dunif(0, 100)
-    for(i in 1:N) {
-        shape[i] <- exp(beta*x[i]) * rate
-        y[i] ~ dgamma(shape[i], rate)
+    for(i in 1:3) {
+        p[i] ~ dunif(0, 1)
     }
+    y ~ dcat(p[1:3])
 })
 
-shape <- .3
-rate <- 4
-N <- 10000
-set.seed(0)
-y <- rgamma(N, shape=shape, rate=rate)
-x <- rnorm(N, 0, 0.2)
-
-constants <- list(N = N, x = x)
-data <- list(y = y)
-inits <- list(rate = 1, beta = 0.4)
+constants <- list()
+data <- list(y=1)
+inits <- list(p = rep(0.5,3))
 
 Rmodel <- nimbleModel(code, constants, data, inits)
+
+Cmodel <- compileNimble(Rmodel, showCompilerOutput = TRUE)
+
+Rmodel$calculate()
+Cmodel$calculate()
+
+
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
 Rmodel$calculate()
 
-conf <- configureMCMC(Rmodel)
+Rmodel$initializeInfo()
+Rmodel$initializeInfo(TRUE)
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$printSamplers()
+conf$replaceSamplers('p', 'NUTS')
+conf$printSamplers()
+
 Rmcmc <- buildMCMC(conf)
 
-compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
-Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
-##Cmodel <- compileNimble(Rmodel)
-##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
 
 set.seed(0)
-samples <- runMCMC(Cmcmc, 10000, 1000)
-dim(samples)
+samples <- runMCMC(Cmcmc, 10000)
 
-library(basicMCMCplots)
-samplesPlot(samples)
-
-library(coda)
-effectiveSize(samples)
-
-colnames(samples)
 samplesSummary(samples)
 
+##           Mean    Median   St.Dev.  95%CI_low 95%CI_upp
+## p[1] 0.6317185 0.6609614 0.2495379 0.12403782 0.9871488
+## p[2] 0.4468514 0.4128208 0.2906545 0.01775376 0.9712241
+## p[3] 0.4438928 0.4200780 0.2897343 0.01526575 0.9688533
+
+
+
+
+
+library(nimbleSCR)
+
+
+
+nInd <- 5
+nTraps <- 3
+
+dat <- rbinom(nInd*nTraps, 1, 0.5)
+dat[dat == 0] <- -1
+x <- array(dat, dim = c(nInd, nTraps))
+x
+
+debug(getSparseY)
+undebug(getSparseY)
+
+getSparseY(x, nMaxTraps = 4)
+
+
+
+coordsGridCenter <- expand.grid(list(x = seq(50.5, 100, 1), y = seq(100.5, 150, 1)))
+coordsData <- expand.grid(list(x = seq(60, 90, 1), y = seq(110, 140, 1)))
+
+plot(coordsGridCenter[,2]~coordsGridCenter[,1])
+points(coordsData[,2]~coordsData[,1], col="red")
+
+scaled <- scaleCoordsToHabitatGrid(coordsData = coordsData, coordsHabitatGridCenter = coordsGridCenter)
+
+plot(scaled$coordsHabitatGridCenterScaled[,2]~scaled$coordsHabitatGridCenterScaled[,1])
+
+points(scaled$coordsDataScaled[,2]~scaled$coordsDataScaled[,1], col="red")
+
+
+ 
+
+
+load('~/github/rebecca_whitlock/results/1_orig.RData')
+ls()
+
+names(nimTimes)
+
+head(samplerTimeDF)
+
+
+library(nimble)
+
+T_index_list <- lapply(1:16, function(i) nimbleType(name = paste0('T',i), type = 'double', dim = 2))
+
+T_index_list_def <- nimbleList(T_index_list)
+
+T_index_list_def$new()
 
 nfDef <- nimbleFunction(
     setup = function() {},
-    run = function() {
-        returnType()
+    run = function(a = double(), b = character(), c = character(1)) {
+        print(a)
+        print(b)
+        if(b == 'f') print('yes')
+        print(c[2])
+        if(c[2] == 'a') print('should not print')
+        if(c[2] == 'b') print('should print')
     }
 )
 
 Rnf <- nfDef()
 Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
 
-Rnf$run()
-Cnf$run()
+Rnf$run(3, 'f', letters)
+Cnf$run(3, 'f', letters)
 
 
-Rnf <- nimbleFunction(
-    run = function() {
-        returnType()
+
+cal_eta_to_lambda <- nimbleFunction(
+    run = function(eta=double(2), eta_loc=double(2), T_names=character(1), T=T_index_list_def() ) {
+        lambda = array(0,dim(eta))
+        for (i in 1:dim(eta)[2]){
+            index = eta_loc[,i]
+            lambda[index,i] = eta[index,i] %*% solve(T[[T_names[i]]])
+        }
+        returnType(double(2))
+        return(lambda)
     }
 )
 
-Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
 
-Rnf()
-Cnf()
-
-stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
-for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
-
-
-
-
-
-names(college_recent_grads)
-
-?college_recent_grads
+# Toy example:
+eta = matrix(0,8,16) # demo; for being able to run
+eta_loc = matrix(TRUE,8,16) # demo; for being able to run
+T_index_list <- lapply(1:16, function(i) nimbleType(name = paste0('T',i), type = 'double', dim = 2))
+T_index_list_def <- nimbleList(T_index_list)
+T_names = paste0('T', 1:itemnum)
+T = lapply(1:16, function(x) diag(8)) # demo; for being able to run
+names(T) <- T_names
+T_list <- do.call(T_index_list_def$new, T)
+cal_eta_to_lambda(eta, eta_loc, T_names, T_list)
 
 
-college_recent_grads %>%
-    mutate(prop_women = percent(women / total)) %>%
-    arrange(desc(prop_women)) %>%
-    select(major, total, prop_women) %>%
-    top_n(3)
+In nimbleCode, I have the 
 
+lambda[1:8,1:16] <- cal_eta_to_lambda(eta[1:8,1:16], eta_loc[1:8,1:itemnum], T_names[1:16], T_list)
 
+Then, R return error message:
 
-
-states$abbreviation
-
-dennys %>%
-    filter(!state %in% states$abbreviation)
-
-dennys %>%
-    filter(!(state %in% states$abbreviation))
-
-
-
-
-laquinta %>%
-    filter(!(state %in% states$abbreviation))
-
-
-
-lq2 <- laquinta
-
-state.abb <- states$abbreviation
-
-
-
-laquinta <- laquinta %>%
-  mutate(country = case_when(
-    state %in% state.abb     ~ "United States",
-    state %in% c("ON", "BC") ~ "Canada",
-    state == "ANT"           ~ "Colombia",
-    state %in% c("AG", "QR", "CH", "NL", "VE", "PU", "SL") ~ "Mexico",
-    state == "FM"            ~ "Honduras"
-  ))
-
-
-
-dennys %>%
-    group_by(state) %>%
-    count() %>%
-    arrange(n) %>%
-    head(1)
-
-dennys %>%
-    group_by(state) %>%
-    count() %>%
-    arrange(n) %>%
-    tail(1)
-
-laquinta %>%
-    group_by(state) %>%
-    count() %>%
-    arrange(n) %>%
-    tail(1)
-
-laquinta %>%
-    group_by(state) %>%
-    count() %>%
-    arrange(n) %>%
-    head(1)
-
-
-dennys %>%
-  count(state) %>%
-  inner_join(states, by = c("state" = "abbreviation")) %>%
-  mutate(density = n/area) %>%
-  arrange(desc(density)) %>%
-  head(5)  
-
-laquinta %>%
-  count(state) %>%
-  inner_join(states, by = c("state" = "abbreviation")) %>%
-  mutate(density = n/area) %>%
-  arrange(desc(density)) %>%
-  head(5)  
-
-
-dennys <- dennys %>%
-  mutate(establishment = "Denny's")
-laquinta <- laquinta %>%
-  mutate(establishment = "La Quinta")
-dn_lq <- bind_rows(dennys, laquinta)
-
-
-dennys %>%
-    count(state)
-
-library(nimble)
-
-nfDef <- nimbleFunction(
-    setup = function() {},
-    run = function() {},
-    methods = list(
-        myMin = function(x = double(1)) {
-            returnType(double())
-            return(min(x))
-        },
-        myMax = function(x = double(1)) {
-            returnType(double())
-            return(max(x))
-        },
-        myMean = function(x = double(1)) {
-            returnType(double())
-            return(mean(x))
-        },
-        myProd = function(x = double(1)) {
-            returnType(double())
-            return(prod(x))
-        },
-        mySD = function(x = double(1)) {
-            returnType(double())
-            return(sd(x))
-        }
-    )
-)
-
-Rnf <- nfDef()
-Cnf <- compileNimble(Rnf)
-
-x <- 1:5
-Rnf$myMin(x);  Cnf$myMin(x)
-Rnf$myMax(x);  Cnf$myMax(x)
-Rnf$myMean(x); Cnf$myMean(x)
-Rnf$myProd(x); Cnf$myProd(x)
-Rnf$mySD(x);   Cnf$mySD(x)
-
-x <- c(1, 2, NA, 4, 5)
-Rnf$myMin(x);  Cnf$myMin(x)
-Rnf$myMax(x);  Cnf$myMax(x)
-Rnf$myMean(x); Cnf$myMean(x)
-Rnf$myProd(x); Cnf$myProd(x)
-Rnf$mySD(x);   Cnf$mySD(x)
-
-
-
-
-6*pi
-
-
-system("mkdir ~/temp/shiny")
-system("mkdir ~/temp/shiny/app-2")
-
-runApp('~/temp/shiny/app-1', display.mode = 'showcase')
-
-runApp('~/temp/shiny/app-2', display.mode = 'showcase')
-
-runExample("01_hello")      # a histogram
-runExample("02_text")       # tables and data frames
-runExample("03_reactivity") # a reactive expression
-runExample("04_mpg")        # global variables
-runExample("05_sliders")    # slider bars
-runExample("06_tabsets")    # tabbed panels
-runExample("07_widgets")    # help text and submit buttons
-runExample("08_html")       # Shiny app built from HTML
-runExample("09_upload")     # file upload wizard
-runExample("10_download")   # file download wizard
-runExample("11_timer")      # an automated timer
-
-
-
-
-system("osascript -e 'tell application \"Acrobat\" to quit'")
-setwd('~/github/nimble/nimbleHMC/joss/paper')
-f <- 'paper.md'
-library(rmarkdown)
-rmarkdown::render(f, output_format = 'pdf_document')
-system('open paper.pdf')
-
-
-
-
+    Error in as.numeric(eval(code, constEnv)) : 
+                 cannot coerce type 'S4' to vector of type 'double'
+In addition: Warning message:
+                         In replaceConstantsRecurse(x, constEnv, constNames) :
+                                NAs introduced by coercion
 
 
 
 library(nimble)
-library(nimbleEcology)     ## NEW
 
-##lion <- read_csv("simbaS.csv")
-##y <- lion %>% select(Jan_2016:Apr_2019) %>% as.matrix()
-
-
-##y <- matrix(c(1,1,1,1,0,0), nrow=2, byrow=TRUE)
-y <- matrix(c(1,0), nrow=1, byrow=TRUE)
-
-
-
-#' ## CJS models
-#' 
-#' We start the session by fitting models with or without a time effect on survival 
-#' and recapture probabilities. 
-#' 
-#' A model with constant parameters.
-## ---------------------------------------------------------------------------------------------------------
-hmm.phip <- nimbleCode({
-    phi ~ dunif(0, 1) # prior survival
-    p ~ dunif(0, 1) # prior detection
-    # likelihood
-    gamma[1,1] <- phi      # Pr(alive t -> alive t+1)
-    gamma[1,2] <- 1 - phi  # Pr(alive t -> dead t+1)
-    gamma[2,1] <- 0        # Pr(dead t -> alive t+1)
-    gamma[2,2] <- 1        # Pr(dead t -> dead t+1)
-    delta[1] <- 1          # Pr(alive t = 1) = 1
-    delta[2] <- 0          # Pr(dead t = 1) = 0
-    omega[1,1] <- 1 - p    # Pr(alive t -> non-detected t)
-    omega[1,2] <- p        # Pr(alive t -> detected t)
-    omega[2,1] <- 1        # Pr(dead t -> non-detected t)
-    omega[2,2] <- 0        # Pr(dead t -> detected t)
-    for (i in 1:N){
-        z[i,first[i]] ~ dcat(delta[1:2])
-        for (j in (first[i]+1):T){
-            z[i,j] ~ dcat(gamma[z[i,j-1], 1:2])
-            y[i,j] ~ dcat(omega[z[i,j], 1:2])
-        }
+ddist <- nimbleFunction(
+    run = function(x = double(0, default = 0), log = integer(default = 1)) {
+        returnType(double())
+        return(x)
     }
+)
+
+rdist <- nimbleFunction(
+    run = function(n = integer()) {
+        returnType(double())
+        return(0)
+    }
+)
+
+registerDistributions('ddist')
+
+
+code <- nimbleCode({
+    a ~ ddist()
 })
 
-hmm.phip_dHMM <- nimbleCode({                 ## NEW model code
-    phi ~ dunif(0, 1) # prior survival
-    p ~ dunif(0, 1) # prior detection
-    # likelihood
-    gamma[1,1] <- phi      # Pr(alive t -> alive t+1)
-    gamma[1,2] <- 1 - phi  # Pr(alive t -> dead t+1)
-    gamma[2,1] <- 0        # Pr(dead t -> alive t+1)
-    gamma[2,2] <- 1        # Pr(dead t -> dead t+1)
-    delta[1] <- 1          # Pr(alive t = 1) = 1
-    delta[2] <- 0          # Pr(dead t = 1) = 0
-    omega[1,1] <- 1 - p    # Pr(alive t -> non-detected t)
-    omega[1,2] <- p        # Pr(alive t -> detected t)
-    omega[2,1] <- 1        # Pr(dead t -> non-detected t)
-    omega[2,2] <- 0        # Pr(dead t -> detected t)
-    for (i in 1:N){
-        y[i, first[i]:T] ~ dHMM(delta[1:2], omega[1:2,1:2], gamma[1:2,1:2], len[i], 1)    ## NEW: uses dHMM distribution
+Rmodel <- nimbleModel(code)
+
+Rmodel
+
+Rmodel$a
+Rmodel$a <- 4
+Rmodel$a
+Rmodel$calculate('a')
+
+ddist
+
+debug(nimble:::checkDistributionFunctions)
+undebug(nimble:::checkDistributionFunctions)
+
+
+
+
+x = seq(from=0, to=3, by=0.01)
+
+a = 2
+b = 2
+lower = 1
+upper = 2
+r = rbeta4(n=10000,a,b,lower,upper)
+
+replicate(100, rbeta(1,1,1))
+
+
+code <- nimbleCode({
+    for (n in 1:N){
+        r[n] ~ dbeta4(a,b,lower,upper)
     }
+    a ~ dunif(0.01,5)
+    b ~ dunif(0.01,5)
 })
 
+constants <- list(N=length(r),lower=lower,upper=upper)
 
-#' 
-#' Get the occasion of first capture for all individuals.
-## ---------------------------------------------------------------------------------------------------------
-first <- apply(y, 1, function(x) min(which(x !=0)))
+data <- list(r=r)
 
-## we have to discard individuals which are seen for the first time
-## on the T=14 sampling occastion
-indToKeep <- first < ncol(y)    ## NEW
-first <- first[indToKeep]       ## NEW
-y <- y[indToKeep, , drop = FALSE]             ## NEW
+inits <- list(a=0.01,b=0.01)
 
-#' 
-#' A list with constants.
-## ---------------------------------------------------------------------------------------------------------
-my.constants <- list(N = nrow(y), 
-                     T = ncol(y), 
-                     ##first = first,
-                     ##len = ncol(y)-first)    ## NEW: length of each observation history (from t=first to t=T)
-                     first = c(first, 0),
-                     len = c(ncol(y)-first+1, 0))    ## NEW: length of each observation history (from t=first to t=T)
-my.constants
+monitors = c("a","b")
 
-#' 
-#' Now the data in a list. Note that we add 1 to the data to have 
-#' 1 for non-detections and 2 for detections. 
-#' You may use the coding you prefer of course, 
-#' you will just need to adjust the $\Omega$ and $\Gamma$ matrices in the model above.  
-## ---------------------------------------------------------------------------------------------------------
-my.data <- list(y = y + 1)
 
-#' 
-#' Specify initial values. For the latent states, 
-#' we go for the easy way, and say that all individuals are alive through the study period. 
-## ---------------------------------------------------------------------------------------------------------
-zinits <- y + 1 # non-detection -> alive                       ## NEW: no longer need zinits
-zinits[zinits == 2] <- 1 # dead -> alive                       ## NEW: no longer need zinits
-initial.values <- function() list(phi = runif(1,0,1),
-                                  p = runif(1,0,1),
-                                  z = zinits)                  ## NEW: no longer need zinits
-initial.values()
+MODEL <- nimbleModel(code = code, name = "MODEL", constants = constants,data = data, inits = inits)
 
 
 
-#' 
-#' Some information that we now pass as initial value info (observations of alive) 
-#' are actually known states, and could also be passed as data – 
-#' in which case the initial values have to be 0.
-#' 
-#' Specify the parameters we wish to monitor. 
-## ---------------------------------------------------------------------------------------------------------
-parameters.to.save <- c("phi", "p")
-parameters.to.save
 
-#' 
-#' MCMC details. 
-## ---------------------------------------------------------------------------------------------------------
-n.iter <- 50000
-n.burnin <- 20000
-n.chains <- 1
 
-#' 
-#' At last, let's run nimble.
-## ---------------------------------------------------------------------------------------------------------
-samples <- nimbleMCMC(code = hmm.phip,          ## NEW: using new model code (hmm.phip_dHMM)
-                      constants = my.constants,
-                      data = my.data,              
-                      inits = initial.values,
-                      monitors = parameters.to.save,
-                      niter = n.iter,
-                      nburnin = n.burnin, 
-                      nchains = n.chains)
-
-
-
-
-samples_dHMM <- nimbleMCMC(code = hmm.phip_dHMM,          ## NEW: using new model code (hmm.phip_dHMM)
-                           constants = my.constants,
-                           data = my.data,              
-                           inits = initial.values,
-                           monitors = parameters.to.save,
-                           niter = n.iter,
-                           nburnin = n.burnin, 
-                           nchains = n.chains)
-
-
-samplesSummary(samples)
-samplesSummary(samples_dHMM)
-
-
-
-
-set.seed(0)
-inits <- initial.values()
-Rmodel <- nimbleModel(hmm.phip_dHMM, my.constants, my.data, inits)
-
-
-Rmodel$calculate('y[1, 1:2]')
-
-phi <- Rmodel$phi
-p <- Rmodel$p
-log(1 - phi * p)
-log(1-phi + phi*(1-p))
-
-log(p * (1 - phi*p))
-
-
-gamma <- Rmodel$gamma
-omega <- Rmodel$omega
-
-x <- my.data$y[1,]
-
-dHMM(x[1:2], c(1,0), omega, gamma, 2, 1, log = TRUE)
-
-undebug(dHMM)
-debug(dHMM)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#---------------------------------------------- SIMULATE DATA -----------------------------------------#
-
-library(nimble)
-library(mvtnorm)
-
-# Simulate data from an inner product network model
-set.seed(1234)
-
-# Data (and latent space) structure
-V <- 100 # Number of vertices
-H <- 10 # Dimension of latent space
-
-# Hyperparameters
-a1 <- 2.5 # Gamma shrinkage parameter for factor 1
-a2 <- 2.5 # Gamma shrinkage parameters for factors 2:H
-sd.e <- 0.1 # Gaussian noise added to linear predictor
-meanP <- 0.25 # Moderately sparse network
-mu0 <- probit(meanP) # Prior mean for intercept
-sd.mu <- 0.1 # Prior sd for intercept: consider probit scale
-
-# Simulate multiplicative gamma shrinkage process
-U <- rep(NA,H)
-U[1] <- rgamma(1, a1, 1)
-U[2:H] <- rgamma(H-1, a2, 1)
-
-Tau <- rep(NA, H)
-for(h in 1:H){
-    Tau[h] <- prod(U[1:h])
-}
-
-# Simulate latent factors
-X <- matrix(NA, nrow = V, ncol = H)
-for(h in 1:H){
-    X[,h] <- rmvnorm(n = 1, mean = rep(0, V), sigma = diag(Tau[h]^(-1), nrow = V))
-}
-
-# Simulate intercept
-mu <- rnorm(1,mean = mu0, sd = sd.mu) # Normal prior for baseline connection score
-
-# Compute the linear predictor and Z latent connection score
-M.Z <- mu + X %*% t(X)
-vecE <- rnorm(V*(V-1)/2, 0, sd.e)
-E <- matrix(NA, V,V)
-E[upper.tri(E)] <- vecE
-E[lower.tri(E)] <- t(E)[lower.tri(E)]
-diag(E) <- 0
-Z <- M.Z + E # Data augmentation approach
-
-# Simulate edges and non-edges
-Y <- ifelse(Z > 0, 1, 0)
-diag(Y) <- diag(Z) <- 0 # No self-edges
-
-#----------------------------------------- DEFINE NIMBLE MODEL---------------------------------------------#
-fmCode <- nimbleCode({
-    
-    # Intercept
-    mu ~ dnorm(mu0, sd = sd.mu)
-    
-    # Shrinkage process
-    U[1] ~ dgamma(a1, 1)
-    for(h in 2:H){
-        U[h] ~ dgamma(a2, 1)
-    }
-
-    for(h in 1:H){
-        Tau[h] <- prod(U[1:h])
-    }
-
-    # Latent factors
-    for(h in 1:H){
-        for(v in 1:V){
-            X[v,h] ~ dnorm(M[v] , sd = sqrt(Tau[h]^(-1)))
-        }
-    }
-    
-    # Compute linear predictor
-    M.Z[1:V,1:V] <- mu + X[,] %*% t(X[,]) # Recall multivariate nodes must be used with []
-
-    # Model
-    for (i in 2:V){
-        for (j in 1:(i-1)){ # Self-edges not allowed
-            E[i,j] ~ dnorm(mean = 0, sd = sd.e)
-            Z[i,j] <- M.Z[i,j] + E[i,j]
-            indZ[i,j] <- getIndicator(Z[i,j]) # Function required to pass indices to if statement
-            Y[i,j] ~ dbin(size = 1, prob = indZ[i,j]) 
-        }
-    }
-
-})
-
-
-# Function to get indicator
-getIndicator <- nimbleFunction(
-    run = function(Zij = double(0)) {  
-        if(Zij > 0){
-            Yij <- 1
-        }else{
-            Yij <- 0
-        }
-        return(Yij)
-        returnType(double(0))
-    })
-
-
-# Define the constants
-mu0 = probit(mean(Y, na.rm = TRUE)) # Reasonable guess for intercept prior mean
-
-fmConsts <- list(V = V,
-                 H = H,
-                 a1 = a1, a2 = a2,
-                 mu0 = mu0, sd.mu = sd.mu,
-                 M = rep(0, V), sd.e = sd.e)
-
-# Define the data
-fmData <- list(Y = Y)
-
-# Set initialization parameters
-fmInits <- list(X = matrix(0, V, H),
-                U = 1:H,
-                mu = mu0,
-                E = matrix(0,V,V),
-                Z = ifelse(Y==1, 1, -1),
-                indZ = Y)
-
-fmDims <- list(Tau = H, X = c(V, H), mvCov = c(V,V,H),
-               E = c(V,V))
-
-# Create NIMBLE model
-fm <- nimbleModel(code = fmCode, name = "fm", constants = fmConsts, data = fmData,
-                  dimensions = fmDims, inits = fmInits)
-
-Rmodel <- fm
-Rmodel$calculate()
-Rmodel$initializeInfo(TRUE)
-Rmodel$logProb_Y
-
-Ynodes <- Rmodel$expandNodeNames('Y')
-ylp <- sapply(Ynodes, function(n) Rmodel$calculate(n))
-
-head(ylp, 20)
-
-Rmodel$expandNodeNames('Y[18, 1]')
-Rmodel$calculate('Y[18, 1]')
-Rmodel$Y[18,1]
-Rmodel$indZ[18,1]
-Rmodel$Z[18,1]
-Rmodel$M.Z[18,1]
-Rmodel$E[18,1]
-
-
-# Check conjugacy
-configureMCMC(fm, print = TRUE) # no conjugacy
-
-# ------------------------------------ FIT MODEL AND EVALUATE----------------------------------------#
-niter <- 200##2000
-nchains <- 1#2
-
-mcmc.out <- nimbleMCMC(code = fmCode, constants = fmConsts,
-                       data = fmData, inits = fmInits,
-                       nchains = nchains, niter = niter,
-                       summary = TRUE, WAIC = TRUE,
-                       monitors = c('mu', 'Z', 'Tau')) 
-
-# Check recovery of latent probabilities
-fm.samples <- do.call(rbind, mcmc.out$samples)
-p.samples <- fm.samples[, grepl("P", colnames(fm.samples))]
-
-p.post <- matrix(data = colMeans(p.samples), byrow = FALSE, nrow = V, ncol = V)
-diag(p.post) <- 0
-plot(c(p.post), c(P))
-
-
-
-
-
-get.surv.riv <- nimbleFunction(
-    ##N, F, M, ,error, area, nseas
-    run = function(N=double(0),Mv=double(0),eps=double(0),Ff=double(1),sel=double(1),nfl=integer(0)) {
-        returnType(double(0)) 
-        Fv<-nimNumeric(nfl)
-        for(j in 1:nfl){
-            Fv[j]<-exp(Ff[j])*sel[j]  #river non RiverFishingbuilding
-        }
-        stmp<-exp(-(Mv+sum(Fv[1:nfl])))
-        survtmp<-N*stmp*eps 
-        return(survtmp)
-    }
-)
-
-
-a <- 3
-N <- 30
-Mv <- .3
-eps <- 234.3
-Ff <- (1:a) / 100
-sel <- rnorm(a, 3)^2 + 1
-
-get.surv.riv(N, Mv, eps, Ff, sel, a)
-
-N * eps * exp(-(Mv + sum(sel[1:a] * exp(Ff[1:a]))))
-
-
-
-
-
-
-expr <- quote(
-    ##AA <- get.surv.sea(N, MV, EPS, FF[1:10], PHI[1:10], SEL[1:10], 2) ## orig
-    T.surv.imm[i,1,1,st,a]<-get.surv.sea(T.lik[i,1,1,st,a],Mpsa[relage[i,st],relyr[i,st],st],kE.Mps[relyr[i,st],aseas[1],relage[i,st],a],LF[relyr[i,st],1:2,st,a],phi[relyr[i,st],aseas[1],1:2,st,a],Fsel[relage[i,st],1:2],2)
-)
-print(expr)
-
-## function(N=double(0),Mv=double(0),eps=double(0),Ff=double(1),phi=double(1),sel=double(1),nfl=integer(0))
-##
-## N * EPS * exp(-MV - sum(exp(FF) * PHI * SEL))
-stopifnot(expr[[1]] == '<-')
-lhs <- expr[[2]]
-rhs <- expr[[3]]
-stopifnot(rhs[[1]] == 'get.surv.sea')
-stopifnot(length(rhs) == 8)
-Nexpr <- rhs[[2]]
-MVexpr <- rhs[[3]]
-epsexpr <- rhs[[4]]
-Ffexpr <- rhs[[5]]
-stopifnot(length(strsplit(deparse(Ffexpr), ':')[[1]]) == 2)
-phiexpr <- rhs[[6]]
-stopifnot(length(strsplit(deparse(phiexpr), ':')[[1]]) == 2)
-selexpr <- rhs[[7]]
-stopifnot(length(strsplit(deparse(selexpr), ':')[[1]]) == 2)
-
-exprOut <- substitute(
-    LHS <- N * EPS * exp(-MV - sum(exp(FF) * PHI * SEL)) + get.surv.sea(),
-    list(LHS = lhs, N = Nexpr, EPS = epsexpr, MV = MVexpr, FF = Ffexpr, PHI = phiexpr, SEL = selexpr)
-)
-strOut <- paste0(gsub(' \\+ get\\.surv\\.sea\\(\\)$', '    ## get.surv.sea()', gsub(', ', ',', gsub('^ *','', deparse(exprOut)))), collapse = '')
-cat('\n\n', strOut, '\n\n')
-
-
-
-
-
-
-
-
-
-Rmodel$calculate('rec.obs')
-
-Rmodel$initializeInfo(TRUE)
-
-rolp <- Rmodel$logProb_rec.obs
-dim(rolp)
-sum(rolp)
-
-rolp[1:47,96,]
-
-Rmodel$logProb_rec.obs[1,96,1]
-
-node <- 'rec.obs[1, 96, 1]'
-Rmodel$expandNodeNames(node)
-
-parr <- Rmodel$getParents(node, returnScalarComponents = TRUE)
-length(parr)
-
-
-parr_val_orig <- sapply(parr, function(s) eval(parse(text = paste0('Rmodel$', s))[[1]]))
-rm(parr_val)
-parr_val
-load('~/temp/parr.RData')
-
-parVars <- unique(nimble:::removeIndexing(parr))
-
-v <- 1
-parVars[1]
-thisParVal_orig <- eval(parse(text = paste0('Rmodel$', parVars[1]))[[1]])
-load('~/temp/thisparval.RData')
-dim(thisParVal_orig)
-dim(thisParVal)
-all(thisParVal_orig - thisParVal == 0)
-head(which(thisParVal_orig - thisParVal != 0, arr.ind = TRUE))
-
-Rmodel$T.surv.mat[1,3,1,1,1]
-
-
-
-
-
-
-
-###########################################
-
-node <- 'T.surv.mat[1, 3, 1, 1, 1]'
-Rmodel$expandNodeNames(node)
-parr <- Rmodel$getParents(node)
-
-parVars <- unique(nimble:::removeIndexing(parr))
-parVars
-
-
-
-
-length(parr_val)
-length(parr_val_orig)
-
-parr_diff <- parr_val - parr_val_orig
-
-names(data)
-
-Rmodel$T.lik.riv[2,4,1,2,2]
-i <- 2
-jj <- 4
-k <- 1
-st <- 2
-Rmodel$T.lik.riv[i,jj,k,st,2]
-
-nareas
-
-Rmodel$T.surv.imm[i,(jj-1),12,st,1:nareas]
-Rmodel$T.surv.mat[i,(jj-1),12,st,1:nareas]  ### VERY DIFFERENT
-
-Rmodel$T.surv.mat[2,3,12,2,1:nareas]  ### VERY DIFFERENT
-
-i <- 2
-jj <- 3
-k <- 12
-st <- 2
-
-Rmodel$T.surv.mat[i,jj,k,st,]
-Rmodel$T.surv.mat[2,3,12,2,]
-
-Rmodel$T.lik.mat[2,3,2,2,]   ## VERY DIFFERENT
-
-i <- 2
-jj <- 3
-k <- 2
-st <- 2
-
-
-Rmodel$T.lik.mat[i,jj,k,st,1:nareas]
-
-
-Rmodel$T.surv.mat[i,jj,(k-1),st,1:nareas]
-
-get.lik14(
-    T.surv.mat[i,jj,(k-1),st,1:nareas],
-    0,
-    psi.imm[sblock[k],1:nareas,1:nareas,st],
-    nareas)
-
-
-i <- 2
-jj <- 2
-k <- 
-Rmodel$T.surv.mat[2,3,1,2,1:nareas]
-Rmodel$T.surv.mat[i,jj,(k-1),st,1:nareas]
-
-
-i <- 2
-jj <- 3
-k <- 1
-
-Rmodel$T.surv.mat[i,jj,k,st,]
-
-
-Rmodel$T.lik.mat[i,jj,k,st,]
-Rmodel$T.lik.mat[2,3,1,st,]
-
-get.surv.sea(
-    T.lik.mat[i,jj,k,st,a],
-    Mseas,
-    kE[(relyr[i,st]+jj-1),aseas[k],(relage[i,st]+jj-1),a],
-    LF[(relyr[i,st]+jj-1),1:2,st,a],
-    phi[(relyr[i,st]+jj-1),aseas[k],1:2,st,a],
-    Fsel[(relage[i,st]+jj-1),1:2],
-    2
-)
-
-
-
-Rmodel$T.lik.mat[i,jj,k,st,]
-
-
-Rmodel$T.surv.mat[i,(jj-1),12,st,]
-
-get.lik14(
-    T.surv.mat[i,(jj-1),12,st,1:nareas],
-    p.rep.spawn[(relage[i,st]+jj-1)],
-    psi.imm[sblock[k],1:nareas,1:nareas,st],
-    nareas
-)
-
-
-Rmodel$T.surv.mat[2,2,7,st,]
-
-
-i <- 2
-jj <- 2
-k <- 7
-st <- 2
-
-Rmodel$T.lik.mat[i,jj,k,st,]
-
-
-
-
-
-Rmodel$T.lik.mat[i,jj,k,st,]
-
-
-get.mov.Nov(
-    Rmodel$T.surv.spawn[i,jj,(k-1),st,1:(nareas+1)],
-    Rmodel$p.surv.spawn[st],
-    Rmodel$psi.mat[sblock[k],1:(nareas+1),1:(nareas+1),st],
-    (nareas+1),
-    nareas
-)
-
-
-N <- Rmodel$T.surv.spawn[i,jj,(k-1),st,1:(nareas+1)]
-psurv <-Rmodel$p.surv.spawn[st]
-psi <- Rmodel$psi.mat[sblock[k],1:(nareas+1),1:(nareas+1),st]
-Nar1 <- nareas + 1
-Nar2 <- nareas
-    
-function (N, psurv, psi, Nar1, Nar2) 
-
-    movsum <- nimNumeric(length = Nar2)
-    psim <- nimArray(dim = nimC(Nar1, Nar2))
-    for (ii in 1:Nar1) {
-        for (jjj in 1:Nar2) {
-            psim[ii, jjj] <- psi[ii, jjj]/sum(psi[ii, 1:Nar2])
-            movsum[jjj] <- movsum[jjj] + N[ii] * psurv * psim[ii, jjj]
-        }
-    }
-    ##return(movsum)
-
-
-
-
-
-sum( Rmodel$T.surv.spawn[i,jj,(k-1),st,1:(nareas+1)], Rmodel$zz_psi_mat_Norm[st,1:(nareas+1),z] ) * Rmodel$p.surv.spawn[st]    ## get.mov.Nov()
-
-
-i <- 2
-jj <- 3
-k <- 2
-st <- 2
-
-z <- 1
-
-sum( Rmodel$T.surv.mat[i,jj,(k-1),st,1:nareas] * Rmodel$psi.imm[sblock[k],1:nareas,z,st] )    ## get.mov()
-
-Rmodel$T.surv.mat[i,jj,(k-1),st,1:nareas]
-
-
-
-get.surv.sea(
-    T.lik.mat[i,jj,k,st,a],
-    Mseas,
-    kE[(relyr[i,st]+jj),aseas[k],(relage[i,st]+jj-1),a],
-    LF[(relyr[i,st]+jj),1:2,st,a],
-    phi[(relyr[i,st]+jj),aseas[k],1:2,st,a],
-    Fsel[(relage[i,st]+jj-1),1:2],
-    2
-)
-
-
-
-
-
-T.lik.riv[i,jj,k,st,1:(nareas+1)]<-
-    get.lik5(
-        T.surv.imm[i,(jj-1),12,st,1:nareas],
-        T.surv.mat[i,(jj-1),12,st,1:nareas],
-        pmat[(relage[i,st]+jj-1),(relyr[i,st]+jj-1),st],
-        p.rep.spawn[(relage[i,st]+jj-1)],psi.mat[sblock[k],1:nareas,1:(nareas+1),st],(nareas+1)
-    )
-                    ##
-
-
-########################################################
-
-tlik_orig <- Rmodel$T.lik
-load('~/temp/tlik.RData')
-dim(tlik_orig)
-dim(tlik)
-
-max(abs(tlik_orig - tlik))
-
-tlikriv_orig <- Rmodel$T.lik.riv
-load('~/temp/tlikriv.RData')
-dim(tlikriv_orig)
-dim(tlikriv)
-
-abs(tlikriv_orig - tlikriv)[1,1,1,,]
-max(abs(tlikriv_orig - tlikriv))
-
-which(abs(tlikriv_orig - tlikriv) > 20, arr.ind = TRUE)
-
-Rmodel$T.lik.riv[2,4,1,2,2]
-
-T.lik.riv
-
-library(scales)
-library(MCMCvis)
-library(nimble)
-library(MASS)
-library(writexl)
-library(readxl)
-library(grid)
-library(dplyr)
-library(data.table)
 
 Q=data.frame(matrix(ncol = 7,nrow = 30))
 Q[1,]=c(1,0,0,0,0,0,0)
@@ -1208,41 +403,57 @@ Q[29,]=c(1,0,1,0,1,1,1)
 Q[30,]=c(1,1,0,1,1,0,1)
 
 
+library(scales)
+library(MCMCvis)
+library(nimble)
+library(MASS)
+library(writexl)
+library(readxl)
+library(grid)
+library(dplyr)
+library(data.table)
 
 y_NA=fread("~/Downloads/missing_response.csv")
+setDF(y_NA)
+vec1=colSums(!is.na(t(y_NA)))
+vec1=c(0,vec1)
+vec1=as.vector(vec1)
 
+loc=which(!is.na(y_NA),arr.ind = T)
+loc=data.frame(loc)
+colnames(loc)=c("person","item")
+try=loc %>%
+    group_by(person) %>%
+    summarise(score = list(item))
 
+trytry=try[[2]]
+vec2=as.vector(unlist(trytry))
 
-y_NA=fread("missing_response.csv")
-numNonNAs <- apply(y_NA, 1, function(x) sum(!is.na(x)))
+y=c(t(y_NA))
+y=na.omit(y)
 
-apply(y_NA, 1, function(x) which(!is.na(x)))
+index <- array(NA, c(1000, max(data$vec1)))
 
-nonNAindices <- array(NA, dim(y_NA))
-for(i in 1:nrow(y_NA))   nonNAindices[i,1:numNonNAs[i]] <- which(!is.na(y_NA[i,]))
+for(n in 1:1000) {
+    for(i in 1:max(data$vec1)) {
+        index[n,i] <- data$vec2[data$vec1[n] + i]
+    }
+}
 
-## include numNonNAs and nonNAindices in your constants list:
-constants$numNonNAs <- numNonNAs
-constants$nonNAindices <- nonNAindices
-
-## include y_NA in your data list:
-data$y_NA <- y_NA
 
 
 
 #model we fit
 code=nimbleCode({
     for (n in 1:1000) {
-        ##for (i in 1:vec1[n+1]) {
-        ##    add=vec1[n]
-        ##    index=vec2[add+i]
-        ##    for (k in 1:7) {w[n, index, k] <- pow(attribute[n, k], Q[index, k])}
-        ##    logit(prob[1+(i-1)+vec1[n]]) <- beta[index] + delta[index] * prod(w[n,index, 1:7])
-        ##    y[1+(i-1)+vec1[n]] ~ dbern(prob[1+(i-1)+vec1[n]])
-        ##}}
-        for(i in 1:numNonNAs[n]) {
-            y[n, nonNAindices[n,i]] ~ dbern(....)
-        }
+        for (i in 1:vec1[n+1]) {
+            for (k in 1:7) {
+                w[n, index[n,i], k] <- pow(attribute[n, k], Q[index[n,i], k])
+            }
+            logit_prob[1+(i-1)+vec1[n]] <- beta[index[n,i]] + delta[index[n,i]] * prod(w[n,index[n,i], 1:7])
+            prob[1+(i-1)+vec1[n]] <- exp(logit_prob[1+(i-1)+vec1[n]])
+            y[1+(i-1)+vec1[n]] ~ dbern(prob[1+(i-1)+vec1[n]])
+        }}
     for (n in 1:1000) {
         for (k in 1:7) {
             logit(att_prob[n, k]) <- gamma[k] * theta[n] - lambda[k]
@@ -1267,10 +478,15 @@ code=nimbleCode({
     item_den[1:2, 1:2] ~ dwish(R[1:2, 1:2], 2)
 })
 
-data <- list(y=y,Q=Q,vec1=vec1,vec2=vec2)
+data <- list(y=y)
 inits <- list(item_den = diag(2))
+constants <- list(index = index, Q=Q,vec1=vec1,vec2=vec2)
 monitors=c("gamma","lambda","beta","delta")
-model<-nimbleModel(code,data = data,inits=inits)
+
+
+model <- nimbleModel(code, data = data, inits=inits, constants = constants)
+Rmodel <- model <- nimbleModel(code, data = data, inits=inits)
+
 
 any(is.na(data$y))
 
@@ -1284,162 +500,138 @@ system.time(samples_DINA<-runMCMC(cModel_DINAMCMC, nchains=2,niter = 100, nburni
 
 
 
-library(nimble)
 
-sumLogPostDens <- nimbleFunction(
-    name = 'sumLogPostDens',
+
+library(nimble)
+library(testthat)
+
+
+sampler_RW_multinomial2 <- nimbleFunction(
+    name = 'sampler_RW_multinomial2',
     contains = sampler_BASE,
     setup = function(model, mvSaved, target, control) {
-        stochNodes <- setdiff(model$getNodeNames(stochOnly = TRUE), target)
+        ## control list extraction
+        adaptive      <- extractControlElement(control, 'adaptive',      TRUE)
+        adaptInterval <- extractControlElement(control, 'adaptInterval', 200)
+        ## node list generation
+        targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        targetAllNodes <- unique(model$expandNodeNames(target))
+        calcNodes      <- model$getDependencies(target) 
+        lTarget        <- length(targetAsScalar)
+        Ntotal         <- sum(values(model,target))
+        NOverL         <- Ntotal / lTarget
+        ## numeric value generation
+        Zeros             <- matrix(0, lTarget, lTarget)
+        Ones              <- matrix(1, lTarget, lTarget)
+        timesRan          <- Zeros
+        AcceptRates       <- Zeros
+        ScaleShifts       <- Zeros
+        totalAdapted      <- Zeros
+        timesAccepted     <- Zeros
+        ENSwapMatrix      <- Ones
+        ENSwapDeltaMatrix <- Ones
+        RescaleThreshold  <- 0.2 * Ones
+        lpProp  <- 0
+        lpRev   <- 0
+        Pi      <- pi 
+        PiOver2 <- Pi / 2 ## Irrational number prevents recycling becoming degenerate
+        u       <- runif(1, 0, Pi)
+        ## nested function and function list definitions
+        my_setAndCalculateDiff <- setAndCalculateDiff(model, target)
+        my_decideAndJump       <- decideAndJump(model, mvSaved, target = target)
+        ## checks
+        if(model$getDistribution(target) != 'dmulti')   stop('can only use RW_multinomial sampler for multinomial distributions')
+        if(length(targetAllNodes) > 1)                  stop('cannot use RW_multinomial sampler on more than one target')
+        if(adaptive & adaptInterval < 100)              stop('adaptInterval < 100 is not recommended for RW_multinomial sampler')
     },
     run = function() {
-        model[[target]] <<- model$getLogProb(stochNodes)
+        for(iFROM in 1:lTarget) {            
+            for(iTO in 1:(lTarget-1)) {
+                if(u > PiOver2) {                
+                    iFrom <- iFROM
+                    iTo   <- iTO
+                    if (iFrom == iTo)
+                        iTo <- lTarget
+                    u <<- 2 * (u - PiOver2)   # recycle u
+                } else {
+                    iFrom <- iTO
+                    iTo   <- iFROM
+                    if (iFrom == iTo)
+                        iFrom <- lTarget
+                    u <<- 2 * (PiOver2 - u)   # recycle u
+                }
+                propValueVector <- generateProposalVector(iFrom, iTo)
+                lpMHR <- my_setAndCalculateDiff$run(propValueVector) + lpRev - lpProp
+                ##lpMHR <- my_setAndCalculateDiff$run(propValueVector) - lpRev + lpProp 
+                jump  <- my_decideAndJump$run(lpMHR, 0, 0, 0)
+                if(jump) nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+                else     nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE)
+                if(adaptive)   adaptiveProcedure(jump=jump, iFrom=iFrom, iTo=iTo)
+            }
+        }
     },
-    methods = list( reset = function() {} )
+    methods = list(
+        generateProposalVector = function(iFrom = integer(), iTo = integer()) { 
+            propVector <- values(model,target) 
+            pSwap      <- min(1, max(1, ENSwapMatrix[iFrom,iTo]) / propVector[iFrom]) 
+            nSwap      <- rbinom(n=1,   size=propVector[iFrom], prob=pSwap) 
+            lpProp    <<- dbinom(nSwap, size=propVector[iFrom], prob=pSwap, log=TRUE) 
+            propVector[iFrom] <- propVector[iFrom] - nSwap 
+            propVector[iTo]   <- propVector[iTo]   + nSwap 
+            pRevSwap   <- min(1, max(1, ENSwapMatrix[iTo,iFrom]) / (propVector[iTo]))## + nSwap)) 
+            lpRev     <<- dbinom(nSwap, size=propVector[iTo], prob=pRevSwap, log=TRUE) 
+            returnType(double(1)) 
+            return(propVector) 
+        },
+        adaptiveProcedure = function(jump=logical(), iFrom=integer(), iTo=integer()) {
+            NVector <- values(model,target) 
+            timesRan[iFrom, iTo] <<- timesRan[iFrom, iTo] + 1
+            if(jump)
+                timesAccepted[iFrom, iTo] <<- timesAccepted[iFrom, iTo] + 1
+            if (timesRan[iFrom, iTo] %% adaptInterval == 0) {
+                totalAdapted[iFrom, iTo] <<- totalAdapted[iFrom, iTo] + 1
+                accRate                   <- timesAccepted[iFrom, iTo] / timesRan[iFrom, iTo]
+                AcceptRates[iFrom, iTo]  <<- accRate
+                if (accRate > 0.5) {
+                    ENSwapMatrix[iFrom, iTo] <<-
+                        min(Ntotal,
+                            ENSwapMatrix[iFrom,iTo] + ENSwapDeltaMatrix[iFrom, iTo] / totalAdapted[iFrom,iTo])
+                } else {
+                    ENSwapMatrix[iFrom, iTo] <<-
+                        max(1,
+                            ENSwapMatrix[iFrom,iTo] - ENSwapDeltaMatrix[iFrom,iTo] / totalAdapted[iFrom,iTo])
+                } 
+                if(accRate<RescaleThreshold[iFrom,iTo] | accRate>(1-RescaleThreshold[iFrom,iTo])) {
+                    ## rescale iff ENSwapMatrix[iFrom, iTo] is not set to an upper or lower bound 
+                    if (ENSwapMatrix[iFrom, iTo] > 1 & ENSwapMatrix[iFrom, iTo] < Ntotal) {
+                        ScaleShifts[iFrom, iTo]       <<- ScaleShifts[iFrom, iTo] + 1 
+                        ENSwapDeltaMatrix[iFrom, iTo] <<- min(NOverL, ENSwapDeltaMatrix[iFrom, iTo] * totalAdapted[iFrom,iTo] / 10)
+                        ENSwapDeltaMatrix[iTo, iFrom] <<- ENSwapDeltaMatrix[iFrom, iTo] 
+                        RescaleThreshold[iFrom,iTo]   <<- 0.2 * 0.95^ScaleShifts[iFrom, iTo]
+                    }
+                }
+                ## lower Bound 
+                if(ENSwapMatrix[iFrom, iTo] < 1)
+                    ENSwapMatrix[iFrom, iTo] <<- 1                
+                ## symmetry in ENSwapMatrix helps maintain good acceptance rates
+                ENSwapMatrix[iTo,iFrom]   <<- ENSwapMatrix[iFrom,iTo]
+                timesRan[iFrom, iTo]      <<- 0
+                timesAccepted[iFrom, iTo] <<- 0
+            }
+        },
+        reset = function() {
+            timesRan          <<- Zeros
+            AcceptRates       <<- Zeros
+            ScaleShifts       <<- Zeros
+            totalAdapted      <<- Zeros
+            timesAccepted     <<- Zeros
+            ENSwapMatrix      <<- Ones
+            ENSwapDeltaMatrix <<- Ones
+            RescaleThreshold  <<- 0.2 * Ones
+        }
+    )
 )
 
-
-code <- nimbleCode({
-    a ~ dnorm(0, sd = 1)
-    b ~ dnorm(0, sd = 2)
-    y ~ dnorm(a + b, sd = 3)
-    logDens ~ dnorm(0, 1)    ## this distribution does not matter
-})
-constants <- list()
-data <- list(y = 3)
-inits <- list(a = 0, b = 1)
-
-Rmodel <- nimbleModel(code, constants, data, inits)
-
-conf <- configureMCMC(Rmodel)
-conf$removeSamplers('logDens')
-conf$addSampler(target = 'logDens', type = 'sumLogPostDens')   ## remove sampler assigned to 'logDens'
-conf$printSamplers()
-
-Rmcmc <- buildMCMC(conf)
-
-
-Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
-
-set.seed(0)
-##samples <- runMCMC(Rmcmc, 10)
-samples <- runMCMC(Cmcmc, 10)
-
-
-a <- samples[, 'a']
-b <- samples[, 'b']
-cbind(
-    dnorm(a,0,1,log=TRUE) + dnorm(b,0,2,log=TRUE) + dnorm(y,a+b,3,log=TRUE),
-    samples[, 'logDens']
-)
-
-
-
-dnorm(samples[1], 1, log = TRUE)
-
-colnames(samples)
-samplesSummary(samples)
-library(basicMCMCplots)
-samplesPlot(samples)
-library(coda)
-effectiveSize(samples)
-
-plot(simulated_returns)
-
-a <- 4
-
-if(a > 3) {
-    print('yes')
-    skip
-    print('here')
-}
-
-continue
-next
-break
-
-library(nimble)
-
-code <- nimbleCode({
-    a ~ dnorm(0, 1)
-    b ~ dnorm(0, 1)
-    for(i in 1:10) {
-        rr[i] <- r[i]^2
-        x[i] ~ dnorm(rr[i] + a, s[i] + b)
-    }
-})
-
-inits <- list(a=1, b=1, x=rep(0,10))
-
-Rmodel <- nimbleModel(code, inits = inits)
-
-Rmodel$getNodeType(c('a', 'x','r'))
-
-
-
-
-##n<-length(as.numeric(simulated_returns$simulated_returns))
-
-# Use R nimble library
-library(nimble)
-## BUGS code
-# Model and prior
-
-
-myCode <- nimbleCode({
-    # Likelihood
-    for (t in 1:n) {   ## changed 1:1 to 1:n
-        y[t] ~ dnorm(0, sigma_h[t]^2)
-        sigma_h[t] <- exp(h[t])
-    }
-    ##Priors  
-    omega ~ dgamma(omega_star, 0.25)
-    alpha_beta[ 1: 3] ~ ddirch(alpha_beta_star[1:3])
-    h[1] <- omega/(1-alpha+beta) ### change the [1] after omega should be removed
-    for(t in 2:n) {
-        h[t] <- sqrt(omega + alpha* pow(y[t-1], 2)  ### change the [1] after omega should be removed
-                     + beta * pow(h[t-1], 2))
-    }
-    alpha <- alpha_beta[1]  ##[1,1]   ## change
-    beta <- alpha_beta[2]   ##[1,2]   ## change
-    alpha_beta_star[1:3]<-c(alpha_star[1],beta_star[1],phi[1])
-})
-
-n <- 1510   ## added this line
-
-# Constants, Data, Initial values for MCMC
-myConstants <- list( n = n )
-myData      <- list( y = rnorm(n)) ##as.numeric(simulated_returns$simulated_returns))   ## changed the data
-myInits     <- list( h = rnorm(n+1, 0, 1), alpha_star = runif(1),beta_star=runif(1),phi=1, omega = 1 , alpha_beta =c(0,0,0),alpha=0,beta=0,omega_star=rgamma(1,2,2))
-
-##dimensions <- list(
-##    h<-c(1510),
-##    y<-c(1509,1),
-##    alpha_star<-c(1),
-##    beta_star<-c(1),
-##    omega<-c(1),
-##    phi<-c(1),
-##    alpha_beta<-c(3),
-##    alpha<-c(1),
-##    beta<-c(1),
-##    mu<-c(1)
-##)
-
-dimensions <- list(   ## change.  Need to use "=" inside list, rather than "<-"
-    h = c(1510),
-    y = 1510, ##c(1509,1),   ## change here
-    ##alpha_star = c(1), 
-    ##beta_star = c(1),   ## don't include dimensions for scalars, all lines below
-    ##omega = c(1),
-    ##phi = c(1),
-    alpha_beta = c(3)
-    ##alpha = c(1),
-    ##beta = c(1),
-    ##mu = c(1)
-)
-
-model <- nimbleModel(myCode, data=myData, inits=myInits, dimensions = dimensions)
 
 
 
@@ -1448,117 +640,196 @@ model <- nimbleModel(myCode, data=myData, inits=myInits, dimensions = dimensions
 library(nimble)
 
 code <- nimbleCode({
-    omega ~ dgamma(omega_star, 0.25)
-    alpha_beta[ 1: 3] ~ ddirch(alpha_beta_star[1:3])
-    for(i in 1:3) {
-        x[i] <- 1
-    }
-    yy[1:3] <- c(x[1], x[2], x[3])
+    p[1] <- 0.3
+    p[2] <- 0.7
+    x[1:2] ~ dmulti(size = 1, prob = p[1:2])
 })
+Rmodel <- nimbleModel(code, inits = list(x = c(1,0)))
+Rmodel$calculate()
 
-Rmodel <- nimbleModel(code)
-
-conf <- configureMCMC(Rmodel)
-
-
-library(nimble)
 
 code <- nimbleCode({
     p[1] <- 0.1
     p[2] <- 0.2
-    p[3] <- 0.3
-    p[4] <- 0.4
-    x[1:4] ~ dmulti(size = 1, prob = p[1:4])
+    p[3] <- 0.7
+    x[1:3] ~ dmulti(size = 6, prob = p[1:3])
 })
-
-Rmodel <- nimbleModel(code, inits = list(x = c(1,0,0,0)))
+Rmodel <- nimbleModel(code, inits = list(x = c(1,2,3)))
+Rmodel$calculate()
 
 conf <- configureMCMC(Rmodel, nodes = NULL)
-conf$addSampler('x', 'RW_multinomial')
+conf$addSampler('x', 'RW_multinomial2', control = list(adaptive=FALSE))
+conf$printSamplers()
 Rmcmc <- buildMCMC(conf)
 
-Cmodel <- compileNimble(Rmodel)
-Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+Rmcmc$samplerFunctions$contentsList[[1]]$target
+
+debug(Rmcmc$samplerFunctions$contentsList[[1]]$run)
+##debug(Rmcmc$samplerFunctions$contentsList[[1]]$adaptiveProcedure)
+debug(Rmcmc$samplerFunctions$contentsList[[1]]$generateProposalVector)
+
+set.seed(0)
+Rmcmc$run(10)
+## 
+## 
+##adaptive
+##adaptInterval
+##targetAsScalar
+##targetAllNodes
+##calcNodes
+
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc)); Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
 
 set.seed(0)
 samples <- runMCMC(Cmcmc, 1000000)
 
+5 * (1:4)/10
 apply(samples, 2, mean)
 ##    x[1]    x[2] 
-## 0.17789 0.82211
+## 0.17789 0.82211 
 
 
 
-code <- nimbleCode({...})
-constants <- list(...)
-data <- list(...)
-inits <- list(...)
-Rmodel <- nimbleModel(code, constants, data, inits)
-
-llFunction_definition <- nimbleFunction(
-    setup = function(model) { },
-    run = function() {
-        returnType(double())
-        return(model$Likelihoods)
-    }
-)
-my_llFunction <- llFunction_definition(Rmodel)
-
-conf <- configureMCMC(Rmodel)
-conf$addSampler(type = "RW_llFunction", target = "mu", llFunction = my_llFunction)
-
-Rmcmc <- buildMCMC(conf)
-## compile, run MCMC, etc...
-
-
-
-(7442 - 1000) / 24
-
-
-setwd('~/github/courses/ds201/dsb/course-materials/_slides')
-
-library(devtools)
-devtools::install_github("hadley/emo")
-library(rmarkdown)
-
-render('u1-d01-welcome/u1-d01-welcome.Rmd')
-
-getwd()
-
-install.packages('emo')
-
-
-library(xaringan)
-library(xaringanExtra)
-library(emo)
-
-
-xaringan::inf_mr('u1-d01-welcome/u1-d01-welcome.Rmd', cast_from = '..')
-
-servr::daemon_stop()
-
+sampler_RW_multinomial
 
 
 library(nimble)
 
+p <- c(.3, 0.7)
+N <- length(p)
+xinit2 <- c(1, rep(0,N-1))
+constants <- list(N = N)
+data <- list(y = 3.5)
+niter <- 100000
+
 
 code <- nimbleCode({
-    y[1:10] ~ dmnorm(mu[1:10], pr[1:10,1:10])
+    x ~ dcat(p[1:N])
+    ##y ~ dnorm(mean = x, sd = 1)
 })
 
-constants <- list(mu = rep(0, 10), pr = diag(10))
-data <- list(y = c(rep(0,5), rep(NA,5)))
-inits <- list(y = c(rep(NA,5), rep(0,5)))
-
-
-Rmodel <- nimbleModel(code, constants, data, inits)
-
+Rmodel <- nimbleModel(code, constants, data, inits = list(p=p, x=1))
 Rmodel$calculate()
-Rmodel$isData('y')
-Rmodel$isDataFromGraphID
-Rmodel$isDataEnv$y
 
-conf <- configureMCMC(Rmodel)
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('x', 'categorical')
+conf
+Rmcmc <- buildMCMC(conf)
+
+##Rmcmc <- buildMCMC(Rmodel)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc)); Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+samples <- runMCMC(Cmcmc, niter)
+table(samples) / niter
+      1       2 
+0.05357 0.94643 
+
+true_post <- p * dnorm(data$y, 1:N, 1)
+true_post <- true_post / sum(true_post)
+true_post
+[1] 0.05482116 0.94517884
+
+
+code <- nimbleCode({
+    x[1:N] ~ dmulti(size = 1, prob = p[1:N])
+    ##y ~ dnorm(mean = inprod(x[1:N], 1:N), sd = 1)
+})
+
+Rmodel <- nimbleModel(code, constants, data, inits = list(p=p, x=xinit2))
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('x', 'RW_multinomial')
+conf
+Rmcmc <- buildMCMC(conf)
+
+##Rmcmc <- buildMCMC(Rmodel)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc)); Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+
+samples <- runMCMC(Cmcmc, niter)
+
+table(samples %*% 1:N) / niter
+      1       2 
+0.02789 0.97211 
+
+
+
+## installing a specific version of nimble package
+1
+remove.packages('nimble')
+library(nimble)
+
+library(devtools)
+devtools::install_version('nimble', version = '0.6')
+
+q('no')
+
+
+
+
+
+
+
+
+library(nimble)  ## nimble version 1.0.2 is loaded.
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dbern(0.5)
+    for(i in 1:10) {
+        x[i] ~ dnorm(0, 1)
+    }
+    ##yy ~ dnorm(x[id], 1)
+    s <- nimStep(a)
+    ss <- abs(a)
+    y ~ dnorm(s + ss, 1)
+})
+
+Rmodel <- nimbleModel(code, inits = list(id=1), buildDerivs = TRUE)
+
+Cmodel <- compileNimble(Rmodel)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+    b ~ dbern(0.5)
+    d ~ dconstraint(a > 0)
+})
+
+Rmodel <- nimbleModel(code, data = list(d=1), buildDerivs = TRUE)
+
+
+
+
+
+INDEXEDNODEINFO_
+
+getNodeFunctionIndexedInfo(INDEXEDNODEINFO_, 1)    ## 1
+getNodeFunctionIndexedInfo(INDEXEDNODEINFO_, 2)    ## 50
+
+model$wObs[getNodeFunctionIndexedInfo(INDEXEDNODEINFO_, 1)]   ## 385
+model$N[getNodeFunctionIndexedInfo(INDEXEDNODEINFO_, 2)]   ## 317
+
+dbinom(0, size=317, prob = constants_list$POWhite * (1-constants_list$PCMoult), log = TRUE)
+
+dbinom
+
+model$logProb_wObs[getNodeFunctionIndexedInfo(INDEXEDNODEINFO_, 1)] <<-
+    dbinom(
+        model$wObs[getNodeFunctionIndexedInfo(INDEXEDNODEINFO_, 1)],
+        size = model$N[getNodeFunctionIndexedInfo(INDEXEDNODEINFO_, 2)],
+        prob = 0.1764,
+        log = 1)
+return(invisible(
+    model$logProb_wObs[getNodeFunctionIndexedInfo(INDEXEDNODEINFO_, 1)]
+))
+
+
+    
 
 
 
@@ -1573,7 +844,7 @@ X <- matrix(rnorm(p*n), nrow = n, ncol = p) # explanatory variables
 true_betas <- c(c(0.1, 0.2, 0.3, 0.4, 0.5), rep(0, p-5)) # coefficients
 sigma <- 1
 y <- rnorm(n, X %*% true_betas, sigma)
-
+##
 code <- nimbleCode({
     beta0 ~ dnorm(0, sd = 100)
     for(k in 2:p)
@@ -1584,70 +855,86 @@ code <- nimbleCode({
         y[i] ~ dnorm(beta0 + inprod(beta[1:p], x[i, 1:p]), sd = sigma)
     }
 })
-
-X <- sweep(X, 2, colMeans(X))  # center for better MCMC performance
-
+##
 constants <- list(n = n, p = p, x = X)
 data <- list(y = y)
 inits <- list(beta0 = mean(y), beta = rep(0, p), sigma = 0.5)
-Rmodel <- mod <- nimbleModel(code, constants = constants, data = data, inits = inits)
-Rmodel$calculate()
-model <- compileNimble(mod)
+Rmodel <- nimbleModel(code, constants, data, inits)
 
-conf <- configureMCMC(mod)
-Rmcmc <- buildMCMC(conf)
-Cmcmc <- compileNimble(Rmcmc, project = mod)
-conf$printSamplers()
 
+conf <- configureMCMC(Rmodel)
 conf$removeSampler("beta")
 
-conf
+conf$addSampler("beta", "AF_slice") # throws warning
+
+conf$addSampler("beta[2:p]", "AF_slice")
+conf$addSampler("beta[2:p]", "RW_block")
+
+Rmodel$isStoch(mod$expandNodeNames("beta[2:p]"))
+
+debug(Rmodel$isStoch)
+Rmodel$isStoch("beta[2:p]")
+
+
+debug(conf$addSampler)
+conf$addSampler("beta[2:p]", "RW_block")
+
+
 conf$printSamplers()
 
-conf$addSampler("beta[2:15]", "AF_slice") # throws warning
-conf$addSampler("beta", "AF_slice") # throws warning
-conf$printSamplers()
 
 mcmc <- buildMCMC(conf) # another warning
 
 
-Cmcmc <- cmcmc <- compileNimble(mcmc, project = model)
-res <- runMCMC(cmcmc,  niter=20, nburnin = 1, thin=1, 
-               nchains = 1, samplesAsCodaMCMC = TRUE) # runs while all beta nodes lack a sampler
+
+
+library(nimbleHMC)
+nimbleOptions(buildInterfacesForCompiledNestedNimbleFunctions = TRUE)
+
+code <- nimbleCode({
+    a[1] ~ dnorm(0, 1)
+    a[2] ~ dnorm(a[1]+1, 1)
+    a[3] ~ dnorm(a[2]+1, 1)
+    d ~ dnorm(a[3], sd=2)
+})
+constants <- list()
+data <- list(d = 5)
+inits <- list(a = rep(0, 3))
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler('a', type = 'NUTS_classic', warmupMode = 'fraction', warmup = 0.3)
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 
 
-
-
-
-library(nimble)
+set.seed(0)
+samples <- runMCMC(Cmcmc, 800, nburnin = 250)
 
 
 
 
 nfDef <- nimbleFunction(
-    setup = function(x) {},
-    run = function() {
-        print(x)
-        if(x == "a") print(1)
-        f(1)
+    setup = function(x) {
+        str <- 'str'
     },
-    methods = list(
-        f = function(arg1 = double()) {
-            print('----')
-            print(arg1)
-            print(x)
-            print('----')
-            print(arg1, x, 3, 'xx')
-            stop('stsop message')
-            print('----')
-        }
-    )
+    run = function() {
+        #print(str)
+        #print(x)
+        #if(str == 'str') {
+        #    print('yes')
+        #}
+        #if(str == x) {
+        #    print('fff')
+        #}
+        print("hello'a")
+    }
 )
 
-Rnf <- nfDef('a')
-##Rnf <- nfDef('b')
-
+Rnf <- nfDef('str')
 Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
 
 Rnf$run()
@@ -1670,43 +957,107 @@ for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
 
 
 
+qatoarknhocuehgb
 
-x <- c(1.9, 1.99, 1.999, 2.001, 2.01, 2.1)
-(x^3 - 8) / (x^2 - 4)
-
-
-x <- c(9.9, 9.99, 9.999, 10.001, 10.01, 10.1)
-(x-5) / (x-10)^2
+0123456789abcdef
 
 
-xs <- seq(-2, 2, by = 0.01)
-ys <- xs ^ 1.5
-plot(xs, ys, type = 'l')
-
-(-2) ^ 2.1
-
-
-github/nimble/nimble/packages/nimble/R/s
-
-
-library(nimbleHMC)
+library(nimble)
 
 code <- nimbleCode({
-    mu ~ dnorm(0, sd = 1000)
-    sigma ~ dunif(0, 1000)
-    for(i in 1:10) {
-        x[i] ~ dnorm(mu, sd = sigma)
-    }
+    x[1:3] ~ ddirch(alpha[1:3])
 })
-data <- list(x = c(2, 5, 3, 4, 1, 0, 1, 3, 5, 3))
-inits <- function() list(mu = rnorm(1,0,1), sigma = runif(1,0,10))
+constants <- list(alpha = c(10, 30, 1))
+Rmodel <- nimbleModel(code, constants, inits = list(x = rep(1,3)/3))
+Rmodel$calculate()
+Cmodel <- compileNimble(Rmodel)
+Cmodel$calculate()
 
-debug(nimbleHMC)
+n <- 200000
+xs <- array(NA, c(n,3))
 
-out <- nimbleHMC(code, data = data, inits = inits,
-                 monitors = c("mu", "sigma"), thin = 10,
-                 niter = 20000, nburnin = 1000, nchains = 3,
-                 summary = TRUE, WAIC = TRUE)
+system.time(
+    for(i in 1:n) {
+        Cmodel$simulate('x')
+        xs[i,] <- Cmodel$x
+    }
+)
+
+dim(xs)
+
+xs[1:40,]
+
+apply(xs, 1, sum)
+means <- apply(xs, 2, mean)
+sds <- apply(xs, 2, sd)^2
+sds
+means[1] / means[2]
+means[1] / means[3]
+
+sds[1] / sds[2]
+sds[1] / sds[3]
+
+
+
+
+
+code <- nimbleCode({
+    mu ~ dnorm(0, 1)
+    z ~ dpois(mu^2 + 1)
+    y ~ dnorm(z, 1)
+    p ~ dbeta(1, 1)
+    z2 ~ dbinom(p, 5)
+    y2 ~ dnorm(z2, 1)
+})
+data <- list(y = 0.1, y2 = 0.3)
+inits <- list(z = 2, z2 = 3, mu = 0, p = .3)
+Rmodel <- nimbleModel(code, data = data, inits = inits, buildDerivs = TRUE)
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+addHMC(conf, target = 'mu', nwarmup = 20)
+addHMC(conf, target = 'mu', nwarmup = 10)
+addHMC(conf, target = 'mu', nwarmup =  0)
+addHMC(conf, target = 'mu', nwarmup = 20, adaptive = FALSE)
+addHMC(conf, target = 'mu', nwarmup = 10, adaptive = FALSE)
+addHMC(conf, target = 'mu', nwarmup =  0, adaptive = FALSE)
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+set.seed(0)
+
+samples <- runMCMC(Cmcmc, 100)
+
+
+
+
+library(nimble)
+library(nimbleHMC)
+
+code  <- nimbleCode({
+    p[1:5] ~ ddirch(alpha[1:5])
+    y[1:5] ~ dmulti(p[1:5], 10)
+    z ~ dnorm(w, 1)
+    w ~ dnorm(0,1)
+})
+m <- nimbleModel(code, data = list(y=rep(2,5)), buildDerivs = TRUE)
+
+
+undebug(buildHMC)
+debug(  buildHMC)
+undebug(configureHMC)
+debug(  configureHMC)
+
+mcmc <- buildHMC(m, nodes = 'p')
+mcmc <- buildHMC(m)
+
+
+
+
+
+mcmc <- buildHMC(m, nodes = 'p[1:5]')
 
 code <- nimbleCode({
     a[1] ~ dnorm(0, 1)
@@ -1715,28 +1066,1203 @@ code <- nimbleCode({
     b ~ dbern(0.5)
     d ~ dnorm(sum(a[1:3]) + b, sd=2)
 })
-
 constants <- list()
 data <- list(d = 5)
 inits <- list(a = rep(0, 3), b = 0)
+
 Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
 
+nimbleOptions('verbose')
+nimbleOptions(verbose = FALSE)
+nimbleOptions(verbose = TRUE)
+
+Rmcmc <- buildMCMC(Rmodel)
+Rmcmc <- buildMCMC(Rmodel, nodes = 'a')
+Rmcmc <- buildMCMC(Rmodel, nodes = 'b')
+
+conf <- configureMCMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+
+conf <- configureMCMC(Rmodel, nodes = 'a')
+Rmcmc <- buildMCMC(conf)
+
+conf <- configureMCMC(Rmodel, nodes = 'b')
+Rmcmc <- buildMCMC(conf)
+
+
+Rmcmc <-     buildHMC(Rmodel)
+Rmcmc <-     buildHMC(Rmodel, nodes = 'a')
+Rmcmc <-     buildHMC(Rmodel, nodes = 'b')
+
+conf  <- configureHMC(Rmodel)
+Rmcmc <- buildMCMC(conf)
+
+conf  <- configureHMC(Rmodel, nodes = 'a')
+Rmcmc <- buildMCMC(conf)
+
+conf  <- configureHMC(Rmodel, nodes = 'b')
+Rmcmc <- buildMCMC(conf)
+
+
+library(testthat)
+
+expect_output(conf <- configureMCMC(Rmodel), 'binaryx')
+
+debug(buildMCMC)
+debug(configureMCMC)
+Rmcmc <- buildMCMC(Rmodel, nodes = 'a')
+
+
+
+
+a <- array(1:30, c(2,3,5))
+
+a[,,5]
+as.numeric(a)
+
+
+
+setwd('~/Downloads/cyril/from_perry')
+
+sink('add1.h')
+cat('
+      extern "C" {
+      void my_internal_function(double *p, double*ans, int n);
+      }
+     ')
+sink()
+sink('add1.cpp') 
+cat('
+      #include <cstdio>
+      #include "add1.h"
+      void my_internal_function(double *p, double *ans, int n) {
+        printf("In my_internal_function\\n");
+          /* cat reduces the double slash to single slash */ 
+        for(int i = 0; i < n; i++) 
+          ans[i] = p[i] + 1.0;
+      }
+     ')
+sink()
+system('g++ add1.cpp -c -o add1.o')
+
+
+Radd1 <- nimbleExternalCall(function(x = double(1), ans = double(1),
+                                     n = integer()){}, Cfun =  'my_internal_function',
+                            headerFile = file.path(getwd(), 'add1.h'), returnType = void(),
+                            oFile = file.path(getwd(), 'add1.o'))
+
+
+Cadd1 <- compileNimble(Radd1)
+
+x <- rep(0,5)
+Cadd1(1:5, x, 5)
+x
+
+
+
+environment(Cadd1)$CnativeSymbolInfo_
+
+getNativeSymbolInfo("set_big_data", "")
+.C(getNativeSymbolInfo("set_big_data",
+                       environment(C_get_big_data)$CnativeSymbolInfo_$dll),
+   big_data,  100L) # must be numeric vector and integer
+
+
+
+## If you need to use a function with non-scalar return object in model code,
+## you can wrap it  in another nimbleFunction like this:
+model_add1 <- nimbleFunction(
+    run = function(x = double(1)) {
+        ans <- numeric(length(x))
+        Radd1(x, ans, length(x))
+        return(ans)
+        returnType(double(1))
+    })
+demoCode <- nimbleCode({
+    for(i in 1:4) {x[i] ~ dnorm(0,1)} ## just to get a vector
+    y[1:4] <- model_add1(x[1:4])
+})
+demoModel <- nimbleModel(demoCode, inits = list(x = rnorm(4)),
+                         check = FALSE, calculate = FALSE)
+CdemoModel <- compileNimble(demoModel, showCompilerOutput = TRUE)
+## End(Not run)
+
+
+
+
+library(mra) 
+data(dipper.data) 
+y <- dipper.data[,1:7]
+
+library(nimbleHMC) 
+
+code <- nimbleCode({
+    phi[1] ~ dunif(0, 1)
+    phi[2] ~ dunif(0, 1)
+    p ~ dunif(0, 1)
+    for(i in 1:N) {
+        for(t in (first[i]+1):T) {
+            x[i,t] ~ dbern(phi[f[t]] * x[i,t-1])
+            y[i,t] ~ dbern(p * x[i,t])
+        }
+    }
+})
+
+Rmodel <- nimbleModel(
+    code,
+    constants = list(N = nrow(y), T = ncol(y), f = c(1,2,2,1,1,1,1),
+                     first = apply(y, 1, which.max)),
+    data = list(y = y),
+    inits = list(phi = c(0.5, 0.5), p = 0.5, x = array(1, dim(y))),
+    buildDerivs = TRUE)
+
+conf <- configureMCMC(Rmodel)
+
+## RW sampler (3)
+##   - phi[]  (2 elements)
+##   - p
+## binary sampler (848)
+##   - x[]  (848 elements)
+
+conf$replaceSamplers(target = c("phi", "p"), type = "NUTS")
+conf$printSamplers(byType = TRUE)
+
+## NUTS sampler (1)
+##   - phi, p 
+## binary sampler (848)
+##   - x[]  (848 elements)
+
+
+Alternatively, the convenience function `configureHMC(Rmodel)`
+
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, niter = 20000, nburnin = 10000)
+
+##  [Note] HMC sampler (nodes: phi[1], phi[2], p) is using 1000 warmup iterations. 
+##  [Note] HMC sampler (nodes: phi[1], phi[2], p) encountered 3 divergent paths. 
+
+
+samplesSummary(samples, round = 2)
+
+## p      0.89   0.90    0.03      0.83      0.94
+## phi[1] 0.58   0.58    0.03      0.52      0.63
+## phi[2] 0.50   0.50    0.06      0.39      0.60
+
+basicMCMCplots::samplesPlot(samples, legend.location = "topleft", file = '~/github/nimble/nimbleHMC/joss/paper/samplesPlot.pdf', width = 4.5, height = 2.5)
+
+
+basicMCMCplots::samplesPlot(samples,
+                            legend.location = 'topleft',
+                            width=4.5, height=2,
+                            file='~/github/nimble/nimbleHMC/joss/paper/samplesPlot.pdf')
+
+
+
+
+![](samplesPlot.pdf)
+
+
+
+
+
+
+#### build and open manuscript locally:
+system("osascript -e 'tell application \"Acrobat\" to quit'")
+setwd('~/github/nimble/nimbleHMC/joss/paper')
+f <- 'paper.md'
+library(rmarkdown)
+rmarkdown::render(f, output_format = 'pdf_document')
+system('open paper.pdf')
+
+
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    a ~ dnorm(0, 1)
+})
+constants <- list()
+data <- list()
+inits <- list(a = 0)
+
+Rmodel <- nimbleModel(code, constants, data, inits)
+Rmodel$calculate()
+
+Rmodel$initializeInfo()
+Rmodel$initializeInfo(TRUE)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printSamplers(byType = TRUE)
+conf$printMonitors()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+samplesSummary(samples)
+library(basicMCMCplots)
+samplesPlot(samples)
+library(coda)
+effectiveSize(samples)
+
+
+nfDef <- nimbleFunction(
+    setup = function(n) {},
+    run = function() {
+        x <- rpois(n, 3)
+        return(x)
+        returnType(double(1))
+    }
+)
+
+Rnf <- nfDef(1)
+Cnf <- compileNimble(Rnf)##, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
+
+stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
+for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
+
+
+
+f <- function(a, b, d, l = list(), cx, ...) {
+    browser()
+    l <- c(l, list(...))
+    1
+    g(a, d = d)
+    2
+}
+
+g <- function(aa, dd) {
+    browser()
+    1
+    2
+}
+
+f(1, 2, g=4)
+f(1, 2, list(4))
+f(1, 2, 3)
+
+set.seed(0)
+trueCor <- matrix(c(1, .3, .7, .3, 1, -0.2, .7, -0.2, 1), 3)
+covs <- c(3, 2, .5)
+trueCov <- diag(sqrt(covs)) %*% trueCor %*% diag(sqrt(covs))
+Omega <- solve(trueCov)
+n <- 20
+R <- diag(rep(1,3))
+mu <- 1:3
+Y <- mu + t(chol(trueCov)) %*% matrix(rnorm(3*n), ncol = n)
+M <- 3
+code <- nimbleCode({
+    for(i in 1:n) {
+        Y[i, 1:M] ~ dmnorm(mu[1:M], Omega[1:M,1:M])
+    }
+    Omega[1:M,1:M] ~ dwish(R[1:M,1:M], 4)
+})
+constants <- list(n = n, M = M, mu = mu, R = R)
+data <- list(Y = t(Y))
+inits <- list(Omega = diag(M))
+##
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
 Rmcmc <- buildHMC(Rmodel)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+
+Cmcmc <- compiledList$mcmc
+set.seed(0)
+##samples <- runMCMC(Cmcmc, niter = 1000)
+samples <- runMCMC(Cmcmc, niter = 5000, nburnin = 2000)
+
+newDf <- 4 + n
+newR <- R + tcrossprod(Y- mu)
+OmegaTrueMean <- newDf * solve(newR)
+wishRV <- array(0, c(M, M, 10000))
+for(i in 1:10000) {
+    z <- t(chol(solve(newR))) %*% matrix(rnorm(3*newDf), ncol = newDf)
+    wishRV[ , , i] <- tcrossprod(z)
+}
+OmegaSimTrueSDs <- apply(wishRV, c(1,2), sd)
+
+expect_equal(as.numeric(apply(samples, 2, mean)), as.numeric(OmegaTrueMean), tol = 0.1)
+expect_equal(as.numeric(apply(samples, 2, sd)), as.numeric(OmegaSimTrueSDs), tol = 0.011)
+
+as.numeric(apply(samples, 2, mean)) - as.numeric(OmegaTrueMean)
+as.numeric(apply(samples, 2, sd)) - as.numeric(OmegaSimTrueSDs)
+
+
+
+library(nimble)
+##
+source('~/github/nimble/nimbleHMC/nimbleHMC/R/samplers.R')
+##
+set.seed(0); n <- 100
+alpha <- c(10, 30, 15, 60, 1); K <- length(alpha)
+p <- c(.12, .24, .09, .54, .01); y <- rmulti(1, n, p)
+code <- nimbleCode({
+    y[1:K] ~ dmulti(p[1:K], n);
+    p[1:K] ~ ddirch(alpha[1:K]);
+    for(i in 1:K) {
+        alpha[i] ~ dgamma(.001, .001);
+    }
+})
+constants <- list(K = K, n = n)
+inits <- list(p = rep(1/K, K), alpha = rep(K, K))
+data <- list(y = y)
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
+conf <- configureMCMC(Rmodel, nodes = NULL, monitors = 'p')
+conf$addSampler('alpha', 'HMC', printEpsilon = FALSE)    ##addHMC(conf, 'alpha')
+conf$addSampler('p',     'HMC', printEpsilon = TRUE)   ##addHMC(conf, 'p')
+conf$printSamplers()
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc), showCompilerOutput = TRUE)
+
+##set.seed(0); runMCMC(compiledList$mcmc, 20000, progressBar = FALSE)
+
+set.seed(0)
+Cmcmc <- compiledList$mcmc
+samples <- runMCMC(Cmcmc, niter = 20000, nburnin = 10000)
+
+
+expect_equal(as.numeric(apply(samples, 2, mean)), p, tol = .05)
+
+
+###setwd('~/github/nimble/nimbleHMC')
+###library(devtools)
+###document('nimbleHMC')
+###system('R CMD BUILD nimbleHMC')
+###suppressMessages(try(remove.packages('nimbleHMC'), silent = TRUE))
+###(tarFiles <- grep('\\.tar\\.gz', list.files(), value = TRUE))
+###(lastTarFile <- tarFiles[length(tarFiles)])
+###message('installing package version ', gsub('\\.tar\\.gz$', '', lastTarFile))
+###system(paste0('R CMD install ', lastTarFile))
+### 
+###q('no')
+### 
+###1
+### 
+###library(nimbleHMC)
+
+##is.nan.vec <- nimble:::is.nan.vec
+##set.seed(0)
+##Rmcmc$run(1000)
+
+
+
+const$n_sites
+length(const$n_reps)
+const$n_reps
+min(const$n_reps)
+
+dim(const$rep.index)
+
+length(data$y) / 210
+
+
+red <- readRDS('~/Downloads/nonpar_test_model_dat.rds')
+##names(red)
+##red$params
+
+M <- red$M
+y.in <- red$dat$y
+
+
+library(nimble)
+
+code <- occ_long_nonpar_dot <- nimbleCode({
+    psi ~ dunif(0,1)
+    alpha ~ dgamma(1, 1)
+    xi[1:n_sites] ~ dCRP(conc=alpha, size=n_sites)
+    for(i in 1:M) p[i] ~ dunif(0, 1)
+    for (i in 1:n_sites) {    # Loop over sites
+        Z[i] ~ dbern(psi)
+        for (j in 1:n_reps[i]) {  # loop over reps
+            y[rep.index[i,j]] ~ dbern(p[xi[i]] * Z[i])
+        }
+        ##for (j in 1:3) {  # loop over reps
+        ##    y[3*(i-1) + j] ~ dbern(p[xi[i]] * Z[i])
+        ##}
+    }
+})
+
+
+###M = n.sites.in
+
+dat <- list(y = y.in)
+
+const <- red$const
+
+##<-list(
+##    M = M,
+##    n_sites = n.sites.in,
+##    n_reps = start.stop.index$n.reps.by.site,
+##    rep.index = start.stop.index$site.rep.index
+##)
+
+init <- red$init
+##<- list(
+##    p = rep(0.5,M),
+##    Z = rep(1, n.sites.in),
+##    alpha=1,
+##    xi=rep(1,n.sites.in)
+##)
+
+params = c(
+    'Z',
+    'p',
+    'psi'        
+)
+
+constants <- const
+data <- dat
+inits <- init
+code <- occ_long_nonpar_dot
+
+Rmodel <- run.model<-nimbleModel(
+    code = occ_long_nonpar_dot ,
+    constants = const,
+    data = dat,
+    inits = init
+    )
+
+Rmodel$calculate()
+Rmodel$initializeInfo()
+
+Rmodel$psi <- 0.5
+Rmodel$calculate()
+
+conf <- configureMCMC(Rmodel)
+pppp
+
+conf$setSamplers(c('xi'))
+pppp
+
+Rmcmc <- buildMCMC(conf)
+
+Cmodel <- compileNimble(Rmodel)
+Cmodel$calculate()
+Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
+
+samples <- runMCMC(Cmcmc, 100)
+
+dim(samples)
+samples
+
+
+.n.iter <- 10000
+.n.burnin <- 500
+.n.thin <- 10
+
+model.config<-configureMCMC(run.model,
+                            monitors = params, 
+                            onlySlice = F, enableWAIC = T
+                            )
+
+
+mcmc.model<-buildMCMC(model.config)
+
+c.mcmc.model<-compileNimble(run.model, mcmc.model)
+
+samples<-runMCMC(c.mcmc.model$mcmc.model,
+                 #mcmc.model,
+                 niter = .n.iter,
+                 nburnin = .n.burnin,
+                 thin = .n.thin,
+                 summary = T,
+                 WAIC = T)
+
+
+
+system("osascript -e 'tell application \"Acrobat\" to quit'")
+setwd('~/github/nimble/nimbleHMC/joss/paper')
+f <- 'paper.md'
+library(rmarkdown)
+rmarkdown::render(f, output_format = 'pdf_document')
+system('open paper.pdf')
+
+
+
+
+library(mra) 
+data(dipper.data) 
+y <- dipper.data[,1:7]
+
+library(nimbleHMC) 
+
+code <- nimbleCode({
+    phi[1] ~ dunif(0, 1)
+    phi[2] ~ dunif(0, 1)
+    p ~ dunif(0, 1)
+    for(i in 1:N) {
+        for(t in (first[i]+1):T) {
+            x[i,t] ~ dbern(phi[f[t]] * x[i,t-1])
+            y[i,t] ~ dbern(p * x[i,t])
+        }
+    }
+})
+
+
+
+Rmodel <- nimbleModel(
+    code,
+    constants = list(N = nrow(y), T = ncol(y), f = c(1,2,2,1,1,1,1),
+                     first = apply(y, 1, which.max)),
+    data = list(y = y),
+    inits = list(phi = c(0.5, 0.5), p = 0.5, x = array(1, dim(y))),
+    buildDerivs = TRUE)
+
+
 
 conf <- configureHMC(Rmodel)
 
-conf$removeSampler('b')
-conf
-Rmcmc <- buildHMC(conf)
+conf <- configureMCMC(Rmodel)
+
+## RW sampler (3)
+##   - phi[]  (2 elements)
+##   - p
+## binary sampler (848)
+##   - x[]  (848 elements)
+
+conf$replaceSamplers(target = c("phi", "p"), type = "HMC")
+conf$printSamplers(byType = TRUE)
+
+
+
+
+
+1
+library(nimble)
+library(nimbleHMC)
+library(testthat)
+
+
+code <- nimbleCode({
+    mu[1] <- 10
+    mu[2] <- 20
+    mu[3] <- 30
+    x[1:3] ~ dmnorm(mu[1:3], prec = Q[1:3,1:3])
+})
+Q <- matrix(c(1.0,0.2,-1.0,0.2,4.04,1.6,-1.0,1.6,10.81), nrow=3)
+constants <- list(Q = Q)
+data <- list()
+inits <- list(x = c(10, 20, 30))
+##
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
+
+undebug(buildHMC)
+debug(configureHMC)
+debug(nimbleHMC:::hmc_determineNodeLists)
+
+conf <- configureMCMC(Rmodel)
+
+nimbleHMC:::hmc_determineNodeLists(Rmodel)
+
+conf <- configureHMC(Rmodel)
+
+Rmcmc <- buildHMC(Rmodel)
+
 
 
 library(nimble)
-Rmodel <- nimbleModel(quote({ x ~ dnorm(0, 1) }))
+library(nimbleHMC)
+
+code <- nimbleCode({
+    mu ~ dnorm(0,1)
+    sd ~ dhalfflat()
+    for(i in 1:5) y[i] ~ dnorm(mu, sd = sd)
+    z ~ dnorm(mu, sd = sd) #posterior predictive
+})
+constants <- list()
+data <- list(y = rnorm(5))
+inits <- list()
+
+Rmodel <- nimbleModel(code, constants, data, inits, buildDerivs = TRUE)
+
+undebug(configureHMC)
+debug(nimbleHMC:::hmc_determineNodeLists)
+
+conf <- configureHMC(Rmodel)
+
+conf <- configureMCMC(Rmodel, nodes = NULL)
+conf$addSampler(c('mu','sd','z'), 'HMC')
+conf$addSampler(c('mu','sd'), 'HMC')
+pppp
+
+
+
+## Error due to a block while ignoring posterior predictive nodes
+Rmcmc <- buildMCMC(conf)
+
+## Error message should give instructions on how to move forward in some useful way.
+## Error message should also have some line breaks.
+
+
+## I try to move forward because I am an expert user and brave enough to flip the option referred to in the error message
+nimbleOptions(MCMCusePredictiveDependenciesInCalculations = TRUE)
+hmcConf <- configureHMC(m) # I still don't want the separate pp sampler.
+
+
+
+
+## making new packages, with nimbleFunctions in them
+
+library(devtools)
+library(nimble)
+
+setwd('~/temp/pg')
+devtools::create('ex.pkg')
+
+setwd('~/temp/pg/ex.pkg')
+
+devtools::document()
+devtools::build()
+devtools::install()
+
+
+
+q('no')
+
+1
+##library(nimble) 
+library(exPkg)
+library(ex.pkg)
+nf1
+nf2
+compileNimble(exPkg::nf2)  ## he said try this:
+compileNimble(exPkg::nf2, showCompilerOutput = TRUE)  ## he said try this:
+
+
+compileNimble(exPkg::nf1)  ## maybe also try this:
+
+
+
+
+##
+
+
+tempdir()
+
+sampler_RW_block2 <- nimbleFunction(
+    name = 'sampler_RW_block2',
+    contains = sampler_BASE,
+    setup = function(model, mvSaved, target, control) {
+        ## control list extraction
+        adaptive            <- extractControlElement(control, 'adaptive',            TRUE)
+        adaptScaleOnly      <- extractControlElement(control, 'adaptScaleOnly',      FALSE)
+        adaptInterval       <- extractControlElement(control, 'adaptInterval',       200)
+        adaptFactorExponent <- extractControlElement(control, 'adaptFactorExponent', 0.8)
+        scale               <- extractControlElement(control, 'scale',               1)
+        propCov             <- extractControlElement(control, 'propCov',             'identity')
+        tries               <- extractControlElement(control, 'tries',               1)
+        ## node list generation
+        targetAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        ccList <- mcmc_determineCalcAndCopyNodes(model, target)
+        calcNodes <- ccList$calcNodes; copyNodesDeterm <- ccList$copyNodesDeterm; copyNodesStoch <- ccList$copyNodesStoch   # not used: calcNodesNoSelf
+        finalTargetIndex <- max(match(model$expandNodeNames(target), calcNodes))
+        if(!is.integer(finalTargetIndex) | length(finalTargetIndex) != 1 | is.na(finalTargetIndex[1]))   stop('problem with target node in RW_block sampler')
+        calcNodesProposalStage <- calcNodes[1:finalTargetIndex]
+        calcNodesDepStage <- calcNodes[-(1:finalTargetIndex)]
+        ## numeric value generation
+        scaleOriginal <- scale
+        timesRan      <- 0
+        timesAccepted <- 0
+        timesAdapted  <- 0
+        d <- length(targetAsScalar)
+        scaleHistory <- c(0, 0)                                                  ## scaleHistory
+        acceptanceHistory  <- c(0, 0)                                            ## scaleHistory
+        propCovHistory <- array(0, c(2,d,d))                                     ## scaleHistory
+        saveMCMChistory <- if(nimbleOptions('MCMCsaveHistory')) TRUE else FALSE
+        if(is.character(propCov) && propCov == 'identity')     propCov <- diag(d)
+        propCovOriginal <- propCov
+        chol_propCov <- chol(propCov)
+        chol_propCov_scale <- scale * chol_propCov
+        empirSamp <- matrix(0, nrow=adaptInterval, ncol=d)
+        ## nested function and function list definitions
+        targetNodesAsScalar <- model$expandNodeNames(target, returnScalarComponents = TRUE)
+        my_calcAdaptationFactor <- calcAdaptationFactor(d, adaptFactorExponent)
+        ## checks
+        if(!inherits(propCov, 'matrix'))        stop('propCov must be a matrix\n')
+        if(!inherits(propCov[1,1], 'numeric'))  stop('propCov matrix must be numeric\n')
+        if(!all(dim(propCov) == d))             stop('propCov matrix must have dimension ', d, 'x', d, '\n')
+        if(!isSymmetric(propCov))               stop('propCov matrix must be symmetric')
+    },
+    run = function() {
+        for(i in 1:tries) {
+            propValueVector <- generateProposalVector()
+            values(model, targetNodesAsScalar) <<- propValueVector
+            lpD <- model$calculateDiff(calcNodesProposalStage)
+            if(lpD == -Inf) {
+                jump <- FALSE
+                nimCopy(from = mvSaved, to = model,   row = 1, nodes = calcNodesProposalStage, logProb = TRUE)
+            } else {
+                lpD <- lpD + model$calculateDiff(calcNodesDepStage)
+                jump <- decide(lpD)
+                if(jump) {
+                    ##model$calculate(calcNodesPPomitted)
+                    nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodesProposalStage, logProb = TRUE)
+                    nimCopy(from = model, to = mvSaved, row = 1, nodes = copyNodesDeterm, logProb = FALSE)
+                    nimCopy(from = model, to = mvSaved, row = 1, nodes = copyNodesStoch, logProbOnly = TRUE)
+                } else {
+                    nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodesProposalStage, logProb = TRUE)
+                    nimCopy(from = mvSaved, to = model, row = 1, nodes = copyNodesDeterm, logProb = FALSE)
+                    nimCopy(from = mvSaved, to = model, row = 1, nodes = copyNodesStoch, logProbOnly = TRUE)
+                }
+            }
+            if(adaptive)     adaptiveProcedure(jump)
+        }
+    },
+    methods = list(
+        generateProposalVector = function() {
+            propValueVector <- rmnorm_chol(1, values(model,target), chol_propCov_scale, 0)  ## last argument specifies prec_param = FALSE
+            returnType(double(1))
+            return(propValueVector)
+        },
+        adaptiveProcedure = function(jump = logical()) {
+            timesRan <<- timesRan + 1
+            if(jump)     timesAccepted <<- timesAccepted + 1
+            if(!adaptScaleOnly)     empirSamp[timesRan, 1:d] <<- values(model, target)
+            if(timesRan %% adaptInterval == 0) {
+                acceptanceRate <- timesAccepted / timesRan
+                timesAdapted <<- timesAdapted + 1
+                if(saveMCMChistory) {
+                    setSize(scaleHistory, timesAdapted)                 ## scaleHistory
+                    scaleHistory[timesAdapted] <<- scale                ## scaleHistory
+                    setSize(acceptanceHistory, timesAdapted)            ## scaleHistory
+                    acceptanceHistory[timesAdapted] <<- acceptanceRate  ## scaleHistory
+                    propCovTemp <- propCovHistory                                           ## scaleHistory
+                    setSize(propCovHistory, timesAdapted, d, d)                             ## scaleHistory
+                    if(timesAdapted > 1)                                                    ## scaleHistory
+                        for(iTA in 1:(timesAdapted-1))                                      ## scaleHistory
+                            propCovHistory[iTA, 1:d, 1:d] <<- propCovTemp[iTA, 1:d, 1:d]    ## scaleHistory
+                    propCovHistory[timesAdapted, 1:d, 1:d] <<- propCov[1:d, 1:d]            ## scaleHistory
+                }
+                adaptFactor <- my_calcAdaptationFactor$run(acceptanceRate)
+                scale <<- scale * adaptFactor
+                ## calculate empirical covariance, and adapt proposal covariance
+                if(!adaptScaleOnly) {
+                    gamma1 <- my_calcAdaptationFactor$getGamma1()
+                    for(i in 1:d)     empirSamp[, i] <<- empirSamp[, i] - mean(empirSamp[, i])
+                    empirCov <- (t(empirSamp) %*% empirSamp) / (timesRan-1)
+                    propCov <<- propCov + gamma1 * (empirCov - propCov)
+                    chol_propCov <<- chol(propCov)
+                }
+                chol_propCov_scale <<- chol_propCov * scale
+                timesRan <<- 0
+                timesAccepted <<- 0
+            }
+        },
+        setScale = function(newScale = double()) {
+            scale         <<- newScale
+            scaleOriginal <<- newScale
+            chol_propCov_scale <<- chol_propCov * scale
+        },
+        setPropCov = function(newPropCov = double(2)) {
+            propCov         <<- newPropCov
+            propCovOriginal <<- newPropCov
+            chol_propCov <<- chol(propCov)
+            chol_propCov_scale <<- chol_propCov * scale
+        },
+        getScaleHistory = function() {  ## scaleHistory
+            if(!saveMCMChistory)   print("Please set 'nimbleOptions(MCMCsaveHistory = TRUE)' before building the MCMC.")
+            returnType(double(1))
+            return(scaleHistory)
+        },          
+        getAcceptanceHistory = function() {  ## scaleHistory
+            returnType(double(1))
+            if(!saveMCMChistory)   print("Please set 'nimbleOptions(MCMCsaveHistory = TRUE)' before building the MCMC.")
+            return(acceptanceHistory)
+        },                  
+        getPropCovHistory = function() { ## scaleHistory
+            if(!saveMCMChistory)   print("Please set 'nimbleOptions(MCMCsaveHistory = TRUE)' before building the MCMC and note that to reduce memory use we only save the proposal covariance history for parameter vectors of length infinity or less.")
+            returnType(double(3))
+            return(propCovHistory)
+        },
+        ##getScaleHistoryExpanded = function() {                                                              ## scaleHistory
+        ##    scaleHistoryExpanded <- numeric(timesAdapted*adaptInterval, init=FALSE)                         ## scaleHistory
+        ##    for(iTA in 1:timesAdapted)                                                                      ## scaleHistory
+        ##        for(j in 1:adaptInterval)                                                                   ## scaleHistory
+        ##            scaleHistoryExpanded[(iTA-1)*adaptInterval+j] <- scaleHistory[iTA]                      ## scaleHistory
+        ##    returnType(double(1)); return(scaleHistoryExpanded) },                                          ## scaleHistory
+        ##getPropCovHistoryExpanded = function() {                                                            ## scaleHistory
+        ##    propCovHistoryExpanded <- array(dim=c(timesAdapted*adaptInterval,d,d), init=FALSE)              ## scaleHistory
+        ##    for(iTA in 1:timesAdapted)                                                                      ## scaleHistory
+        ##        for(j in 1:adaptInterval)                                                                   ## scaleHistory
+        ##            propCovHistoryExpanded[(iTA-1)*adaptInterval+j,1:d,1:d] <- propCovHistory[iTA,1:d,1:d]  ## scaleHistory
+        ##    returnType(double(3)); return(propCovHistoryExpanded) },                                        ## scaleHistory
+        reset = function() {
+            scale   <<- scaleOriginal
+            propCov <<- propCovOriginal
+            chol_propCov <<- chol(propCov)
+            chol_propCov_scale <<- chol_propCov * scale
+            timesRan      <<- 0
+            timesAccepted <<- 0
+            timesAdapted  <<- 0
+            if(saveMCMChistory) {
+                scaleHistory  <<- c(0, 0)    ## scaleHistory
+                acceptanceHistory  <<- c(0, 0)
+                propCovHistory <<- nimArray(0, dim = c(2,d,d))
+            }
+            my_calcAdaptationFactor$reset()
+        }
+    )
+)
+
+
+
+
+
+
+
+
+
+
+library(nimble)
+
+nflDef <- nimbleList(
+    a = double(),
+    b = double(1),
+    c = double(2)
+)
+
+nfDef <- nimbleFunction(
+    setup = function() {
+        nfl <- nflDef$new()
+    },
+    run = function(x = double(), n = double()) {
+        nfl$b <<- rep(0, n)
+        nfl$c <<- array(0, c(n,2*n))
+        nfl$a <<- x + 1
+        nfl$b[1] <<- x + 2
+        nfl$c[1,1] <<- x + 3
+        returnType(nflDef())
+        return(nfl)
+    }
+)
+
+Rnf <- nfDef()
+
+Cnf <- compileNimble(Rnf)
+
+Rnf$run(2, 5)
+Cnf$run(2, 5)
+
+
+
+
+
+
+library(nimble)
+
+
+nim_ppc <- nimbleFunction(
+    run = function(y = double(4),
+                   yrep_z = double(5),
+                   mu = double(4),
+                   sigma = double(4),
+                   rho = double(4),
+                   n_obs = double(2)) {
+        # metadata
+        n_ppc <- dim(yrep_z)[1]
+        n_hyp <- dim(yrep_z)[2]
+        n_spp <- dim(yrep_z)[3]
+        n_dim <- dim(yrep_z)[5]
+        n_cor <- n_dim * (n_dim - 1) / 2
+        # empty arrays
+        Omega   <- array(NA, c(n_ppc, n_hyp, n_spp, n_dim, n_dim))   ## CHANGE
+        Sigma_U <- array(NA, c(n_ppc, n_hyp, n_spp, n_dim, n_dim))   ## CHANGE
+        yrep <- array(NA, c(n_ppc, n_hyp, n_spp, max(n_obs), n_dim))
+        y_z <- array(NA, c(n_ppc, n_hyp, n_spp, max(n_obs), n_dim))
+        y_md    <- array(NA, c(n_ppc, n_hyp, n_spp, max(n_obs)))   ## CHANGE
+        yrep_md <- array(NA, c(n_ppc, n_hyp, n_spp, max(n_obs)))   ## CHANGE
+        y_d    <- array(NA, c(n_ppc, n_hyp, n_spp))   ## CHANGE
+        yrep_d <- array(NA, c(n_ppc, n_hyp, n_spp))   ## CHANGE
+        d_step <- array(NA, c(n_ppc, n_hyp, n_spp))   ## CHANGE
+        bpv <- matrix(NA, n_hyp, n_spp)
+        # for each hypervolume and species
+        r <- 1
+        for (i in 1:n_hyp) {
+            for (j in 1:n_spp) {
+                # for thinned MCMC samples
+                # for (n in seq(n_ppc, n_smp, n_ppc)) {
+                ######for (n in 1:n_pcc) {   ## CHANGE
+                for (n in 1:n_ppc) {         ## CHANGE
+                    # correlation matrices
+                    for (k in 1:(n_dim - 1)) {
+                        for (kk in (k + 1):n_dim) {
+                            # correlation matrices
+                            Omega[n, i, j, k, kk] <- rho[n, i, j, r]
+                            Omega[n, i, j, kk, k] <- rho[n, i, j, r]
+                            r <- r + 1
+                        } # kk
+                    } # k
+                    # for each observation
+                    for (m in 1:n_obs[i, j]) {
+                        # posterior predictive draws (mu + z %*% U, z ~ N(0, 1))
+                        yrep[n, i, j, m, ] <- mu[n, i, j, ] + yrep_z[n, i, j, m, ] %*% Sigma_U[n, i, j, , ]
+                        # z-scores of observed data ((y - mu) %*% U^-1)
+                        y_z[n, i, j, m, ] <- (y[i, j, m, ] - mu[n, i, j, ]) %*% inverse(diag(sigma[n, i, j, ])) %*% inverse(chol(Omega[n, i, j, , ]))
+                        # Mahalanobis distances
+                        y_md[n, i, j, m] <- sqrt(y_z[n, i, j, m, ] %*% t(y_z[n, i, j, m, ]))[1, 1]
+                        yrep_md[n, i, j, m] <- sqrt(yrep_z[n, i, j, m, ] %*% t(yrep_z[n, i, j, m, ]))[1, 1]
+                    } # m
+                    # summed Mahalanobis distances (discrepancies)
+                    y_d[n, i, j] <- sum(y_md[n, i, j, ])
+                    yrep_d[n, i, j] <- sum(yrep_md[n, i, j, ])
+                    # Pr(D_rep > D)
+                    d_step[n, i, j] <- step(yrep_d[n, i, j] - y_d[n, i, j])
+                } # n
+                # Bayesian p-values
+                bpv[i, j] <- mean(d_step[, i, j])
+            } # j
+        } # i
+        returnType(double(2))
+        return(bpv)
+    }
+)
+
+C_nim_ppc <- compileNimble(nim_ppc, showCompilerOutput = TRUE)
+
+
+
+
+
+
+library(nimble)
+
+pumpCode <- nimbleCode({
+    for (i in 1:N){
+        theta[i] ~ dgamma(alpha, beta)
+        lambda[i] <- theta[i] * t[i]
+        x[i] ~ dpois(lambda[i])
+    }
+    alpha ~ dexp(1.0)
+    beta ~ dgamma(0.1, 1.0)
+})
+
+pumpConsts <- list(N = 10, t = c(94.3, 15.7, 62.9, 126, 5.24, 31.4, 1.05, 1.05, 2.1, 10.5))
+pumpData <- list(x = c(5, 1, 5, 14, 3, 19, 1, 1, 4, 22))
+pumpInits <- list(alpha = 0.1, beta = 0.1, theta = rep(0.1, pumpConsts$N))
+
+pump <- nimbleModel(code = pumpCode, name = "pump", constants = pumpConsts, data = pumpData, inits = pumpInits, buildDerivs = TRUE)
+
+Cpump <- compileNimble(pump)
+
+
+Confpump<-configureMCMC(pump, thin =10, monitors = c("alpha","beta"))
+
+Confpump$removeSamplers(c("alpha","beta","theta"))
+
+llFun_Laplace <- nimbleFunction(
+    setup = function(model, paramNodes) {
+        laplace <- buildLaplace(model, paramNodes)
+    },
+    run = function() {
+        paramValues <- values(model, paramNodes)
+        ll <- laplace$calcLaplace(paramValues)
+        returnType(double())
+        return(ll)
+    }
+)
+
+llFun <- llFun_Laplace(pump, paramNodes = c("alpha", "beta"))
+
+Confpump$addSampler(target = c("alpha", "beta"),
+                    type = 'RW_llFunction_block',
+                    control = list(llFunction = llFun, includesTarget = FALSE))
+
+ModelMCMCpump <- nimble::buildMCMC(Confpump)
+
+CModelMCMCpump <- nimble::compileNimble(ModelMCMCpump, project =Cpump)
+
+samples <- runMCMC(CModelMCMCpump, 1000)
+
+
+
+  
+
+
+
+
+
+
+for( t in (mxpq+1):(T)){
+    psi[t] <- sum(durpar[1:p]*g[(t-1):(t-p)]) + sum(durpar[(p+1):(p+q)]*psi[(t-1):(t-q)])
+}
+
+
+library(nimble)
+
+gapCode <- nimbleCode({
+    for (t in 1:mxpq){
+        psi[t] <- omega
+        g[t] ~ dgamma(shape=eta, scale=psi[t]/eta)
+    }
+    for( t in (mxpq+1):(T)){
+        ##psi[t] <- omega+sum(durpar[1:p]*g[(t-1):(t-p)])+sum(durpar[(p+1):(p+q)]*psi[(t-1):(t-q)]) #this line is the issue  (OG)
+        ##psi[t] <- sum(durpar[1:p]*g[(t-1):(t-p)])+sum(durpar[(p+1):(p+q)]*psi[(t-1):(t-q)])
+        ##psi[t] <- sum(durpar[1:p]*g[(t-1):(t-p)])   ## OK
+        ##psi[t] <- sum(durpar[(p+1):(p+q)]*psi[(t-q):(t-1)])   ## fails
+        ##psi[t] <- durpar[p+1] * psi[t-1]  ## OK
+        psi[t] <- omega + sum(durpar[1:p]*g[(t-1):(t-p)]) + durpar[p+1]*psi[t-1]
+        g[t] ~ dgamma(shape=eta, scale=psi[t]/eta)
+    }
+    durpar[1:k] ~ ddirch(alpha=alpha[1:k])
+    eta ~ dgamma(shape=0.001,scale=1/0.001)
+    omega ~ dnorm(0,sd=100)
+})
+
+set.seed(1)
+p=2
+q=1
+mxpq <- max(p,q)
+k=p+q+1
+eta <- 2.2
+omega <- 0.1
+alpha <- c(0.25,0.05)
+betastar <- c(0.6)
+T <- 5000
+psi_sim <- rep(NA,T)
+g_sim <- rep(NA,T)
+for (t in 1:mxpq){
+    psi_sim[t] <- omega
+    g_sim[t] <- rgamma(n=1, shape=eta, scale=psi_sim[t]/eta)
+}
+for (t in (mxpq+1):(T)){
+    psi_sim[t] <- omega+alpha[1:p]%*%g_sim[(t-1):(t-p)]+betastar[1:q]%*%psi_sim[(t-1):(t-q)]
+    g_sim[t] <- rgamma(n=1, shape=eta, scale=psi_sim[t]/eta)
+}
+# Running nimble code:
+gapModel <- nimbleModel(code =  gapCode,
+                        constants = list(T = T,p=p,q=q,k=k,mxpq=mxpq,alpha = rep(0.5, k))
+                       ,data = list(g=g_sim)
+                       ,inits = list(eta=1,omega=0.001))
+
+Cmodel <- compileNimble(gapModel)
+
+printErrors()
+
+mcmcConf <- configureMCMC(gapModel,monitors = c("eta","omega","durpar"), useConjugacy = FALSE)
+
+Rmcmc<-buildMCMC(mcmcConf)
+
+Cmodel<-compileNimble(gapModel)
+Cmcmc <- compileNimble(Rmcmc, project =  gapModel)
+
+samplesList <- runMCMC(Cmcmc, niter = 10000, thin=1, nburnin = 1000)
+
+
+
+
+
+
+library(nimble)
+
+code <- nimbleCode({
+    ##for(i in 1:10)   x[i] <- i
+    ##a <- sum(x[1:3])
+    b <- sum(x[5:1])
+    ##c[1:3] <- x[10:8]
+    ##d <- sum(x[1:3] * x[10:8])
+    ##e <- sum(x[1:3] %*% x[10:8])
+})
+
+Rmodel <- nimbleModel(code, inits = list(x = 1:5))
+Rmodel$calculate()
+
 Cmodel <- compileNimble(Rmodel)
 
+Rmodel$getNodeNames()
+Rmodel$x
+Rmodel$a
+Rmodel$b
+Rmodel$c
+Rmodel$d
+Rmodel$e
 
-library(nimble)
-library(testthat)
+Cmodel <- compileNimble(Rmodel)
+
+Rmodel$initializeInfo()
+Rmodel$initializeInfo(TRUE)
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printSamplers(byType = TRUE)
+conf$printMonitors()
+
+Rmcmc <- buildMCMC(conf)
+
+compiledList <- compileNimble(list(model=Rmodel, mcmc=Rmcmc))
+Cmodel <- compiledList$model; Cmcmc <- compiledList$mcmc
+##Cmodel <- compileNimble(Rmodel)
+##Cmcmc <- compileNimble(Rmcmc, project = Rmodel)#, showCompilerOutput = TRUE)
+
+set.seed(0)
+samples <- runMCMC(Cmcmc, 10000)
+
+colnames(samples)
+samplesSummary(samples)
+library(basicMCMCplots)
+samplesPlot(samples)
+library(coda)
+effectiveSize(samples)
+
+
+nfDef <- nimbleFunction(
+    setup = function() {},
+    run = function() {
+        returnType()
+    }
+)
+
+Rnf <- nfDef()
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf$run()
+Cnf$run()
+
+
+Rnf <- nimbleFunction(
+    run = function() {
+        returnType()
+    }
+)
+
+Cnf <- compileNimble(Rnf)#, showCompilerOutput = TRUE)
+
+Rnf()
+Cnf()
+
+stochVars <- unique(nimble:::removeIndexing(Rmodel$getNodeNames(stochOnly = TRUE)))
+for(v in stochVars)   cat(v, ': ', Rmodel$calculate(v), '\n')
+
+
 
 
 code <- nimbleCode({
