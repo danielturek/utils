@@ -119,6 +119,7 @@ alias makesite=~/github/utils/make_site.sh
 ## alias s360='cd ~/github/courses/stat360'
 ## alias s365='cd ~/github/courses/stat365'
 ## alias s465='cd ~/github/courses/stat465'
+alias m='cd ~/github/courses/math336'
 alias nim='cd ~/github/nimble/nimble/packages/nimble/R'
 alias ds='cd ~/github/ds201/ds201'
 alias site='cd ~/github/ds201/site'
