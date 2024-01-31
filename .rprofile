@@ -1,5 +1,31 @@
 
 #### TEMPORARY
+#### for making random DS201 teams
+random_teams <- function(seed) {
+    if(missing(seed)) { cat('Add a random seed to generate team names\n'); return(invisible(0)) }
+    ##names <- readLines('~/Downloads/ds201_student_names.txt')
+    ##cat('\n\n', paste0(paste0('\"', names, '\"'), collapse = ', '), '\n\n')
+    names <- c("Ainsley Carlson", "Jackson Chambers", "Emily Coe", "Lauren Cunningham", "Elena Duffy", "Alex Evans", "Connor Freeman", "Jacob Freeman", "Edward Grant", "Samuel Harris", "Annie Hou", "Kevin Husar", "John Mathes", "Stone McDonald", "Justin Mitala", "Niko Orecchio", "John Pogorelov", "Adam Port", "Sean Reilly", "William Reynolds", "Griffin Rooney", "Alexa Sadowski", "Abigail Schaus", "Alyssa Vitale", "Finian Zakas")
+    jn <- function(a, b) paste0(a, ', ', b)
+    set.seed(seed)
+    names <- sample(names)
+    teams <- character()
+    while(length(names) >= 4) {
+        teams[length(teams)+1] <- jn(names[1], names[2])
+        names <- names[-(1:2)]
+    }
+    if(length(names) == 3) {
+        teams[length(teams)+1] <- jn(jn(names[1], names[2]), names[3])
+    } else if(length(names) == 2) {
+        teams[length(teams)+1] <- jn(names[1], names[2])
+    } else stop('internal error')
+    ##return(teams)
+    teams <- paste0(teams, '\n')
+    cat('\n\n', teams, '\n\n')
+}
+
+
+#### TEMPORARY
 #### (for STAT319 projects)
 ##files <- c(
 ##    '~/github/courses/stat319/projects/trading/trading_code.R',
