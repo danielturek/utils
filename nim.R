@@ -34,7 +34,7 @@ Cmcmc$run(10000, time = TRUE)
 times <- Cmcmc$getTimes()
 types <- sapply(conf$getSamplers(), function(x) paste0(x$name, '_', x$target))
 ix <- sort(times, decreasing = TRUE, index.return = TRUE)$ix
-data.frame(time = times[ix], type = types[ix])
+data.frame(time = times[ix], percent = round(times[ix]/sum(times[ix])*100,1), type = types[ix])
 
 colnames(samples)
 samplesSummary(samples)
