@@ -18,18 +18,18 @@
 
 ;; this would allow aquamacs to detect rmd-mode automatically,
 ;; but the require commands cause an init-file error in bash emacs.
-;;(setq load-path
-;;    (append (list "~/github/utils/polymode/"
-;;                  "~/github/utils/polymode/modes/")
-;;        load-path))
-;;(require 'poly-R)
-;;(require 'poly-markdown)
-;;(add-to-list 'auto-mode-alist '("\\.Rmd\\'" . poly-markdown+r-mode))
-;;(add-to-list 'auto-mode-alist '("\\.rmd\\'" . poly-markdown+r-mode))
-
-(unless (package-installed-p 'polymode)
-  (package-install 'poly-markdown)
-  (package-install 'poly-R))
+(setq load-path
+    (append (list "~/github/utils/polymode/"
+ 		  "~/github/utils/polymode/modes/")
+ 	load-path))
+(require 'poly-R)
+(require 'poly-markdown)
+(add-to-list 'auto-mode-alist '("\\.Rmd\\'" . poly-markdown+r-mode))
+(add-to-list 'auto-mode-alist '("\\.rmd\\'" . poly-markdown+r-mode))
+ 
+;;(unless (package-installed-p 'polymode)
+;;  (package-install 'poly-markdown)
+;;  (package-install 'poly-R))
 
 (custom-set-variables
  '(one-buffer-one-frame-mode nil nil (aquamacs-frame-setup)))
@@ -104,6 +104,20 @@
   (interactive)
   (insert "<a href=\"URL\" target=\"_blank\" style=\"color: blue\">TEXT</a>"))
 
+(defun rmarkdown-insert-math-align ()
+  "Insert align environment for math."
+  (interactive)
+  (insert "$$\\begin{align}\n")
+  (save-excursion
+    (newline)
+    (insert "\\end{align}$$\n")
+    (previous-line)))
+
+(defun rmarkdown-insert-frac ()
+  "Insert frac for math."
+  (interactive)
+  (insert "\\frac{}{}"))
+
 (defun rmarkdown-weave-file ()
   "Run knitr on the current file and weave it as MD and HTML."
   (save-buffer)
@@ -148,6 +162,8 @@
 (global-set-key (kbd "C-c B") (quote rmarkdown-break-code-chunk-noeval))
 (global-set-key (kbd "C-c l") (quote rmarkdown-external-html-link))
 (global-set-key (kbd "C-c L") (quote rmarkdown-external-html-link-blue))
+(global-set-key (kbd "C-c a") (quote rmarkdown-insert-math-align))
+(global-set-key (kbd "C-c f") (quote rmarkdown-insert-frac))
 (global-set-key (kbd "C-c w") (quote rmarkdown-weave-file))
 (global-set-key (kbd "C-c p") (quote rmarkdown-preview-file))
 (global-set-key (kbd "C-c t") (quote rmarkdown-tangle-file))
