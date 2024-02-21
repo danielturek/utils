@@ -241,5 +241,8 @@ If there is still something left do do start the next latex-command."
 
 (load-theme 'tango-dark)
 
-
+;; turn off auto-fill-mode
+;; (this is what automatically breaks lines while typing
+(turn-off-auto-fill)
+(remove-hook 'text-mode-hook 'auto-detect-wrap)
 
