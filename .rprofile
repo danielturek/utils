@@ -39,6 +39,10 @@ random_teams <- function(seed) {
 
 options(device = 'quartz')
 
+## let's rmarkdown::render find pandoc
+## seems necessary for my C-c C-p to knit Rmd documents
+Sys.setenv(RSTUDIO_PANDOC='/usr/local/bin')
+
 ## Berkeley CRAN mirror appears to have disappeared, Feb 2020
 ##options(repos  = 'http://cran.cnr.berkeley.edu')
 ## Imerial College (UK) mirror appears to have disappeared, Jan 2024
