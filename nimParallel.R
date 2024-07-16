@@ -1,5 +1,28 @@
 
 
+
+############# example 1:
+
+library(parallel)
+
+my_parallel_function <- function(x, power) {
+    library(nimble)
+    myPower <- nimbleFunction(
+        run = function(x=double(0, default=1), power=double(0, default=2)) {
+            returnType(double(0))
+            return(x^power)
+        })
+    myPowerc <- compileNimble(myPower)
+    myPowerc(x, power)
+}
+
+cl <- makeCluster(4)
+res <- parLapply(cl, 1:10, my_parallel_function, power = 2)
+stopCluster(cl)
+
+
+############# example 2:
+
 library(parallel)
 this_cluster <- makeCluster(2) # Use only 2 for simplicity
 
