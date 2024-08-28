@@ -89,20 +89,21 @@ library <- function(package, ...) {
     }
 }
 
-## make L as the first argument of (the function call) R
-## this is a new feature in newer versions of R (actually: `|>` )
-`%|>%` <- function(L, R) {
-    R <- substitute(R)
-    L <- substitute(L)
-    newR <- R
-    newR[[2]] <- L
-    lenR <- length(R)
-    if(length(R) > 1) {
-        newR[3:(lenR+1)] <- R[2:lenR]
-        if(!is.null(names(R)))   names(newR)[3:(lenR+1)] <- names(R)[2:lenR]
-    }
-    return(eval(newR, parent.frame()))
-}
+#### make L as the first argument of (the function call) R
+#### this is a new feature in newer versions of R (actually: `|>` )
+#### since upgrading to R version 4.1 (or higher) I have `|>` from R
+##`%|>%` <- function(L, R) {
+##    R <- substitute(R)
+##    L <- substitute(L)
+##    newR <- R
+##    newR[[2]] <- L
+##    lenR <- length(R)
+##    if(length(R) > 1) {
+##        newR[3:(lenR+1)] <- R[2:lenR]
+##        if(!is.null(names(R)))   names(newR)[3:(lenR+1)] <- names(R)[2:lenR]
+##    }
+##    return(eval(newR, parent.frame()))
+##}
 
 ##stan_model <- function(...) {
 ##    suppressWarnings(rm(ppp, pppp, qqq, envir = .GlobalEnv))
