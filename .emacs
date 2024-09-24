@@ -246,3 +246,5 @@ If there is still something left do do start the next latex-command."
 (turn-off-auto-fill)
 (remove-hook 'text-mode-hook 'auto-detect-wrap)
 
+
+
