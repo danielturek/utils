@@ -118,6 +118,11 @@
   (interactive)
   (insert "\\frac{}{}"))
 
+(defun rmarkdown-insert-text ()
+  "Insert text for math."
+  (interactive)
+  (insert "\\text{}"))
+
 (defun rmarkdown-weave-file ()
   "Run knitr on the current file and weave it as MD and HTML."
   (save-buffer)
@@ -164,6 +169,7 @@
 (global-set-key (kbd "C-c L") (quote rmarkdown-external-html-link-blue))
 (global-set-key (kbd "C-c a") (quote rmarkdown-insert-math-align))
 (global-set-key (kbd "C-c f") (quote rmarkdown-insert-frac))
+(global-set-key (kbd "C-c y") (quote rmarkdown-insert-text))
 (global-set-key (kbd "C-c w") (quote rmarkdown-weave-file))
 (global-set-key (kbd "C-c p") (quote rmarkdown-preview-file))
 (global-set-key (kbd "C-c t") (quote rmarkdown-tangle-file))
@@ -245,6 +251,4 @@ If there is still something left do do start the next latex-command."
 ;; (this is what automatically breaks lines while typing
 (turn-off-auto-fill)
 (remove-hook 'text-mode-hook 'auto-detect-wrap)
-
-
 
