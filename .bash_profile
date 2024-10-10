@@ -97,6 +97,7 @@ alias cvcommit='dir=$(pwd); cd ~/github/private; commit; cd $dir'
 alias backup=~/github/utils/backup.sh
 alias cleanup=~/github/utils/cleanup.sh
 alias build=~/github/utils/build.sh
+alias buildMatt=~/github/utils/build_matt.sh
 alias Rrun=~/github/utils/run_R_script.sh
 alias gand='ssh dturek@gandalf.berkeley.edu'
 alias hpcc='ssh dbt1@hpcc.williams.edu'
