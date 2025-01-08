@@ -40,7 +40,7 @@ cd ~/github/ds201/starters/"$folder"/"$input"/
 git init
 git remote add origin https://github.com/DS201-S25/"$input".git
 git add --all
-git commit -m"added starter repo materials"
+git commit -m"added starter materials"
 git push -u origin main
 cd "$dir"
 
