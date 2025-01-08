@@ -132,6 +132,7 @@ alias slides='cd ~/github/ds201/ds201/slides'
 alias starters='cd ~/github/ds201/starters'
 ##alias edit=~/github/utils/edit.sh   doesn't work
 ##alias stop=~/github/utils/stop.sh   doesn't work
+alias makeassignment=~/github/utils/make_assignment.sh
 
 set -o noclobber
 
