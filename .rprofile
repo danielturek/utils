@@ -50,7 +50,7 @@ Sys.setenv(RSTUDIO_PANDOC='/usr/local/bin')
 ##options(repos  = 'http://cran.cnr.berkeley.edu')
 ## Imerial College (UK) mirror appears to have disappeared, Jan 2024
 ##options(repos  = 'https://cran.ma.imperial.ac.uk/')
-options(repos  = 'https://mirrors.nics.utk.edu/cran/')
+##options(repos  = 'https://mirrors.nics.utk.edu/cran/')
 
 options(scipen=999)  ## turns off scientific notation display
 
