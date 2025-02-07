@@ -101,6 +101,7 @@ alias buildMatt=~/github/utils/build_matt.sh
 alias Rrun=~/github/utils/run_R_script.sh
 alias gand='ssh dturek@gandalf.berkeley.edu'
 alias hpcc='ssh dbt1@hpcc.williams.edu'
+alias firebird='ssh turekd-laf@firebird.lafayette.edu'    # passphrase: macgyver
 alias status='git status'
 alias st='git status'
 alias dif=~/github/utils/my_github_dif.sh
