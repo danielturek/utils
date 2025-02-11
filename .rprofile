@@ -8,7 +8,7 @@ random_teams <- function(seed) {
     ## from Spring 2024:
     ##names <- c("Ainsley Carlson", "Jackson Chambers", "Emily Coe", "Lauren Cunningham", "Elena Duffy", "Alex Evans", "Connor Freeman", "Jacob Freeman", "Edward Grant", "Samuel Harris", "Annie Hou", "Kevin Husar", "John Mathes", "Stone McDonald", "Justin Mitala", "Niko Orecchio", "John Pogorelov", "Adam Port", "Sean Reilly", "William Reynolds", "Griffin Rooney", "Alexa Sadowski", "Abigail Schaus", "Alyssa Vitale", "Finian Zakas")
     ## from Spring 2025:
-    names <- c("Dylan Aguilera", "Patrick Amoyaw", "Nisan Basciftci", "Brian Baucia", "Gianna Bobrowski", "Charlotte Carter", "Eurnett Christopher", "Bram Cohen", "Francis Dougherty", "Trace Florio", "Madeline Kiel", "Cameron Kratz", "Angel Marmolejo Flores", "Jacob Nickel", "Andrew Nuth", "Matthew Olson", "Evelyn Papalimberis", "Benjamin Risley", "Augustin Salopek", "Eleanor Sherwood", "Gianna Tesi", "Sahil Thakali", "Itza Urrutia Gonzalez", "Brady Valle")
+    names <- c("Dylan Aguilera", "Patrick Amoyaw", "Nisan Basciftci", "Brian Baucia", "Gianna Bobrowski", "Charlotte Carter", "Eurnett Christopher", "Bram Cohen", "Francis Dougherty", "Trace Florio", "Madeline Kiel", "Cameron Kratz", "Angel Marmolejo Flores", "Jacob Nickel", "Andrew Nuth", "Matthew Olson", "Evelyn Papalimberis", "Ben Risley", "Gus Salopek", "Ellie Sherwood", "Gianna Tesi", "Sahil Thakali", "Itza Urrutia Gonzalez", "Brady Valle")
     jn <- function(a, b) paste0(a, ', ', b)
     set.seed(seed)
     names <- sample(names)
