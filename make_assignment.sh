@@ -23,6 +23,9 @@ case "$X" in
   ex)
     folder="exercises"
     ;;
+  final)                 # special case to work with input: "final-project"
+    folder="project"     # set folder equal to "project"
+    ;;
   *)
     echo "Invalid value for X. Expected 'hw', 'lab', or 'ex'."
     exit 1
