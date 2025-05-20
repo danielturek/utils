@@ -91,6 +91,7 @@ alias textbook=~/github/utils/textbook.sh
 alias solutions='open ~/github/courses/klingenberg_textbook/v5_textbook_solutions/v5_solutions.pdf'
 alias lecture=~/github/utils/lecture.sh
 alias rmm=~/github/utils/move_to_trash.sh
+alias trashauxfiles=~/github/utils/trashauxfiles.sh
 alias ls='ls -F'
 alias cv='open ~/github/private/CV/Turek\ -\ CV.tex'
 alias cvcommit='dir=$(pwd); cd ~/github/private; commit; cd $dir'
